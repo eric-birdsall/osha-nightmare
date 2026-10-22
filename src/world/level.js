@@ -56,8 +56,32 @@ function tagPlane(text, w, h, { bg = '#ffffff', fg = '#111111', border = '#11111
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
 }
 
-// Labels on the open (aisle) face of a rack, attached to the rack so they move with it: rack
-// signs at both ends and a Rack-Bay-Shelf tag hanging under each shelf beam.
+// End-cap sign: "RACK" over a big letter, sized to span the rack's depth between the end uprights.
+function endCapSign(name, w, h) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = Math.round((256 * h) / w);
+  const g = c.getContext('2d');
+  g.fillStyle = '#1d3f80';
+  g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = '#fff';
+  g.lineWidth = 10;
+  g.strokeRect(5, 5, c.width - 10, c.height - 10);
+  g.fillStyle = '#fff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = `bold ${Math.floor(c.height * 0.16)}px system-ui, sans-serif`;
+  g.fillText('RACK', c.width / 2, c.height * 0.18);
+  g.font = `bold ${Math.floor(c.height * 0.66)}px system-ui, sans-serif`;
+  g.fillText(name, c.width / 2, c.height * 0.62);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
+}
+
+// Labels attached to the rack so they move with it: a rack sign on each end cap, and a
+// Rack-Bay-Shelf tag on each shelf beam of the open (aisle) face.
 function labelRack(group, { name, z0, z1, face }, cx, cz) {
   const x0 = RACK_X0;
   const x1 = RACK_X0 + BAYS * BAY_W;
@@ -68,8 +92,10 @@ function labelRack(group, { name, z0, z1, face }, cx, cz) {
     mesh.rotation.y = ry;
     group.add(mesh);
   };
+  // End caps face west and east, mounted on the outside of the end uprights
+  add(endCapSign(name, 1.0, 1.1), x0 - 0.05, 2.3, cz, -Math.PI / 2);
+  add(endCapSign(name, 1.0, 1.1), x1 + 0.05, 2.3, cz, Math.PI / 2);
   for (const [z, ry] of faces) {
-    for (const x of [x0 + 0.65, x1 - 0.65]) add(tagPlane(`RACK ${name}`, 1.2, 0.4, { bg: '#1d3f80', fg: '#fff', border: '#fff' }), x, 2.2, z, ry);
     for (let b = 0; b < BAYS; b++) {
       SHELF_LEVELS.forEach((y, sh) => {
         // Tag stuck on the beam face, a few mm proud of it
