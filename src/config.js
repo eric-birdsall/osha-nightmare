@@ -29,6 +29,8 @@ export const CONFIG = {
     // Ragdoll triggers
     fallRagdollHeight: 2.5, // fall distance below jump peak
     hitSpeed: 1.5, // forklift relative speed that bowls the climber over
+    crushForkSpeed: 0.1, // lowering forks this fast onto the climber's head = incident
+    fallingLoadSpeed: 1.0, // a box/pallet falling this fast onto the climber's head = incident
     throwAccel: 6, // support horizontal acceleration that throws them off
     throwAccelSmoothing: 0.35, // EMA factor per step (higher = twitchier)
     throwMinSupportSpeed: 0.3, // ignore accel spikes on a near-still support
@@ -61,6 +63,7 @@ export const CONFIG = {
     liftMin: 0.1,
     liftMax: 3.5,
     liftSpeed: 0.4,
+    lowerSpeed: 0.7, // forks come down faster than they go up
     liftAccel: 0.8, // ease in and out
     liftStiffness: 2500, // carriage motor (acceleration-based)
     liftDamping: 120,

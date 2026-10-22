@@ -341,6 +341,10 @@ export class Climber {
       if (this.peakY - feet.y > cfg.fallRagdollHeight) return this.goRagdoll('fell');
     }
 
+    // Something coming down on our head: lowered forks, or a falling box/pallet
+    const headHit = this.overheadHit(feet);
+    if (headHit) return this.goRagdoll(headHit, new THREE.Vector3(0, -1.5, 0));
+
     // Forklift collisions: an ankle-and-up capsule so standing on the forks isn't a "hit",
     // but lowered forks (top at 0.1 m) still sweep the legs.
     const fl = this.game.forklift;
@@ -377,6 +381,33 @@ export class Climber {
       this.pushVel.set(pv.x, 0, pv.z).addScaledVector(away, 1.2);
     }
 
+  }
+
+  // Returns an incident reason if the forks or a load is moving down into our head.
+  overheadHit(feet) {
+    const cfg = CONFIG.climber;
+    const fl = this.game.forklift;
+    let reason = null;
+    this.game.world.intersectionsWithShape(
+      { x: feet.x, y: feet.y + cfg.height - 0.12, z: feet.z },
+      { x: 0, y: 0, z: 0, w: 1 },
+      new RAPIER.Ball(0.2),
+      (c) => {
+        const b = c.parent();
+        if (!b || b.isFixed()) return true;
+        const vy = b.linvel().y;
+        if (b === fl.carriage || b.handle === fl.carriage.handle) {
+          if (vy < -cfg.crushForkSpeed) reason = 'forks';
+        } else {
+          const ent = this.game.entityForCollider(c);
+          if (ent && !ent.carried && vy < -cfg.fallingLoadSpeed) reason = 'load';
+        }
+        return !reason;
+      },
+      undefined,
+      groups(G.CLIMBER, G.FORK | G.DYN),
+    );
+    return reason;
   }
 
   // ---------------------------------------------------------------- carrying

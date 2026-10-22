@@ -22,7 +22,7 @@ const FORK_W = 0.15;
 const FORK_T = 0.035;
 const FORK_Z = PLATE_Z + 0.03 + FORK_LEN / 2;
 
-// Static parts on the chassis body: [half extents, position, color]
+// Static parts on the chassis body: [half extents, position, color, drawn?]
 const PARTS = [
   [[0.55, 0.3, 0.95], [0, 0.55, -0.2], 0xf2b705], // lower chassis
   [[0.55, 0.26, 0.17], [0, 1.1, -0.98], 0x3a3f47], // counterweight hump
@@ -31,7 +31,7 @@ const PARTS = [
   [[0.03, 0.66, 0.03], [-0.53, 1.51, 0.66], 0x1d1f23],
   [[0.03, 0.66, 0.03], [0.53, 1.51, -0.78], 0x1d1f23],
   [[0.03, 0.66, 0.03], [-0.53, 1.51, -0.78], 0x1d1f23],
-  [[0.57, 0.03, 0.76], [0, 2.19, -0.06], 0x1d1f23], // overhead guard roof
+  [[0.57, 0.03, 0.76], [0, 2.19, -0.06], 0x1d1f23, false], // overhead guard roof (drawn as a bar grid)
   [[0.05, 2.05, 0.05], [0.38, 2.15, MAST_Z], 0x30343a], // mast uprights
   [[0.05, 2.05, 0.05], [-0.38, 2.15, MAST_Z], 0x30343a],
   [[0.43, 0.05, 0.05], [0, 4.15, MAST_Z], 0x30343a], // mast crossbar
@@ -96,7 +96,7 @@ export class Forklift {
       this.collidersSet.add(c.handle);
       return c;
     };
-    addCarriageCol(RAPIER.ColliderDesc.cuboid(0.45, 0.3, 0.03).setTranslation(0, 0.25, 0).setFriction(0.6), 90);
+    addCarriageCol(RAPIER.ColliderDesc.cuboid(0.45, 0.5, 0.03).setTranslation(0, 0.45, 0).setFriction(0.6), 90); // carriage + load backrest
     for (const sx of [-1, 1]) {
       addCarriageCol(
         RAPIER.ColliderDesc.cuboid(FORK_W / 2, FORK_T / 2, FORK_LEN / 2)
@@ -152,11 +152,25 @@ export class Forklift {
 
   buildMesh() {
     const root = new THREE.Group();
-    for (const [half, pos, color] of PARTS) {
+    for (const [half, pos, color, drawn = true] of PARTS) {
+      if (!drawn) continue;
       const m = boxMesh(half[0] * 2, half[1] * 2, half[2] * 2, color);
       m.position.set(...pos);
       root.add(m);
     }
+    // Overhead guard: a frame of bars the driver can see up through
+    const guard = (w, h, d, x, y, z) => {
+      const b = boxMesh(w, h, d, 0x1d1f23, { edges: false });
+      b.position.set(x, y, z);
+      root.add(b);
+    };
+    const [gx, , gz] = [0.57, 0.03, 0.76];
+    const gy = 2.19;
+    const gcz = -0.06;
+    for (const sx of [-1, 1]) guard(0.06, 0.06, gz * 2, sx * (gx - 0.03), gy, gcz); // side rails
+    for (const sz of [-1, 1]) guard(gx * 2, 0.06, 0.06, 0, gy, gcz + sz * (gz - 0.03)); // front/back rails
+    for (let i = -2; i <= 2; i++) guard(0.03, 0.035, gz * 2 - 0.06, i * 0.19, gy + 0.005, gcz); // lengthwise slats
+    for (const z of [-0.5, 0, 0.5]) guard(gx * 2 - 0.06, 0.03, 0.03, 0, gy - 0.01, gcz + z * (gz - 0.1)); // cross slats
     // Hazard stripes on the counterweight
     for (let i = -2; i <= 2; i++) {
       const s = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.01), flatMat(0x111111));
@@ -196,15 +210,18 @@ export class Forklift {
     });
     // Carriage (plate + forks), moved with lift height
     const carriage = new THREE.Group();
-    const plate = boxMesh(0.9, 0.6, 0.06, 0x444a52);
-    plate.position.set(0, 0.25, PLATE_Z);
-    carriage.add(plate);
-    // Load backrest grille
-    for (let i = -3; i <= 3; i++) {
-      const bar = boxMesh(0.03, 0.45, 0.03, 0x30343a, { edges: false });
-      bar.position.set(i * 0.13, 0.75, PLATE_Z);
-      carriage.add(bar);
-    }
+    // Open carriage frame: two fork bars plus a load backrest of vertical bars,
+    // so the driver can see the pallet and what's on it
+    const frame = (w, h, x, y, color = 0x30343a) => {
+      const b = boxMesh(w, h, 0.05, color, { edges: false });
+      b.position.set(x, y, PLATE_Z);
+      carriage.add(b);
+    };
+    frame(0.9, 0.1, 0, 0.05, 0x444a52); // lower fork bar
+    frame(0.9, 0.08, 0, 0.42, 0x444a52); // upper fork bar
+    frame(0.9, 0.05, 0, 0.97); // backrest top rail
+    for (const x of [-0.43, 0.43]) frame(0.05, 1.0, x, 0.5); // side frames
+    for (let i = -3; i <= 3; i++) frame(0.025, 0.5, i * 0.12, 0.71); // backrest bars
     // Forged steel forks: an L-shaped blade (vertical shank up the carriage plate + flat blade)
     // with a bevelled tip and a small yellow mark so the tips read against the floor.
     const steel = new THREE.MeshLambertMaterial({ color: 0xc3c9d0 });
@@ -261,7 +278,7 @@ export class Forklift {
 
     // Lift (always simulated; parked = no input)
     const liftDir = active ? a.liftUp - a.liftDown : 0;
-    let target = liftDir * cfg.liftSpeed;
+    let target = liftDir * (liftDir < 0 ? cfg.lowerSpeed : cfg.liftSpeed);
     const maxUp = Math.sqrt(2 * cfg.liftAccel * Math.max(0, cfg.liftMax - this.height));
     const maxDown = Math.sqrt(2 * cfg.liftAccel * Math.max(0, this.height - cfg.liftMin));
     target = Math.max(-maxDown, Math.min(maxUp, target));

@@ -51,6 +51,8 @@ Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber an
 - **Height math.** The pallet deck rests on the forks, so at max lift the Climber's feet are at about 3.55 m. Row B is 3 m deep, which puts Item B 1.6 m from any spot the forks can reach.
 - **Mantle.** In the air and pushing into a ledge within 0.35 m above your feet, you climb onto it. This is what makes the jump from the forks to the 4.5 m beam possible.
 - **Tipped forklift** is set back on its wheels after 4 s.
+- **Forks lower faster than they rise** (0.7 vs 0.4 m/s). Lowering the forks onto the Climber's head is an incident, and so is a box or pallet falling on it (the spec's optional head hit).
+- **See-through cab:** the overhead guard is a grid of bars, and the carriage is an open frame, so the driver can see up through the roof and the load through the backrest.
 - **Throw threshold** is 6 m/s² of smoothed horizontal support acceleration. A full brake (about 5.3 m/s²) does not throw you; clipping a rack does.
 - Not built: the optional falling-box head hit.
 
