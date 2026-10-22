@@ -2,17 +2,21 @@ import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { G, groups, castRay } from '../physics.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
+import { ROOM } from '../world/level.js';
 
 // Security cameras mounted high on the warehouse walls: [id, label, position]
+const { halfX: HX, halfZ: HZ } = ROOM;
 export const CCTV = [
-  ['01', 'ROW A · WEST', [-14.6, 5.4, -9.6]],
-  ['02', 'ROW A · EAST', [14.6, 5.4, -9.6]],
-  ['03', 'AISLE A', [0.5, 5.4, -9.65]],
-  ['04', 'WEST WALL', [-14.65, 5.0, -2.5]],
-  ['05', 'EAST WALL', [14.65, 5.0, -4.5]],
-  ['06', 'FLOOR · SOUTH', [-2, 5.4, 9.65]],
-  ['07', 'SOUTH WEST', [-14.6, 5.4, 9.6]],
-  ['08', 'DOCK 1', [14.6, 5.4, 9.6]],
+  ['01', 'NORTH WEST', [-HX + 0.4, 5.4, -HZ + 0.4]],
+  ['02', 'AISLE A', [-8, 5.4, -HZ + 0.35]],
+  ['03', 'NORTH EAST', [HX - 0.4, 5.4, -HZ + 0.4]],
+  ['04', 'WEST WALL · N', [-HX + 0.35, 5.0, -5.5]],
+  ['05', 'WEST WALL · S', [-HX + 0.35, 5.0, 9]],
+  ['06', 'RACK END', [0, 5.6, -HZ + 0.35]],
+  ['07', 'EAST WALL', [HX - 0.35, 5.0, -7]],
+  ['08', 'SOUTH WEST', [-HX + 0.4, 5.4, HZ - 0.4]],
+  ['09', 'FLOOR · SOUTH', [2, 5.4, HZ - 0.35]],
+  ['10', 'DOCK 1', [HX - 0.4, 5.4, HZ - 0.4]],
 ];
 
 // Camera housings on brackets, aimed at the middle of the floor.
@@ -157,13 +161,13 @@ export class ReplayDirector {
   // Up to three cameras with a clear line of sight, nearest first.
   pickCameras(target) {
     const world = this.game.world;
-    const staticOnly = groups(G.CLIMBER, G.STATIC);
+    const blockers = groups(G.CLIMBER, G.STATIC | G.DYN); // walls and racks block the view
     const scored = CCTV.map(([id, label, p]) => {
       const pos = new THREE.Vector3(...p);
       const dir = target.clone().sub(pos);
       const dist = dir.length();
       dir.normalize();
-      const hit = castRay(world, pos.clone().addScaledVector(dir, 0.3), dir, dist - 0.6, staticOnly);
+      const hit = castRay(world, pos.clone().addScaledVector(dir, 0.3), dir, dist - 0.6, blockers);
       return { id, label, pos, dist, clear: !hit };
     });
     const clear = scored.filter((s) => s.clear).sort((a, b) => a.dist - b.dist);

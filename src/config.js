@@ -20,7 +20,8 @@ export const CONFIG = {
     jumpHeight: 1.0,
     mantleHeight: 0.35, // airborne: ledges this far above the feet get climbed
     gravity: 9.81,
-    characterMass: 70, // used when the controller shoves boxes
+    characterMass: 70, // used when the climber shoves boxes and pallets
+    pushStrength: 2.5, // how hard walking into a box shoves it
     reach: 1.5, // pick up: aimed box surface within this distance of the chest
     chestDrop: 0.45, // chest is this far below the eye
     placeReach: 2.2, // put down: how far the aim ray looks for a surface
@@ -28,7 +29,7 @@ export const CONFIG = {
     stickLookSpeed: 2.8, // rad/s at full stick
     // Ragdoll triggers
     fallRagdollHeight: 2.5, // fall distance below jump peak
-    hitSpeed: 1.5, // forklift relative speed that bowls the climber over
+    hitSpeed: 1.5, // forklift moving at the climber faster than this (m/s) = incident
     crushForkSpeed: 0.1, // lowering forks this fast onto the climber's head = incident
     fallingLoadSpeed: 1.0, // a box/pallet falling this fast onto the climber's head = incident
     throwAccel: 10, // support horizontal acceleration (m/s², smoothed) that throws them off
@@ -82,6 +83,13 @@ export const CONFIG = {
     medium: { size: [0.6, 0.6, 0.6], mass: 12, friction: 0.6, color: 0xb8925a },
     large: { size: [0.6, 0.9, 0.6], mass: 20, friction: 0.6, color: 0xa47e4a },
     item: { size: [0.5, 0.5, 0.5], mass: 8, friction: 0.6 },
+  },
+
+  racks: {
+    massPerBay: 300, // kg; a 6-bay single-deep row is ~1.8 t
+    doubleDeepFactor: 1.6,
+    friction: 0.8, // feet grip the floor so a falling neighbour tips a row instead of sliding it
+    crushSpeed: 1.5, // a rack part moving at the climber faster than this (m/s) = incident
   },
 
   items: {

@@ -44,8 +44,8 @@ export class Climber {
     kcc.enableAutostep(0.22, 0.12, true);
     kcc.enableSnapToGround(0.12);
     kcc.setSlideEnabled(true);
-    kcc.setApplyImpulsesToDynamicBodies(true);
-    kcc.setCharacterMass(cfg.characterMass);
+    // Pushing is done by pushLoose() so walking into the forklift or a rack can't shove it
+    kcc.setApplyImpulsesToDynamicBodies(false);
     this.kcc = kcc;
 
     this.state = 'walk'; // 'walk' | 'ragdoll' | 'wrapped'
@@ -196,6 +196,7 @@ export class Climber {
 
     this.kcc.computeColliderMovement(this.collider, disp, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery);
     const mv = this.kcc.computedMovement();
+    this.pushLoose();
     const wasGrounded = this.grounded;
     this.grounded = this.kcc.computedGrounded() && !this.jumpedThisStep;
     if (!wasGrounded && this.grounded) {
@@ -259,6 +260,21 @@ export class Climber {
     if (wl > 1e-6) q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(w.x / wl, w.y / wl, w.z / wl), wl * dt));
     const target = this.holdLocal.clone().applyQuaternion(q).add(new THREE.Vector3(t.x + v.x * dt, t.y + v.y * dt, t.z + v.z * dt));
     return target.sub(this.feet);
+  }
+
+  // Shove loose boxes and pallets we walk into (not the forklift, racks or wrapped loads).
+  pushLoose() {
+    const mass = CONFIG.climber.characterMass;
+    for (let i = 0; i < this.kcc.numComputedCollisions(); i++) {
+      const hit = this.kcc.computedCollision(i);
+      const ent = hit?.collider && this.game.entityForCollider(hit.collider);
+      if (!ent || ent.carried || (ent.kind !== 'box' && ent.kind !== 'pallet')) continue;
+      const rem = hit.translationDeltaRemaining;
+      const push = new THREE.Vector3(rem.x, 0, rem.z);
+      if (push.lengthSq() < 1e-8) continue;
+      // Leaning into it: our blocked movement this step, as an impulse from a person-sized mass
+      ent.body.applyImpulseAtPoint(push.multiplyScalar(mass * CONFIG.climber.pushStrength), hit.witness1, true);
+    }
   }
 
   // In the air and pushing into a ledge just above our feet: climb onto it.
@@ -359,6 +375,17 @@ export class Climber {
       this.supportAccel.set(0, 0, 0);
     }
     this.prevSupportBody = sb;
+    // Scooped: the forks/truck slid under our feet while moving fast (we didn't step on)
+    const nowOnTruck = !!(sb && this.game.forklift.ownsCollider(this.support.collider));
+    if (nowOnTruck && !this.wasOnTruck && !(this.graceTimer > 0)) {
+      const sv = Math.hypot(this.supportVel.x, this.supportVel.z);
+      if (sv > cfg.hitSpeed) {
+        this.wasOnTruck = true;
+        return this.goRagdoll('hit', new THREE.Vector3(this.supportVel.x * 1.3, 3, this.supportVel.z * 1.3));
+      }
+    }
+    this.wasOnTruck = nowOnTruck;
+
     // On the fork blades? (E/X there grabs the carriage.) While holding on, stay holding as
     // long as our feet are over the blades: the ground rays can slip between them mid-turn.
     const fl0 = this.game.forklift;
@@ -438,21 +465,48 @@ export class Climber {
       undefined,
       groups(G.CLIMBER, G.FORK),
     );
+    // A toppling rack sweeping into us
+    const rackHit = this.rackSweep(probeCenter, probeHalf, probeR);
+    if (rackHit) return this.goRagdoll('rack', rackHit);
+
     const onForklift = this.holdingOn || (this.support && fl.ownsCollider(this.support.collider));
     if (this.graceTimer > 0) this.graceTimer -= dt;
     if (hitCol && !onForklift) {
-      // Only the forklift's own motion toward us counts: walking into a parked truck is no incident.
+      // The forklift's own speed at the contact counts (head-on, sideswipe or tail swing);
+      // walking into a parked or crawling truck is no incident.
       const pv = fl.pointVelocity(probeCenter, hitCol);
       const ft = fl.body.translation();
       const away = new THREE.Vector3(feet.x - ft.x, 0, feet.z - ft.z).normalize();
-      const approach = pv.x * away.x + pv.z * away.z;
-      if (approach > cfg.hitSpeed && !(this.graceTimer > 0)) {
-        return this.goRagdoll('hit', new THREE.Vector3(pv.x * 1.5, 3 + approach * 0.4, pv.z * 1.5));
+      const speed = Math.hypot(pv.x, pv.z);
+      if (speed > cfg.hitSpeed && !(this.graceTimer > 0)) {
+        return this.goRagdoll('hit', new THREE.Vector3(pv.x * 1.5, 3 + speed * 0.4, pv.z * 1.5));
       }
       // Gentle nudge: get pushed along, plus a little separation
       this.pushVel.set(pv.x, 0, pv.z).addScaledVector(away, 1.2);
     }
 
+  }
+
+  // If a rack is moving into our body fast (it's falling over), returns its velocity.
+  rackSweep(center, half, r) {
+    const cfg = CONFIG.racks;
+    let hit = null;
+    this.game.world.intersectionsWithShape(
+      center,
+      { x: 0, y: 0, z: 0, w: 1 },
+      new RAPIER.Capsule(half, r),
+      (c) => {
+        const ent = this.game.entityForCollider(c);
+        if (!ent || ent.kind !== 'rack') return true;
+        if (this.support && this.support.body.handle === ent.body.handle) return true; // standing on it
+        const v = ent.body.velocityAtPoint(center);
+        if (Math.hypot(v.x, v.y, v.z) > cfg.crushSpeed) hit = new THREE.Vector3(v.x, v.y, v.z).multiplyScalar(1.2);
+        return !hit;
+      },
+      undefined,
+      groups(G.CLIMBER, G.DYN),
+    );
+    return hit;
   }
 
   // Returns an incident reason if the forks or a load is moving down into our head.
@@ -472,7 +526,7 @@ export class Climber {
           if (vy < -cfg.crushForkSpeed) reason = 'forks';
         } else {
           const ent = this.game.entityForCollider(c);
-          if (ent && !ent.carried && vy < -cfg.fallingLoadSpeed) reason = 'load';
+          if (ent && !ent.carried && vy < -cfg.fallingLoadSpeed) reason = ent.kind === 'rack' ? 'rack' : 'load';
         }
         return !reason;
       },

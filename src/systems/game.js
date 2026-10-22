@@ -19,6 +19,7 @@ const INCIDENT_LINES = {
   crushed: 'Lifted into the racking',
   forks: 'Forks lowered onto worker',
   load: 'Struck by falling load',
+  rack: 'Crushed by falling racking',
 };
 
 // Owns one playthrough: physics world, scene, entities, order state, swap logic.

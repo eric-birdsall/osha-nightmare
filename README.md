@@ -15,7 +15,7 @@ Open the printed URL in Chrome. Click the canvas to capture the mouse.
 
 Get **Item A** (pink, location `A-3-2`) and **Item B** (cyan, `B-2-3`, the middle of Row B's 3 m deep top deck) onto one pallet. Leave that pallet still in the yellow **WRAP** square until it's wrapped, then bring the wrapped pallet to **DOCK 1** and stop there.
 
-Locations read Row-Bay-Shelf. Bays are numbered 1–4 from the west end of each row, and shelves 1–3 from the bottom (1.5 m, 3.0 m, 4.5 m). Every rack face shows row signs at both ends and a location tag under each shelf beam.
+The warehouse is 48 × 32 m. Five rows of racking (A–E, six bays each) fill the west half; the wrap square, Dock 1 and the forklift start in the open east half. Locations read Row-Bay-Shelf. Bays are numbered 1–6 from the west end of each row, and shelves 1–3 from the bottom (1.5 m, 3.0 m, 4.5 m). Every rack face shows row signs at both ends and a location tag under each shelf beam.
 
 From the forks at max height, Item B is out of reach. To get onto Row B's top deck, either stack a box on the raised pallet, or jump from the pallet and mantle onto the beam.
 
@@ -45,7 +45,9 @@ Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber an
 ## Implementation notes (where it differs from or adds to the spec)
 
 - **Forks** are a separate dynamic carriage body on a motorized prismatic joint up the mast. The solver therefore knows the fork velocity: loads lift smoothly, their weight presses on the truck, and racks block the forks.
-- **The Climber's capsule is query-only.** It never pushes or blocks bodies in the solver. The character controller still shoves boxes it walks into. Forklift contact is detected separately: above 1.5 m/s it's a ragdoll, below that a nudge.
+- **The Climber's capsule is query-only.** It never pushes or blocks bodies in the solver. Walking into a box or pallet shoves it; walking into the forklift or a rack doesn't move it.
+- **Forklift hits:** if the part of the forklift touching the Climber is moving faster than `climber.hitSpeed` (1.5 m/s), it's an incident: head-on, reversing, sideswipes, tail swing, or the forks scooping them up. Slower contact is a nudge, and walking into a parked or crawling truck is never an incident.
+- **Racks are dynamic.** Each row is one heavy rigid body (about 300 kg per bay) with its shelves, labels and anything on them. Rows stand still on their own, survive bumps up to about 2 m/s, and tip over if rammed hard or pushed high with raised forks. Aisles (4.4 m) are narrower than the racks are tall (5.2 m), so a falling row knocks over the next: tipping Row B takes out C, D and E. A falling rack hitting the Climber is an incident. Rows C–E are single-deep so they tip easily; Row B is 3 m deep to keep Item B out of reach.
 - **Rising platforms carry the Climber up directly.** A character controller can't push out of a surface it's already inside. Being lifted into a beam overhead counts as an incident ("crushed").
 - **Reach** is 1.5 m from chest height along the aim ray, so boxes at your feet can be grabbed.
 - **Height math.** The pallet deck rests on the forks, so at max lift the Climber's feet are at about 3.55 m. Row B is 3 m deep, which puts Item B 1.6 m from any spot the forks can reach.
@@ -55,7 +57,6 @@ Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber an
 - **CCTV incident replays:** eight security cameras are mounted high on the walls. 1.5 s after every incident, the game freezes and replays the moment at half speed in black and white. It cuts between up to three cameras with a clear view of the Climber, and any button skips. The replay is built from a rolling 5 s recording of everything that moves (`src/systems/replay.js`, tuning under `replay` in `config.js`).
 - **See-through cab:** the overhead guard is a grid of bars, and the carriage is an open frame, so the driver can see up through the roof and the load through the backrest.
 - **Throw threshold:** the support must be moving at 1.5 m/s or more and accelerate by more than 10 m/s² (smoothed). A full brake (about 5.3 m/s²) does not throw you; clipping a rack at speed does.
-- Not built: the optional falling-box head hit.
 
 ## Playtest console
 

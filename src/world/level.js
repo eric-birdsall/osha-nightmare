@@ -1,32 +1,38 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { COL } from '../physics.js';
+import { CONFIG } from '../config.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { createBox } from '../entities/box.js';
 import { createPallet } from '../entities/pallet.js';
 
-export const ROOM = { halfX: 15, halfZ: 10, wallH: 6 };
+export const ROOM = { halfX: 24, halfZ: 16, wallH: 6 };
 export const SHELF_LEVELS = [1.5, 3.0, 4.5];
 const BAY_W = 2.7;
-const BAYS = 4;
-const RACK_X0 = -12;
+const BAYS = 6;
+const RACK_X0 = -20;
 const UPRIGHT_H = 5.2;
 
-// Row A: single-deep against the north wall, facing south.
-// Row B: deep double-sided island (3 m), so Item B in its middle is out of reach from the forks.
+// Five rows in the west half of the warehouse, 4.4 m aisles between them. The aisles are
+// narrower than the racks are tall, so a toppled row falls onto its neighbour (dominoes).
+// Row B is a deep double-sided island (3 m) so Item B in its middle is out of reach from
+// the forks; the other rows are single-deep (1.2 m, open to the south) and tip easily.
 export const RACKS = [
-  { name: 'A', z0: -9.6, z1: -8.4, double: false },
-  { name: 'B', z0: -4.1, z1: -1.1, double: true },
+  { name: 'A', z0: -15.6, z1: -14.4, double: false },
+  { name: 'B', z0: -10.0, z1: -7.0, double: true },
+  { name: 'C', z0: -2.6, z1: -1.4, double: false },
+  { name: 'D', z0: 3.0, z1: 4.2, double: false },
+  { name: 'E', z0: 8.6, z1: 9.8, double: false },
 ];
 
 const bayX = (i) => RACK_X0 + (i + 0.5) * BAY_W;
 
-// Rack locations read Row-Bay-Shelf, e.g. "A-3-2". Bays count 1-4 from the west end;
+// Rack locations read Row-Bay-Shelf, e.g. "A-3-2". Bays count 1-6 from the west end;
 // shelves count 1-3 upward (1.5 m, 3.0 m, 4.5 m). Indices here are 0-based.
 export const locationCode = (row, bay, shelf) => `${row}-${bay + 1}-${shelf + 1}`;
 const ITEM_SLOTS = {
-  A: { row: 'A', bay: 2, shelf: 1, z: -8.85 }, // front of Row A
-  B: { row: 'B', bay: 1, shelf: 2, z: -2.6 }, // middle of Row B's 3 m deep top deck
+  A: { row: 'A', bay: 2, shelf: 1, z: -14.85 }, // front of Row A
+  B: { row: 'B', bay: 1, shelf: 2, z: -8.5 }, // middle of Row B's 3 m deep top deck
 };
 
 // Small printed tag (canvas texture) used for rack location labels.
@@ -51,20 +57,20 @@ function tagPlane(text, w, h, { bg = '#ffffff', fg = '#111111', border = '#11111
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
 }
 
-// Labels on every open face of a rack: row signs at both ends and a Row-Bay-Shelf
-// tag hanging under each shelf beam.
-function labelRack(game, { name, z0, z1, double }) {
+// Labels on every open face of a rack, attached to the rack so they move with it: row signs
+// at both ends and a Row-Bay-Shelf tag hanging under each shelf beam.
+function labelRack(group, { name, z0, z1, double }, cx, cz) {
   const x0 = RACK_X0;
   const x1 = RACK_X0 + BAYS * BAY_W;
   // [face z, rotation so the label faces out of the rack]
   const faces = double ? [[z1 + 0.012, 0], [z0 - 0.012, Math.PI]] : [[z1 + 0.012, 0]];
   const add = (mesh, x, y, z, ry) => {
-    mesh.position.set(x, y, z);
+    mesh.position.set(x - cx, y, z - cz);
     mesh.rotation.y = ry;
-    game.scene.add(mesh);
+    group.add(mesh);
   };
   for (const [z, ry] of faces) {
-    for (const x of [x0 - 0.65, x1 + 0.65]) add(tagPlane(`ROW ${name}`, 1.2, 0.4, { bg: '#1d3f80', fg: '#fff', border: '#fff' }), x, 2.2, z, ry);
+    for (const x of [x0 + 0.65, x1 - 0.65]) add(tagPlane(`ROW ${name}`, 1.2, 0.4, { bg: '#1d3f80', fg: '#fff', border: '#fff' }), x, 2.2, z, ry);
     for (let b = 0; b < BAYS; b++) {
       SHELF_LEVELS.forEach((y, sh) => {
         add(tagPlane(locationCode(name, b, sh), 0.5, 0.19), bayX(b), y - 0.13 - 0.1, z + (ry ? -0.004 : 0.004), ry);
@@ -87,27 +93,52 @@ function addStatic(game, half, pos, color, { mesh = true, edges = true } = {}) {
   return null;
 }
 
-function buildRack(game, { z0, z1, double }) {
+// One rack row = one heavy rigid body (uprights, decks, beams). It can be shoved, tipped
+// over, and knocked into the next row. Boxes on its shelves ride along.
+function buildRack(game, rack) {
+  const { name, z0, z1, double } = rack;
   const x0 = RACK_X0;
   const x1 = RACK_X0 + BAYS * BAY_W;
   const len = x1 - x0;
+  const cx = (x0 + x1) / 2;
+  const cz = (z0 + z1) / 2;
   const blue = 0x2f5fb3;
   const orange = 0xe86a1c;
   const deckGrey = 0x9aa1aa;
-  const uprightZs = double ? [z0 + 0.05, (z0 + z1) / 2 - 0.12, (z0 + z1) / 2 + 0.12, z1 - 0.05] : [z0 + 0.05, z1 - 0.05];
+  const parts = []; // [half, local pos, color, edges]
+  const uprightZs = double ? [z0 + 0.05, cz - 0.12, cz + 0.12, z1 - 0.05] : [z0 + 0.05, z1 - 0.05];
   for (let i = 0; i <= BAYS; i++) {
-    for (const z of uprightZs) {
-      addStatic(game, [0.045, UPRIGHT_H / 2, 0.045], [x0 + i * BAY_W, UPRIGHT_H / 2, z], blue);
-    }
+    for (const z of uprightZs) parts.push([[0.045, UPRIGHT_H / 2, 0.045], [x0 + i * BAY_W - cx, UPRIGHT_H / 2, z - cz], blue, true]);
   }
   for (const y of SHELF_LEVELS) {
-    // Deck (walkable), top flush with beams
-    addStatic(game, [len / 2, 0.02, (z1 - z0) / 2], [(x0 + x1) / 2, y - 0.02, (z0 + z1) / 2], deckGrey, { edges: false });
-    // Front/back beams
-    for (const z of [z0 + 0.03, z1 - 0.03]) {
-      addStatic(game, [len / 2, 0.065, 0.03], [(x0 + x1) / 2, y - 0.065, z], orange);
-    }
+    parts.push([[len / 2, 0.02, (z1 - z0) / 2], [0, y - 0.02, 0], deckGrey, false]); // deck (walkable)
+    for (const z of [z0 + 0.03, z1 - 0.03]) parts.push([[len / 2, 0.065, 0.03], [0, y - 0.065, z - cz], orange, true]); // beams
   }
+  const cfg = CONFIG.racks;
+  const totalMass = cfg.massPerBay * BAYS * (double ? cfg.doubleDeepFactor : 1);
+  const vol = parts.reduce((v, [h]) => v + h[0] * h[1] * h[2], 0);
+  const body = game.world.createRigidBody(
+    RAPIER.RigidBodyDesc.dynamic().setTranslation(cx, 0, cz).setCanSleep(true).setAdditionalSolverIterations(4),
+  );
+  const group = new THREE.Group();
+  for (const [half, pos, color, edges] of parts) {
+    game.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(...half)
+        .setTranslation(...pos)
+        .setMass((totalMass * half[0] * half[1] * half[2]) / vol)
+        .setFriction(cfg.friction)
+        .setCollisionGroups(COL.dyn),
+      body,
+    );
+    const m = boxMesh(half[0] * 2, half[1] * 2, half[2] * 2, color, { edges });
+    m.position.set(...pos);
+    group.add(m);
+  }
+  labelRack(group, rack, cx, cz);
+  game.scene.add(group);
+  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass };
+  game.addEntity(ent);
+  return ent;
 }
 
 function floorMarking(game, cx, cz, w, d, color, thickness = 0.12) {
@@ -162,14 +193,14 @@ export function buildLevel(game) {
   sun.position.set(8, 20, 6);
   sun.target.position.set(0, 0, 0);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(3072, 3072);
   const sc = sun.shadow.camera;
-  sc.left = -20;
-  sc.right = 20;
-  sc.top = 16;
-  sc.bottom = -16;
+  sc.left = -halfX - 4;
+  sc.right = halfX + 4;
+  sc.top = halfZ + 4;
+  sc.bottom = -halfZ - 4;
   sc.near = 1;
-  sc.far = 50;
+  sc.far = 70;
   sun.shadow.bias = -0.0008;
   sun.shadow.normalBias = 0.02;
   scene.add(sun, sun.target);
@@ -209,42 +240,41 @@ export function buildLevel(game) {
   }
 
   // Racks
-  for (const r of RACKS) buildRack(game, r);
-  // Aisle lines along rack faces
+  const racks = RACKS.map((r) => buildRack(game, r));
+  // Aisle lines along every open rack face
   const yellow = 0xf5c518;
-  for (const z of [-8.2, -4.3, -0.9]) {
+  const faceLines = RACKS.flatMap((r) => (r.double ? [r.z0 - 0.2, r.z1 + 0.2] : [r.z1 + 0.2]));
+  for (const z of faceLines) {
     const line = new THREE.Mesh(new THREE.PlaneGeometry(BAYS * BAY_W, 0.1), new THREE.MeshBasicMaterial({ color: yellow }));
     line.rotation.x = -Math.PI / 2;
     line.position.set(RACK_X0 + (BAYS * BAY_W) / 2, 0.005, z);
     scene.add(line);
   }
-  // Row, bay and shelf labels
-  for (const r of RACKS) labelRack(game, r);
-
-  // Wrapper zone
-  const wrapZone = makeZone(game, 'wrap', 7, 5, 2.5, 2.5);
-  floorMarking(game, 7, 5, 2.5, 2.5, 0xf5c518, 0.15);
-  floorText(game, 'WRAP', 7, 6.65, 2.0, 0.6);
+  // Wrapper zone (open east half of the floor)
+  const wrapZone = makeZone(game, 'wrap', 12, 9, 2.5, 2.5);
+  floorMarking(game, 12, 9, 2.5, 2.5, 0xf5c518, 0.15);
+  floorText(game, 'WRAP', 12, 10.65, 2.0, 0.6);
   // Wrapper mast (static pole just outside the corner)
-  addStatic(game, [0.12, 1.4, 0.12], [8.55, 1.4, 3.45], 0x3a3f47);
+  addStatic(game, [0.12, 1.4, 0.12], [13.55, 1.4, 7.45], 0x3a3f47);
   const arm = boxMesh(0.7, 0.15, 0.15, 0x3a3f47);
-  arm.position.set(8.25, 2.7, 3.45);
+  arm.position.set(13.25, 2.7, 7.45);
   scene.add(arm);
 
   // Dock 1 on the east wall
-  const dockZone = makeZone(game, 'dock', 13.1, 1, 3.6, 4.0);
-  floorMarking(game, 13.1, 1, 3.6, 4.0, 0x31d07a, 0.15);
-  floorText(game, 'DOCK 1', 12.2, 1, 3.2, 0.9, Math.PI / 2, '#31d07a');
+  const dockZ = 2;
+  const dockZone = makeZone(game, 'dock', halfX - 1.9, dockZ, 3.6, 4.0);
+  floorMarking(game, halfX - 1.9, dockZ, 3.6, 4.0, 0x31d07a, 0.15);
+  floorText(game, 'DOCK 1', halfX - 2.8, dockZ, 3.2, 0.9, Math.PI / 2, '#31d07a');
   const door = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.6), new THREE.MeshLambertMaterial({ color: 0x2b2f36 }));
-  door.position.set(halfX - 0.02, 1.8, 1);
+  door.position.set(halfX - 0.02, 1.8, dockZ);
   door.rotation.y = -Math.PI / 2;
   scene.add(door);
   const sign = labelPlane('DOCK 1', 2.4, 0.8, { bg: '#31d07a', fg: '#0b1f12' });
-  sign.position.set(halfX - 0.03, 4.3, 1);
+  sign.position.set(halfX - 0.03, 4.3, dockZ);
   sign.rotation.y = -Math.PI / 2;
   scene.add(sign);
   // Dock bumpers
-  for (const z of [-0.9, 2.9]) addStatic(game, [0.1, 0.25, 0.15], [halfX - 0.1, 0.4, z], 0x111111);
+  for (const z of [dockZ - 1.9, dockZ + 1.9]) addStatic(game, [0.1, 0.25, 0.15], [halfX - 0.1, 0.4, z], 0x111111);
 
   // Wall-mounted incident sign (updated by the game)
   game.incidentSign = makeIncidentSign(scene);
@@ -254,26 +284,30 @@ export function buildLevel(game) {
   const itemA = createBox(game, { item: 'A', pos: slot('A') });
   const itemB = createBox(game, { item: 'B', pos: slot('B') });
 
-  // Loose boxes for stacking
+  // Loose boxes for stacking: some on rack shelves (they ride the racks if they fall), some on the floor
+  const L = SHELF_LEVELS;
   const loose = [
-    ['small', bayX(0), SHELF_LEVELS[0], -8.9],
-    ['medium', bayX(1), SHELF_LEVELS[0], -8.95],
-    ['large', bayX(3), 0, -9.0],
-    ['small', bayX(2), SHELF_LEVELS[0], -1.5],
-    ['medium', bayX(0), 0, -1.5],
-    ['medium', -3.6, 0, 2.2],
-    ['small', -3.6, 0.6, 2.2],
-    ['small', -2.6, 0, 2.6],
-    ['large', -8.0, 0, 3.0],
-    ['medium', 1.6, 0, -6.9],
+    ['small', bayX(0), L[0], -14.9],
+    ['medium', bayX(1), L[0], -14.95],
+    ['large', bayX(3), 0, -15.0],
+    ['small', bayX(2), L[0], -7.5],
+    ['medium', bayX(0), 0, -7.5],
+    ['small', bayX(4), L[0], -1.9],
+    ['medium', bayX(5), L[1], 3.6],
+    ['medium', bayX(3), 0, 9.2],
+    ['medium', 1.0, 0, 2.2],
+    ['small', 1.0, 0.6, 2.2],
+    ['small', 2.0, 0, 2.6],
+    ['large', 3.0, 0, -5.0],
+    ['medium', 1.6, 0, -12.0],
   ];
   for (const [type, x, y, z] of loose) createBox(game, { type, pos: [x, y, z], yaw: (Math.random() - 0.5) * 0.3 });
 
   // Empty pallets (fork pockets open toward ±local Z)
-  createPallet(game, { pos: [2.6, 0, -6.2], yaw: Math.PI / 2 });
-  createPallet(game, { pos: [2.6, 0, -2.6], yaw: Math.PI / 2 });
-  createPallet(game, { pos: [-1.5, 0, 5.5], yaw: 0 });
-  createPallet(game, { pos: [0.3, 0, 5.5], yaw: 0 });
+  createPallet(game, { pos: [2.6, 0, -12.2], yaw: Math.PI / 2 });
+  createPallet(game, { pos: [2.6, 0, -4.8], yaw: Math.PI / 2 });
+  createPallet(game, { pos: [1.5, 0, 9.5], yaw: 0 });
+  createPallet(game, { pos: [3.3, 0, 9.5], yaw: 0 });
 
   return {
     wrapZone,
@@ -282,16 +316,21 @@ export function buildLevel(game) {
     itemLocations: Object.fromEntries(
       Object.entries(ITEM_SLOTS).map(([k, v]) => [k, locationCode(v.row, v.bay, v.shelf)]),
     ),
-    climberSpawn: { pos: new THREE.Vector3(-4, 0, 0.6), yaw: 0 },
+    racks,
+    climberSpawn: { pos: new THREE.Vector3(-2, 0, 0.8), yaw: Math.PI / 2 }, // aisle C/D, looking down it
     spawnPoints: [
-      new THREE.Vector3(-4, 0, 0.6),
-      new THREE.Vector3(-0.5, 0, -6.2),
-      new THREE.Vector3(-6, 0, -6.2),
-      new THREE.Vector3(3.5, 0, 2.5),
-      new THREE.Vector3(9, 0, -5),
-      new THREE.Vector3(-10, 0, 6),
+      new THREE.Vector3(-2, 0, 0.8),
+      new THREE.Vector3(-2, 0, -4.8),
+      new THREE.Vector3(-2, 0, -12.2),
+      new THREE.Vector3(-2, 0, 6.4),
+      new THREE.Vector3(-2, 0, 13),
+      new THREE.Vector3(-22, 0, -6),
+      new THREE.Vector3(-22, 0, 6),
+      new THREE.Vector3(6, 0, 0),
+      new THREE.Vector3(10, 0, -10),
+      new THREE.Vector3(16, 0, 13),
     ],
-    forkliftSpawn: { pos: new THREE.Vector3(10.5, 0, 6.5), yaw: -Math.PI / 2 },
+    forkliftSpawn: { pos: new THREE.Vector3(18, 0, 10), yaw: -Math.PI / 2 },
   };
 }
 
