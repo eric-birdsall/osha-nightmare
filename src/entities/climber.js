@@ -762,10 +762,15 @@ export class Climber {
     view.traverse((o) => {
       o.layers.set(2);
       if (o.material) {
-        o.material = o.material.clone();
-        o.material.transparent = true;
-        o.material.opacity *= 0.35;
-        o.material.depthWrite = false;
+        // Labelled boxes use one material per face
+        const see = (m) => {
+          const c = m.clone();
+          c.transparent = true;
+          c.opacity *= 0.35;
+          c.depthWrite = false;
+          return c;
+        };
+        o.material = Array.isArray(o.material) ? o.material.map(see) : see(o.material);
       }
       o.castShadow = false;
     });
@@ -777,7 +782,7 @@ export class Climber {
     ent.mesh.traverse((o) => o.layers.set(0));
     if (!this.heldView) return;
     this.game.scene.remove(this.heldView);
-    this.heldView.traverse((o) => o.material?.dispose());
+    this.heldView.traverse((o) => [o.material].flat().forEach((m) => m?.dispose()));
     this.heldView = null;
   }
 

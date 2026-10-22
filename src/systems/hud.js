@@ -6,9 +6,9 @@ const VIEW_HTML = (role) => `
     <div class="paper">
       <div class="otitle"><span>PICK LIST</span><span>ORDER #1</span></div>
       <table class="otable">
-        <tr><th>Item</th><th>Location</th><th></th></tr>
-        <tr class="oitem" data-item="A"><td><span class="sw a"></span>Item A</td><td class="loc"></td><td><span class="chk"></span></td></tr>
-        <tr class="oitem" data-item="B"><td><span class="sw b"></span>Item B</td><td class="loc"></td><td><span class="chk"></span></td></tr>
+        <tr><th>SKU</th><th>Location</th><th></th></tr>
+        <tr class="oitem" data-item="A"><td class="sku"></td><td class="loc"></td><td><span class="chk"></span></td></tr>
+        <tr class="oitem" data-item="B"><td class="sku"></td><td class="loc"></td><td><span class="chk"></span></td></tr>
       </table>
       <div class="odest">Wrap, then ship to <b>DOCK 1</b></div>
       <div class="osign">Picked by</div>
@@ -104,9 +104,11 @@ export class Hud {
       if (!visible) continue;
       for (const k of ['A', 'B']) {
         v.items[k].classList.toggle('done', !!game.itemStatus[k]);
+        const line = game.level.order.find((o) => o.line === k);
         const loc = v.items[k].querySelector('.loc');
-        const code = game.level.itemLocations[k];
-        if (loc.textContent !== code) loc.textContent = code;
+        const sku = v.items[k].querySelector('.sku');
+        if (loc.textContent !== line.location) loc.textContent = line.location;
+        if (sku.textContent !== String(line.sku)) sku.textContent = line.sku;
       }
       v.timer.textContent = fmt(game.time);
       v.daysN.textContent = game.days;
@@ -129,8 +131,8 @@ export class Hud {
         else if (c.ladderGrab) p = `Rolling the ladder · Let go <kbd>${key}</kbd>`;
         else if (c.target?.kind === 'ladder') p = `Grab ladder <kbd>${key}</kbd>`;
         else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
-        else if (c.carried) p = `Put down <kbd>${key}</kbd>`;
-        else if (c.target) p = `Pick up${c.target.item ? ' Item ' + c.target.item : ''} <kbd>${key}</kbd>`;
+        else if (c.carried) p = `Put down SKU ${c.carried.sku} <kbd>${key}</kbd>`;
+        else if (c.target) p = `Pick up SKU ${c.target.sku} <kbd>${key}</kbd>`;
         v.prompt.innerHTML = p;
         v.prompt.style.display = p ? '' : 'none';
         v.crosshair.classList.toggle('hot', !!c.target);

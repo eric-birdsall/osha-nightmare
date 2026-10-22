@@ -278,6 +278,7 @@ td {
   color: #222;
   white-space: nowrap;
 }
+.otable .sku,
 .otable .loc {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-weight: 800;

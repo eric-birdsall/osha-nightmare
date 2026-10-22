@@ -84,19 +84,17 @@ export const CONFIG = {
     small: { size: [0.4, 0.4, 0.4], mass: 5, friction: 0.6, color: 0xc9a66b },
     medium: { size: [0.6, 0.6, 0.6], mass: 12, friction: 0.6, color: 0xb8925a },
     large: { size: [0.6, 0.9, 0.6], mass: 20, friction: 0.6, color: 0xa47e4a },
-    item: { size: [0.5, 0.5, 0.5], mass: 8, friction: 0.6 },
   },
 
   racks: {
-    massPerBay: 60, // kg: light racking
-    doubleDeepFactor: 1.6,
-    friction: 3.0, // feet grip the floor hard, so hits rock a row instead of skating it along
-    // Wobbly racking: a new hit also rocks the top of the row along the direction of travel
+    massPerBay: 60, // kg: light racking (each rack is 6 bays)
+    friction: 3.0, // feet grip the floor hard, so hits rock a rack instead of skating it along
+    // Wobbly racking: a new hit also rocks the top of the rack along the direction of travel
     tipImpactSpeed: 1.4, // forklift hits slower than this (m/s) just bump it
-    tipKick: 0.5, // top impulse = rack mass x tipKick x hit speed (scaled up for deeper rows)
-    ladderImpactSpeed: 0.6, // a ladder's top moving faster than this when it hits a row
-    ladderKick: 1.8, // top impulse = ladder mass x ladderKick x speed (scaled up for deeper rows)
-    rackKick: 0.3, // a falling row hitting its neighbour: falling row mass x rackKick x top speed
+    tipKick: 0.6, // top impulse = loaded rack mass (rack + boxes on it) x tipKick x hit speed, scaled up for deeper racks
+    ladderImpactSpeed: 0.6, // a ladder's top moving faster than this when it hits a rack
+    ladderKick: 1.8, // top impulse = ladder mass x ladderKick x speed (scaled up for deeper racks)
+    rackKick: 0.3, // a falling rack hitting its neighbour: falling rack mass x rackKick x top speed
     crushSpeed: 1.5, // a rack part moving at the climber faster than this (m/s) = incident
   },
 
@@ -115,9 +113,8 @@ export const CONFIG = {
     snagDistance: 0.6, // ladder this far from where it should be (stuck on something) = let go
   },
 
-  items: {
-    A: { color: 0xff3fa4, label: 'A' },
-    B: { color: 0x22d3ee, label: 'B' },
+  order: {
+    decoyChance: 0.6, // chance an order slot also holds a near-miss SKU next to the right box
   },
 
   wrap: {

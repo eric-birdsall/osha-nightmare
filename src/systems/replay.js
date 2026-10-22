@@ -77,7 +77,7 @@ export class Recorder {
     return { time, objs, data, subjects: this.subjects() };
   }
 
-  // Things a replay camera can follow: Dave, the forklift, and the middle of each rack row.
+  // Things a replay camera can follow: Dave, the forklift, and the middle of each rack.
   subjects() {
     const g = this.game;
     const c = g.climber;

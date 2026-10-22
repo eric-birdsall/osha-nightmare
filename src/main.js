@@ -84,6 +84,11 @@ function menuNav() {
   }
 }
 
+function refreshInvert() {
+  for (const b of document.querySelectorAll('[data-act="invert"]')) b.textContent = `Invert Look: ${input.invertY ? 'On' : 'Off'}`;
+}
+refreshInvert();
+
 function closeOverlay() {
   overlay = null;
   refreshScreens();
@@ -99,7 +104,10 @@ document.addEventListener('click', (e) => {
     overlay = 'controls';
     refreshScreens();
   } else if (act === 'back') closeOverlay();
-  else if (act === 'resume') resume();
+  else if (act === 'invert') {
+    input.setInvertY(!input.invertY);
+    refreshInvert();
+  } else if (act === 'resume') resume();
   else if (act === 'restart') startGame(game.mode);
   else if (act === 'swaproles') {
     game.swapRoles();
@@ -305,6 +313,7 @@ window.osha = {
   },
   CONFIG,
   override: null,
+  renderer, // for perf checks: osha.renderer.info.render.calls
   start: startGame,
   tick: (now) => tick(now), // run one frame at time `now` (ms), e.g. to emulate a 144 Hz display
   manual: false, // true pauses the real frame loop so osha.tick() drives the game alone

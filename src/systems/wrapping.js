@@ -91,6 +91,27 @@ export class WrapSystem {
     }
   }
 
+  // Is any part of the forklift (body or fork tips) inside the wrap square?
+  forkliftInStation() {
+    const zone = this.game.level.wrapZone;
+    const f = this.game.forklift;
+    const near = (p) => Math.abs(p.x - zone.center.x) <= zone.half.x + 0.3 && Math.abs(p.z - zone.center.z) <= zone.half.z + 0.3;
+    const q = quatToThree(f.body.rotation());
+    const t = f.body.translation();
+    const pts = [[0, 0, -1.2], [0, 0, 0], [0, 0, 1.0], [0.225, 0, 2.1], [-0.225, 0, 2.1]];
+    return pts.some((p) => near(new THREE.Vector3(...p).applyQuaternion(q).add(t)));
+  }
+
+  // Why a load in the square can't be wrapped yet (or null when it can).
+  blockReason(ent) {
+    const b = ent.body;
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(b.rotation()));
+    if (up.y <= 0.9) return 'Stand the pallet upright to wrap it';
+    if (b.translation().y > 0.05) return 'Set the pallet down on the floor to wrap it';
+    if (this.forkliftInStation()) return 'Back the forklift out of the wrap station';
+    return null;
+  }
+
   step(dt) {
     if (this.job) {
       this.countdown.visible = false;
@@ -102,17 +123,18 @@ export class WrapSystem {
     let shownProgress = -1;
     let shownBlocked = false;
     for (const ent of this.game.entities) {
-      if (ent.kind !== 'pallet') continue;
+      // Pallets, and wrapped loads with boxes added on top since (they get re-wrapped)
+      if (ent.kind !== 'pallet' && ent.kind !== 'wrapped') continue;
       const b = ent.body;
       const t = b.translation();
-      if (!zone.contains(t)) {
+      if (!zone.contains(t) || (ent.kind === 'wrapped' && collectStack(this.game, ent).size < 2)) {
         this.rest.set(ent, 0);
         continue;
       }
       const lv = b.linvel();
       const av = b.angvel();
-      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(b.rotation()));
-      const blocked = t.y >= cfg.maxPalletHeight || up.y <= 0.9; // raised on the forks, or tipped
+      const reason = this.blockReason(ent);
+      const blocked = !!reason;
       const still = Math.hypot(lv.x, lv.y, lv.z) < cfg.restSpeed && Math.hypot(av.x, av.y, av.z) < 0.3;
       const r = !blocked && still ? (this.rest.get(ent) || 0) + dt : 0;
       this.rest.set(ent, r);
@@ -122,10 +144,12 @@ export class WrapSystem {
         shownProgress = progress;
         shownBlocked = blocked;
       }
-      // First pallet into the square gets a one-time hint
-      if (!this.hinted) {
-        this.hinted = true;
-        this.game.toast(blocked ? 'Lower the pallet to wrap it' : 'Hold the pallet still to wrap it', 2.5);
+      // Say what's in the way whenever it changes (and once to explain holding still)
+      const hint = reason || (still ? null : 'Hold the pallet still to wrap it');
+      if (hint && hint !== this.lastHint && this.game.clock - (this.lastHintAt ?? -99) > 2.5) {
+        this.lastHint = hint;
+        this.lastHintAt = this.game.clock;
+        this.game.toast(hint, 2.5);
       }
       if (r >= cfg.restTime) {
         this.startJob(ent);
@@ -151,7 +175,7 @@ export class WrapSystem {
     const b = job.pallet.body;
     const t = b.translation();
     const moved = Math.hypot(t.x - job.start.x, t.z - job.start.z);
-    if (job.pallet.removed || moved > 0.4 || !this.game.level.wrapZone.contains(t)) {
+    if (job.pallet.removed || moved > 0.4 || !this.game.level.wrapZone.contains(t) || this.forkliftInStation()) {
       this.cancel();
       this.game.toast('Wrap interrupted', 2);
       return;
@@ -217,26 +241,32 @@ function buildWrapped(game, pallet, set) {
     const relRot = inv.clone().multiply(quatToThree(ent.body.rotation()));
     for (const s of ent.shapes) {
       const pos = new THREE.Vector3(...s.pos).applyQuaternion(relRot).add(relPos);
+      // Shapes from an earlier wrap carry their own rotation within that load
+      const rot = s.rot ? relRot.clone().multiply(new THREE.Quaternion(...s.rot)) : relRot;
       world.createCollider(
         RAPIER.ColliderDesc.cuboid(...s.half)
           .setTranslation(pos.x, pos.y, pos.z)
-          .setRotation({ x: relRot.x, y: relRot.y, z: relRot.z, w: relRot.w })
+          .setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w })
           .setMass(s.mass)
           .setFriction(s.friction)
           .setCollisionGroups(COL.dyn),
         body,
       );
-      shapes.push({ ...s, pos: pos.toArray(), rot: relRot.toArray() });
+      shapes.push({ ...s, pos: pos.toArray(), rot: rot.toArray() });
       totalMass += s.mass;
       for (const sx of [-1, 1])
         for (const sy of [-1, 1])
           for (const sz of [-1, 1]) {
-            const c = new THREE.Vector3(sx * s.half[0], sy * s.half[1], sz * s.half[2]).applyQuaternion(relRot).add(pos);
+            const c = new THREE.Vector3(sx * s.half[0], sy * s.half[1], sz * s.half[2]).applyQuaternion(rot).add(pos);
             min.min(c);
             max.max(c);
           }
     }
     if (ent.item) items.add(ent.item);
+    if (ent.items) for (const i of ent.items) items.add(i);
+    // Re-wrapping: the old film comes off, a new one goes round everything
+    const oldFilm = ent.mesh.children.find((c) => c.userData.film);
+    if (oldFilm) ent.mesh.remove(oldFilm);
     game.scene.remove(ent.mesh);
     ent.mesh.position.copy(relPos);
     ent.mesh.quaternion.copy(relRot);
@@ -258,6 +288,7 @@ function buildWrapped(game, pallet, set) {
   );
   film.position.copy(center);
   film.renderOrder = 3;
+  film.userData.film = true;
   film.add(
     new THREE.LineSegments(
       new THREE.EdgesGeometry(film.geometry),

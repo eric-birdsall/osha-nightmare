@@ -68,20 +68,20 @@ const INCIDENT_LINES = {
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 const listRows = (rows) => (rows.length === 1 ? rows[0] : `${rows.slice(0, -1).join(', ')} and ${rows[rows.length - 1]}`);
-// A row (or a domino run of rows) fell over. byRalph: the forklift touched one of them recently.
+// A rack (or a domino run of racks) fell over. byRalph: the forklift touched one of them recently.
 function rackDownLine(rows, byRalph, again) {
   const r = listRows(rows);
   if (rows.length > 1) {
     return byRalph
-      ? pick([`Ralph took out Rows ${r}`, `Ralph started a domino show: Rows ${r}`, `Rows ${r} are now horizontal. Thanks, Ralph.`])
-      : pick([`Rows ${r} went down like dominoes`, `Rows ${r} fell over. Nobody saw anything.`]);
+      ? pick([`Ralph took out Racks ${r}`, `Ralph started a domino show: Racks ${r}`, `Racks ${r} are now horizontal. Thanks, Ralph.`])
+      : pick([`Racks ${r} went down like dominoes`, `Racks ${r} fell over. Nobody saw anything.`]);
   }
   if (byRalph) {
     return again
-      ? pick([`Ralph knocked over Row ${r}... again`, `Ralph and the racking: another one`])
-      : pick([`Ralph knocked over Row ${r}`, `Ralph found Row ${r}. With the forklift.`, `Row ${r} is now horizontal. Thanks, Ralph.`]);
+      ? pick([`Ralph knocked over Rack ${r}... again`, `Ralph and the racking: another one`])
+      : pick([`Ralph knocked over Rack ${r}`, `Ralph found Rack ${r}. With the forklift.`, `Rack ${r} is now horizontal. Thanks, Ralph.`]);
   }
-  return pick([`Row ${r} fell over. Nobody saw anything.`, `Row ${r} gave up`]);
+  return pick([`Rack ${r} fell over. Nobody saw anything.`, `Rack ${r} gave up`]);
 }
 
 // Owns one playthrough: physics world, scene, entities, order state, swap logic.
@@ -222,7 +222,10 @@ export class Game {
       this.statusTimer = 0.2;
       const onPallet = { A: false, B: false };
       for (const ent of this.entities) {
-        if (ent.kind === 'wrapped') for (const i of ent.items) onPallet[i] = true;
+        if (ent.kind === 'wrapped') {
+          for (const i of ent.items) onPallet[i] = true;
+          for (const e of collectStack(this, ent)) if (e.item) onPallet[e.item] = true; // added on top since
+        }
         if (ent.kind === 'pallet') for (const e of collectStack(this, ent)) if (e.item) onPallet[e.item] = true;
       }
       for (const k of ['A', 'B']) {
@@ -249,7 +252,13 @@ export class Game {
           this.finishOrder();
           return;
         }
-        const missing = ['A', 'B'].filter((i) => !ent.items.has(i)).map((i) => `Item ${i}`);
+        const loose = new Set([...collectStack(this, ent)].map((e) => e.item).filter(Boolean));
+        const unwrapped = this.level.order.filter((o) => !ent.items.has(o.line) && loose.has(o.line));
+        if (unwrapped.length) {
+          this.hint(`SKU ${unwrapped.map((o) => o.sku).join(' & ')} isn't wrapped. Take it back to the wrapper.`);
+          continue;
+        }
+        const missing = this.level.order.filter((o) => !ent.items.has(o.line)).map((o) => `SKU ${o.sku}`);
         this.hint(`Order incomplete: missing ${missing.join(' and ')}`);
       } else if (collectStack(this, ent).size > 1) {
         this.hint('Wrap it first.');
@@ -309,8 +318,8 @@ export class Game {
     return incident;
   }
 
-  // Racking is wobbly: when the forklift or a falling ladder newly hits a row, the impact also
-  // rocks the top of the row in the direction of travel, so medium-speed hits tip it over.
+  // Racking is wobbly: when the forklift or a falling ladder newly hits a rack, the impact also
+  // rocks the top of the rack in the direction of travel, so medium-speed hits tip it over.
   // (The raw contact mostly pushes on the uprights' feet, which would only slide it.)
   rackImpacts(dt) {
     const cfg = CONFIG.racks;
@@ -320,10 +329,15 @@ export class Game {
       if (this.rackContacts?.has(key) || rack.fallen) return;
       const speed = Math.hypot(velocity.x, velocity.z);
       if (speed < minSpeed) return;
-      const depth = rack.depth / 1.2; // deeper rows need more to go over
       const dir = new THREE.Vector3(velocity.x, 0, velocity.z).normalize();
-      const top = new THREE.Vector3(0, 5.0, 0).applyQuaternion(quatToThree(rack.body.rotation())).add(rack.body.translation());
-      rack.body.applyImpulseAtPoint(dir.multiplyScalar(mass * kick * speed * depth), top, true);
+      // Back-to-back racks are tied together, so the hit rocks both
+      for (const r of [rack, rack.partner]) {
+        if (!r || r.fallen) continue;
+        // Size the kick for the rack plus the stock sitting on it (relative to an empty rack)
+        const loaded = this.loadedMass(r) / rack.mass;
+        const top = new THREE.Vector3(0, 5.0, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
+        r.body.applyImpulseAtPoint(dir.clone().multiplyScalar(mass * loaded * kick * speed), top, true);
+      }
     };
     // The forklift (chassis or forks), using its velocity from before this step's collision
     const fl = this.forklift;
@@ -338,7 +352,7 @@ export class Game {
     }
     const lv = fl.body.linvel();
     this.prevForkliftVel = { x: lv.x, z: lv.z };
-    // Ladders falling against a row: use the speed of the ladder's top
+    // Ladders falling against a rack: use the speed of the ladder's top
     for (const lad of this.entities) {
       if (lad.kind !== 'ladder') continue;
       const topPoint = new THREE.Vector3(0, 3.5, 0).applyQuaternion(quatToThree(lad.body.rotation())).add(lad.body.translation());
@@ -353,7 +367,7 @@ export class Game {
         });
       }
     }
-    // A falling row hitting its neighbour (dominoes): use the speed of the falling row's top
+    // A falling rack hitting its neighbour (dominoes): use the speed of the falling rack's top
     for (const r of this.level.racks) {
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(r.body.rotation()));
       if (up.y > Math.cos((8 * Math.PI) / 180)) continue; // still standing
@@ -369,7 +383,14 @@ export class Game {
     this.rackContacts = now;
   }
 
-  // Racks: note when the forklift touches one, and raise an incident when a row goes over.
+  // A rack's own mass plus every box resting on its shelves.
+  loadedMass(rack) {
+    let m = 0;
+    for (const e of collectStack(this, rack)) m += e === rack ? rack.mass : e.mass || 0;
+    return m;
+  }
+
+  // Racks: note when the forklift touches one, and raise an incident when a rack goes over.
   // Rows falling within a few seconds of each other are one domino incident.
   watchRacks(dt) {
     const fl = this.forklift;
@@ -412,7 +433,7 @@ export class Game {
         causes: byLadder ? ['The ladder', 'The racking', 'Gravity'] : undefined,
         subject: `rack:${r.name}`,
         line: byLadder
-          ? pick([`The ladder took out Row ${r.name}`, `Row ${r.name} lost a fight with a ladder`, `A ladder knocked over Row ${r.name}. The ladder is fine.`])
+          ? pick([`The ladder took out Rack ${r.name}`, `Rack ${r.name} lost a fight with a ladder`, `A ladder knocked over Rack ${r.name}. The ladder is fine.`])
           : rackDownLine([r.name], byRalph, again),
         at: { x: t.x, y: 0, z: t.z },
       });

@@ -31,6 +31,12 @@ export class Input {
     this.padPrev = new Map(); // gamepad.index -> {buttons:[], stickUp, stickDown}
     this.padEdges = new Map();
     this.dt = 1 / 60;
+    // Invert look: up on the mouse, stick or I/K looks down (saved per browser)
+    try {
+      this.invertY = localStorage.getItem('osha.invertY') === '1';
+    } catch {
+      this.invertY = false;
+    }
 
     addEventListener('keydown', (e) => {
       if (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
@@ -119,6 +125,13 @@ export class Input {
     return this.key('KeyL') - this.key('KeyJ');
   }
 
+  setInvertY(on) {
+    this.invertY = on;
+    try {
+      localStorage.setItem('osha.invertY', on ? '1' : '0');
+    } catch {}
+  }
+
   keyLookY() {
     return this.key('KeyK') - this.key('KeyI');
   }
@@ -151,6 +164,7 @@ export class Input {
         a.pause ||= this.padPressed(p, BTN.START);
       }
     }
+    if (this.invertY) a.lookY = -a.lookY;
     const m = Math.hypot(a.moveX, a.moveY);
     if (m > 1) {
       a.moveX /= m;
@@ -189,6 +203,7 @@ export class Input {
       }
     }
     a.steer = Math.max(-1, Math.min(1, a.steer));
+    if (this.invertY) a.lookY = -a.lookY;
     return a;
   }
 

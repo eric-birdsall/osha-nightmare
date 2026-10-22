@@ -16,27 +16,23 @@ const UPRIGHT_H = 5.2;
 const BEAM_H = 0.16; // shelf beam height (labels go on its face)
 const BEAM_D = 0.06; // beam depth
 
-// Five rows in the west half of the warehouse, 4.4 m aisles between them. The aisles are
-// narrower than the racks are tall, so a toppled row falls onto its neighbour (dominoes).
-// Row B is a deep double-sided island (3 m) so Item B in its middle is out of reach from
-// the forks; the other rows are single-deep (1.2 m, open to the south) and tip easily.
+// Five racks in the west half of the warehouse, laid out like a real one: Rack A against the
+// north wall, B and C back to back, D and E back to back, with 4.4 m aisles between the pairs.
+// Each rack is single-deep (1.2 m) and open on its aisle face. The aisles are narrower than the
+// racks are tall, so a toppled rack falls onto its neighbour (dominoes).
 export const RACKS = [
-  { name: 'A', z0: -15.6, z1: -14.4, double: false },
-  { name: 'B', z0: -10.0, z1: -7.0, double: true },
-  { name: 'C', z0: -2.6, z1: -1.4, double: false },
-  { name: 'D', z0: 3.0, z1: 4.2, double: false },
-  { name: 'E', z0: 8.6, z1: 9.8, double: false },
+  { name: 'A', z0: -15.6, z1: -14.4, face: 'south' },
+  { name: 'B', z0: -10.0, z1: -8.8, face: 'north' },
+  { name: 'C', z0: -8.6, z1: -7.4, face: 'south' },
+  { name: 'D', z0: -3.0, z1: -1.8, face: 'north' },
+  { name: 'E', z0: -1.6, z1: -0.4, face: 'south' },
 ];
 
 const bayX = (i) => RACK_X0 + (i + 0.5) * BAY_W;
 
-// Rack locations read Row-Bay-Shelf, e.g. "A-3-2". Bays count 1-6 from the west end;
+// Locations read Rack-Bay-Shelf, e.g. "A-3-2". Bays count 1-6 from the west end;
 // shelves count 1-3 upward (1.5 m, 3.0 m, 4.5 m). Indices here are 0-based.
-export const locationCode = (row, bay, shelf) => `${row}-${bay + 1}-${shelf + 1}`;
-const ITEM_SLOTS = {
-  A: { row: 'A', bay: 2, shelf: 1, z: -14.85 }, // front of Row A
-  B: { row: 'B', bay: 1, shelf: 2, z: -8.5 }, // middle of Row B's 3 m deep top deck
-};
+export const locationCode = (rack, bay, shelf) => `${rack}-${bay + 1}-${shelf + 1}`;
 
 // Small printed tag (canvas texture) used for rack location labels.
 function tagPlane(text, w, h, { bg = '#ffffff', fg = '#111111', border = '#111111' } = {}) {
@@ -60,20 +56,20 @@ function tagPlane(text, w, h, { bg = '#ffffff', fg = '#111111', border = '#11111
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
 }
 
-// Labels on every open face of a rack, attached to the rack so they move with it: row signs
-// at both ends and a Row-Bay-Shelf tag hanging under each shelf beam.
-function labelRack(group, { name, z0, z1, double }, cx, cz) {
+// Labels on the open (aisle) face of a rack, attached to the rack so they move with it: rack
+// signs at both ends and a Rack-Bay-Shelf tag hanging under each shelf beam.
+function labelRack(group, { name, z0, z1, face }, cx, cz) {
   const x0 = RACK_X0;
   const x1 = RACK_X0 + BAYS * BAY_W;
   // [face z, rotation so the label faces out of the rack]
-  const faces = double ? [[z1 + 0.012, 0], [z0 - 0.012, Math.PI]] : [[z1 + 0.012, 0]];
+  const faces = face === 'south' ? [[z1 + 0.012, 0]] : [[z0 - 0.012, Math.PI]];
   const add = (mesh, x, y, z, ry) => {
     mesh.position.set(x - cx, y, z - cz);
     mesh.rotation.y = ry;
     group.add(mesh);
   };
   for (const [z, ry] of faces) {
-    for (const x of [x0 + 0.65, x1 - 0.65]) add(tagPlane(`ROW ${name}`, 1.2, 0.4, { bg: '#1d3f80', fg: '#fff', border: '#fff' }), x, 2.2, z, ry);
+    for (const x of [x0 + 0.65, x1 - 0.65]) add(tagPlane(`RACK ${name}`, 1.2, 0.4, { bg: '#1d3f80', fg: '#fff', border: '#fff' }), x, 2.2, z, ry);
     for (let b = 0; b < BAYS; b++) {
       SHELF_LEVELS.forEach((y, sh) => {
         // Tag stuck on the beam face, a few mm proud of it
@@ -97,10 +93,10 @@ function addStatic(game, half, pos, color, { mesh = true, edges = true } = {}) {
   return null;
 }
 
-// One rack row = one heavy rigid body (uprights, decks, beams). It can be shoved, tipped
-// over, and knocked into the next row. Boxes on its shelves ride along.
+// One rack = one rigid body (uprights, decks, beams). It can be shoved, tipped
+// over, and knocked into the next rack. Boxes on its shelves ride along.
 function buildRack(game, rack) {
-  const { name, z0, z1, double } = rack;
+  const { name, z0, z1 } = rack;
   const x0 = RACK_X0;
   const x1 = RACK_X0 + BAYS * BAY_W;
   const len = x1 - x0;
@@ -110,7 +106,7 @@ function buildRack(game, rack) {
   const orange = 0xe86a1c;
   const deckGrey = 0x9aa1aa;
   const parts = []; // [half, local pos, color, edges]
-  const uprightZs = double ? [z0 + 0.05, cz - 0.12, cz + 0.12, z1 - 0.05] : [z0 + 0.05, z1 - 0.05];
+  const uprightZs = [z0 + 0.05, z1 - 0.05];
   for (let i = 0; i <= BAYS; i++) {
     for (const z of uprightZs) parts.push([[0.045, UPRIGHT_H / 2, 0.045], [x0 + i * BAY_W - cx, UPRIGHT_H / 2, z - cz], blue, true]);
   }
@@ -123,7 +119,7 @@ function buildRack(game, rack) {
     }
   }
   const cfg = CONFIG.racks;
-  const totalMass = cfg.massPerBay * BAYS * (double ? cfg.doubleDeepFactor : 1);
+  const totalMass = cfg.massPerBay * BAYS;
   const vol = parts.reduce((v, [h]) => v + h[0] * h[1] * h[2], 0);
   const body = game.world.createRigidBody(
     RAPIER.RigidBodyDesc.dynamic().setTranslation(cx, 0, cz).setCanSleep(true).setAdditionalSolverIterations(4),
@@ -145,7 +141,7 @@ function buildRack(game, rack) {
   }
   labelRack(group, rack, cx, cz);
   game.scene.add(group);
-  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass, depth: z1 - z0 };
+  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass, z0, z1 };
   game.addEntity(ent);
   return ent;
 }
@@ -191,7 +187,95 @@ function makeZone(game, name, cx, cz, w, d) {
   };
 }
 
-// Human-readable spot for incident reports: a rack row, an aisle and bay, or a floor zone.
+// Unique random 4-digit SKUs for every box in the warehouse.
+class SkuPool {
+  constructor() {
+    this.used = new Set();
+  }
+  take(n) {
+    if (n < 1000 || n > 9999 || this.used.has(n)) return null;
+    this.used.add(n);
+    return n;
+  }
+  next() {
+    for (;;) {
+      const n = this.take(1000 + Math.floor(Math.random() * 9000));
+      if (n) return n;
+    }
+  }
+  // A plausible misread of `sku`: two neighbouring digits swapped, or one digit off by one.
+  nearMiss(sku) {
+    const d = String(sku).split('');
+    for (let tries = 0; tries < 20; tries++) {
+      const t = [...d];
+      const i = Math.floor(Math.random() * 3);
+      if (Math.random() < 0.5 && t[i] !== t[i + 1]) [t[i], t[i + 1]] = [t[i + 1], t[i]];
+      else {
+        const j = Math.floor(Math.random() * 4);
+        t[j] = String((Number(t[j]) + (Math.random() < 0.5 ? 1 : 9)) % 10);
+      }
+      const n = this.take(Number(t.join('')));
+      if (n) return n;
+    }
+    return this.next();
+  }
+}
+
+const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+
+// Three boxes per shelf along the open face, in every bay of every rack. The two order lines:
+//  A: shelf 2 of any rack (reachable from the forks or a rolling ladder)
+//  B: shelf 3, the top, of a different rack (the forks at full height, or a ladder plus a stack)
+// Each order slot also holds two other boxes; usually one is a near-miss SKU (a decoy).
+function stockShelves(game) {
+  const cfg = CONFIG.order;
+  game.skus = new SkuPool();
+  const names = RACKS.map((r) => r.name);
+  const rackA = pickOne(names);
+  const lines = {
+    A: { row: rackA, bay: Math.floor(Math.random() * BAYS), shelf: 1 },
+    B: { row: pickOne(names.filter((n) => n !== rackA)), bay: Math.floor(Math.random() * BAYS), shelf: 2 },
+  };
+  const order = [];
+  const orderBoxes = {};
+  for (const [line, slot] of Object.entries(lines)) {
+    slot.sku = game.skus.next();
+    order.push({ line, sku: slot.sku, location: locationCode(slot.row, slot.bay, slot.shelf) });
+  }
+  const types = ['small', 'medium', 'medium', 'large'];
+  for (const rack of RACKS) {
+    const { name, z0, z1, face: openFace } = rack;
+    const facesFor = () => [openFace];
+    for (let bay = 0; bay < BAYS; bay++) {
+      for (let shelf = 0; shelf < SHELF_LEVELS.length; shelf++) {
+        const target = Object.entries(lines).find(([, l]) => l.row === name && l.bay === bay && l.shelf === shelf);
+        for (const face of facesFor(shelf)) {
+          const decoySpot = target && Math.random() < cfg.decoyChance ? pickOne([0, 2]) : -1;
+          [-0.85, 0, 0.85].forEach((dx, i) => {
+            const isOrder = target && i === 1 && face === facesFor(shelf)[0];
+            const type = isOrder ? 'medium' : pickOne(types);
+            const half = CONFIG.objects[type].size[2] / 2;
+            const z = typeof face === 'number' ? face : face === 'south' ? z1 - BEAM_D - 0.03 - half : z0 + BEAM_D + 0.03 + half;
+            let sku;
+            if (isOrder) sku = target[1].sku;
+            else if (i === decoySpot) sku = game.skus.nearMiss(target[1].sku);
+            else sku = game.skus.next();
+            const box = createBox(game, {
+              type,
+              sku,
+              item: isOrder ? target[0] : null,
+              pos: [bayX(bay) + dx + (Math.random() - 0.5) * 0.12, SHELF_LEVELS[shelf] + 0.005, z],
+            });
+            if (isOrder) orderBoxes[target[0]] = box;
+          });
+        }
+      }
+    }
+  }
+  return { order, orderBoxes };
+}
+
+// Human-readable spot for incident reports: a rack, an aisle and bay, or a floor zone.
 export function describeLocation(p) {
   const x1 = RACK_X0 + BAYS * BAY_W;
   if (Math.abs(p.x - 12) < 1.4 && Math.abs(p.z - 9) < 1.4) return 'The WRAP square';
@@ -199,7 +283,7 @@ export function describeLocation(p) {
   if (p.x < RACK_X0 - 0.5) return 'West wall, behind the racking';
   const rows = [...RACKS].sort((a, b) => a.z0 - b.z0);
   if (p.x > x1 + 0.5) {
-    // Just past the row ends: name the aisle we're at the end of
+    // Just past the rack ends: name the aisle we're at the end of
     if (p.x < x1 + 4) {
       for (let i = 0; i < rows.length - 1; i++) {
         if (p.z > rows[i].z1 && p.z < rows[i + 1].z0) return `End of aisle ${rows[i].name}/${rows[i + 1].name}`;
@@ -209,11 +293,11 @@ export function describeLocation(p) {
   }
   const bay = Math.min(BAYS, Math.max(1, Math.floor((p.x - RACK_X0) / BAY_W) + 1));
   const up = p.y > 0.5 ? `, ${p.y.toFixed(1)} m up` : '';
-  for (const r of rows) if (p.z >= r.z0 - 0.2 && p.z <= r.z1 + 0.2) return `Row ${r.name}, bay ${bay}${up}`;
+  for (const r of rows) if (p.z >= r.z0 - 0.2 && p.z <= r.z1 + 0.2) return `Rack ${r.name}, bay ${bay}${up}`;
   for (let i = 0; i < rows.length - 1; i++) {
     if (p.z > rows[i].z1 && p.z < rows[i + 1].z0) return `Aisle ${rows[i].name}/${rows[i + 1].name}, by bay ${bay}${up}`;
   }
-  return p.z < rows[0].z0 ? 'Behind Row A' : `South of Row ${rows[rows.length - 1].name}`;
+  return p.z < rows[0].z0 ? 'Behind Rack A' : `South of Rack ${rows[rows.length - 1].name}`;
 }
 
 export function buildLevel(game) {
@@ -275,9 +359,11 @@ export function buildLevel(game) {
 
   // Racks
   const racks = RACKS.map((r) => buildRack(game, r));
+  // Back-to-back pairs (B/C, D/E) share a 0.2 m flue
+  for (const r of racks) r.partner = racks.find((o) => o !== r && (Math.abs(o.z0 - r.z1) < 0.5 || Math.abs(r.z0 - o.z1) < 0.5));
   // Aisle lines along every open rack face
   const yellow = 0xf5c518;
-  const faceLines = RACKS.flatMap((r) => (r.double ? [r.z0 - 0.2, r.z1 + 0.2] : [r.z1 + 0.2]));
+  const faceLines = RACKS.map((r) => (r.face === 'south' ? r.z1 + 0.2 : r.z0 - 0.2));
   for (const z of faceLines) {
     const line = new THREE.Mesh(new THREE.PlaneGeometry(BAYS * BAY_W, 0.1), new THREE.MeshBasicMaterial({ color: yellow }));
     line.rotation.x = -Math.PI / 2;
@@ -313,33 +399,24 @@ export function buildLevel(game) {
   // Wall-mounted incident sign (updated by the game)
   game.incidentSign = makeIncidentSign(scene);
 
-  // Order items
-  const slot = (k) => [bayX(ITEM_SLOTS[k].bay), SHELF_LEVELS[ITEM_SLOTS[k].shelf], ITEM_SLOTS[k].z];
-  const itemA = createBox(game, { item: 'A', pos: slot('A') });
-  const itemB = createBox(game, { item: 'B', pos: slot('B') });
+  // Stock every shelf and pick this shift's order
+  const { order, orderBoxes } = stockShelves(game);
 
-  // Loose boxes for stacking: some on rack shelves (they ride the racks if they fall), some on the floor
-  const L = SHELF_LEVELS;
+  // Loose boxes on the open floor for stacking
   const loose = [
-    ['small', bayX(0), L[0], -14.9],
-    ['medium', bayX(1), L[0], -14.95],
-    ['large', bayX(3), 0, -15.0],
-    ['small', bayX(2), L[0], -7.5],
-    ['medium', bayX(0), 0, -7.5],
-    ['small', bayX(4), L[0], -1.9],
-    ['medium', bayX(5), L[1], 3.6],
-    ['medium', bayX(3), 0, 9.2],
     ['medium', 1.0, 0, 2.2],
     ['small', 1.0, 0.6, 2.2],
     ['small', 2.0, 0, 2.6],
     ['large', 3.0, 0, -5.0],
     ['medium', 1.6, 0, -12.0],
+    ['medium', 4.5, 0, 6.0],
+    ['small', 5.2, 0, 6.4],
   ];
-  for (const [type, x, y, z] of loose) createBox(game, { type, pos: [x, y, z], yaw: (Math.random() - 0.5) * 0.3 });
+  for (const [type, x, y, z] of loose) createBox(game, { type, sku: game.skus.next(), pos: [x, y, z], yaw: (Math.random() - 0.5) * 0.3 });
 
   // Rolling ladders parked in the aisles, steps running along the aisle
   createLadder(game, { pos: [-8, 0, -12.2], yaw: Math.PI / 2 });
-  createLadder(game, { pos: [-14, 0, 0.8], yaw: -Math.PI / 2 });
+  createLadder(game, { pos: [-14, 0, -5.2], yaw: -Math.PI / 2 });
 
   // Empty pallets (fork pockets open toward ±local Z)
   createPallet(game, { pos: [2.6, 0, -12.2], yaw: Math.PI / 2 });
@@ -350,20 +427,18 @@ export function buildLevel(game) {
   return {
     wrapZone,
     dockZone,
-    items: { A: itemA, B: itemB },
-    itemLocations: Object.fromEntries(
-      Object.entries(ITEM_SLOTS).map(([k, v]) => [k, locationCode(v.row, v.bay, v.shelf)]),
-    ),
+    items: orderBoxes, // { A, B }: the box each order line wants (for debugging/tests)
+    order, // [{ line, sku, location }]
     racks,
-    climberSpawn: { pos: new THREE.Vector3(-2, 0, 0.8), yaw: Math.PI / 2 }, // aisle C/D, looking down it
+    climberSpawn: { pos: new THREE.Vector3(-2, 0, -5.2), yaw: Math.PI / 2 }, // aisle C/D, looking down it
     spawnPoints: [
-      new THREE.Vector3(-2, 0, 0.8),
-      new THREE.Vector3(-2, 0, -4.8),
+      new THREE.Vector3(-2, 0, -5.2),
       new THREE.Vector3(-2, 0, -12.2),
-      new THREE.Vector3(-2, 0, 6.4),
-      new THREE.Vector3(-2, 0, 13),
+      new THREE.Vector3(-2, 0, 1.5),
+      new THREE.Vector3(-10, 0, 3),
+      new THREE.Vector3(-10, 0, 10),
       new THREE.Vector3(-22, 0, -6),
-      new THREE.Vector3(-22, 0, 6),
+      new THREE.Vector3(-22, 0, 5),
       new THREE.Vector3(6, 0, 0),
       new THREE.Vector3(10, 0, -10),
       new THREE.Vector3(16, 0, 13),
