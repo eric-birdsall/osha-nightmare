@@ -114,6 +114,15 @@ export class Input {
     return this.keys.has(code) ? 1 : 0;
   }
 
+  // IJKL look keys, scaled like a full stick deflection: J/L turn, I/K tilt up/down.
+  keyLookX() {
+    return this.key('KeyL') - this.key('KeyJ');
+  }
+
+  keyLookY() {
+    return this.key('KeyK') - this.key('KeyI');
+  }
+
   // devices: array of device names feeding this role (single player merges kbm + all pads)
   climberActions(devices) {
     const a = blank();
@@ -122,8 +131,8 @@ export class Input {
       if (d === 'kbm') {
         a.moveX += this.key('KeyD') - this.key('KeyA');
         a.moveY += this.key('KeyW') - this.key('KeyS');
-        a.lookX += this.mouseDX * cfg.lookSensitivity;
-        a.lookY += this.mouseDY * cfg.lookSensitivity;
+        a.lookX += this.mouseDX * cfg.lookSensitivity + this.keyLookX() * cfg.stickLookSpeed * this.dt;
+        a.lookY += this.mouseDY * cfg.lookSensitivity + this.keyLookY() * cfg.stickLookSpeed * this.dt;
         a.jump ||= this.pressed.has('Space');
         a.interact ||= this.pressed.has('KeyE');
         a.swap ||= this.pressed.has('Tab');
@@ -160,8 +169,8 @@ export class Input {
         a.brake = Math.max(a.brake, this.key('KeyS'));
         a.liftUp = Math.max(a.liftUp, this.key('KeyR'));
         a.liftDown = Math.max(a.liftDown, this.key('KeyF'));
-        a.lookX += this.mouseDX * cfg.lookSensitivity;
-        a.lookY += this.mouseDY * cfg.lookSensitivity;
+        a.lookX += this.mouseDX * cfg.lookSensitivity + this.keyLookX() * cfg.stickLookSpeed * this.dt;
+        a.lookY += this.mouseDY * cfg.lookSensitivity + this.keyLookY() * cfg.stickLookSpeed * this.dt;
         a.swap ||= this.pressed.has('Tab');
       } else {
         const p = this.pad(d);

@@ -23,10 +23,10 @@ From the forks at max height, Item B is out of reach. To get onto Row B's top de
 
 | | Gamepad | Keyboard / mouse |
 |---|---|---|
-| **Climber** move / look | Left / right stick | WASD / mouse |
+| **Climber** move / look | Left / right stick | WASD / mouse or IJKL |
 | Jump | A | Space |
 | Pick up / put down | X | E |
-| **Driver** steer / look | Left / right stick | A, D / mouse |
+| **Driver** steer / look | Left / right stick | A, D / mouse or IJKL |
 | Accelerate / brake (then reverse) | RT / LT | W / S |
 | Forks up / down | RB / LB | R / F |
 | Swap character (single player) | View | Tab |

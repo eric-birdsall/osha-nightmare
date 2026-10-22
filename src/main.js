@@ -241,7 +241,7 @@ function frame(now) {
 
   if (game) {
     game.lookHint =
-      input.lockFailed && !input.pointerLocked ? 'Mouse lock unavailable: hold a mouse button and drag to look' : '';
+      input.lockFailed && !input.pointerLocked ? 'Mouse lock unavailable: drag with a mouse button held, or use IJKL, to look' : '';
     game.render(renderer, innerWidth, innerHeight); // CSS pixels: setViewport applies the pixel ratio
     hud.update(game);
   } else {
