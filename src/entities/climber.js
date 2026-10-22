@@ -346,6 +346,33 @@ export class Climber {
     }
   }
 
+  // The rail we're perched on, if the only thing under our feet is a ladder handrail.
+  // (The ground rays can miss a thin tube, so look at everything just under the feet.)
+  railUnderFeet(feet) {
+    let rail = null;
+    let solid = false;
+    this.game.world.intersectionsWithShape(
+      { x: feet.x, y: feet.y - 0.03, z: feet.z },
+      { x: 0, y: 0, z: 0, w: 1 },
+      new RAPIER.Cylinder(0.04, CONFIG.climber.radius * 0.8),
+      (c) => {
+        if (this.isRail(c)) rail = c;
+        else solid = true;
+        return true;
+      },
+      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+      COL.climberQuery,
+      undefined,
+      undefined,
+      (c) => c.handle !== this.collider.handle,
+    );
+    return solid ? null : rail;
+  }
+
+  isRail(collider) {
+    return !!collider && !!this.game.entityForCollider(collider)?.railHandles?.has(collider.handle);
+  }
+
   // In the air and pushing into a ledge just above our feet: climb onto it.
   tryMantle(wish, disp, mv) {
     const cfg = CONFIG.climber;
@@ -356,7 +383,7 @@ export class Climber {
     const reach = cfg.radius + 0.12;
     const probe = { x: feet.x + dir.x * reach, y: feet.y + cfg.mantleHeight + 0.05, z: feet.z + dir.z * reach };
     const hit = castRay(this.game.world, probe, { x: 0, y: -1, z: 0 }, cfg.mantleHeight + 0.05, COL.climberQuery, (c) => c.handle !== this.collider.handle);
-    if (!hit || hit.normal.y < 0.7) return;
+    if (!hit || hit.normal.y < 0.7 || this.isRail(hit.collider)) return;
     const dh = hit.point.y - feet.y;
     if (dh <= 0.02) return;
     this.mantle = { topY: hit.point.y + 0.04, dir, forward: 0 };
@@ -420,6 +447,23 @@ export class Climber {
           break;
         }
       }
+    }
+
+    // Handrails are round tubes: no standing on them. Slip off toward the inside of the ladder.
+    const rail = this.grounded ? this.railUnderFeet(feet) : null;
+    if (rail) {
+      const lad = this.game.entityForCollider(rail);
+      const lt = lad.body.translation();
+      // Across the ladder (its local X), pointing from the rail we're on toward the middle
+      const across = new THREE.Vector3(1, 0, 0).applyQuaternion(quatToThree(lad.body.rotation())).setY(0).normalize();
+      const side = Math.sign(new THREE.Vector3(feet.x - lt.x, 0, feet.z - lt.z).dot(across)) || 1;
+      const inward = across.multiplyScalar(-side);
+      this.support = null;
+      this.grounded = false;
+      this.vy = Math.min(this.vy, 0);
+      this.airVel.copy(inward.multiplyScalar(1.6));
+      this.launchVel.set(0, 0, 0);
+      this.relVel.set(0, 0, 0);
     }
 
     // Support velocity and acceleration (thrown-off check)

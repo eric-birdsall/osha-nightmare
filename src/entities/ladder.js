@@ -39,12 +39,12 @@ export function createLadder(game, { pos, yaw = 0 }) {
   for (const sx of [-1, 1]) {
     parts.push([[0.025, 0.06, stringerLen / 2], [sx * (halfW - 0.03), (top - cfg.rise) / 2, runStart + (steps * cfg.tread) / 2], steel, -slope, false]);
   }
-  // Handrails: sloped along the steps, then around the platform
+  // Handrails (round tubes, too thin to stand on): sloped along the steps, then around the platform
   for (const sx of [-1, 1]) {
-    parts.push([[0.02, 0.02, stringerLen / 2], [sx * halfW, (top - cfg.rise) / 2 + 0.95, runStart + (steps * cfg.tread) / 2 + 0.05], yellow, -slope, false]);
-    parts.push([[0.02, 0.5, 0.02], [sx * halfW, top + 0.5, platformZ0 + 0.02], yellow, 0, false]);
-    parts.push([[0.02, 0.5, 0.02], [sx * halfW, top + 0.5, platformZ1 - 0.02], yellow, 0, false]);
-    parts.push([[0.02, 0.02, cfg.platformDepth / 2], [sx * halfW, top + 1.0, (platformZ0 + platformZ1) / 2], yellow, 0, false]);
+    parts.push([[0.022, 0.022, stringerLen / 2], [sx * halfW, (top - cfg.rise) / 2 + 0.95, runStart + (steps * cfg.tread) / 2 + 0.05], yellow, -slope, false, 'z']);
+    parts.push([[0.022, 0.5, 0.022], [sx * halfW, top + 0.5, platformZ0 + 0.02], yellow, 0, false, 'y']);
+    parts.push([[0.022, 0.5, 0.022], [sx * halfW, top + 0.5, platformZ1 - 0.02], yellow, 0, false, 'y']);
+    parts.push([[0.022, 0.022, cfg.platformDepth / 2], [sx * halfW, top + 1.0, (platformZ0 + platformZ1) / 2], yellow, 0, false, 'z']);
   }
 
   const body = game.world.createRigidBody(
@@ -52,8 +52,9 @@ export function createLadder(game, { pos, yaw = 0 }) {
   );
   const vol = parts.reduce((v, [h]) => v + h[0] * h[1] * h[2], 0);
   const stepHandles = new Set();
+  const railHandles = new Set();
   const mesh = new THREE.Group();
-  for (const [half, p, color, rotX, isStep] of parts) {
+  for (const [half, p, color, rotX, isStep, tube] of parts) {
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), rotX);
     const c = game.world.createCollider(
       RAPIER.ColliderDesc.cuboid(...half)
@@ -65,7 +66,19 @@ export function createLadder(game, { pos, yaw = 0 }) {
       body,
     );
     if (isStep) stepHandles.add(c.handle);
-    const m = boxMesh(half[0] * 2, half[1] * 2, half[2] * 2, color, { edges: isStep || rotX === 0 });
+    if (tube) railHandles.add(c.handle);
+    let m;
+    if (tube) {
+      // Round tube along its long axis
+      const len = (tube === 'y' ? half[1] : half[2]) * 2;
+      m = new THREE.Mesh(new THREE.CylinderGeometry(half[0], half[0], len, 12), flatMat(color));
+      const inner = new THREE.Group();
+      if (tube === 'z') m.rotation.x = Math.PI / 2;
+      inner.add(m);
+      m = inner;
+    } else {
+      m = boxMesh(half[0] * 2, half[1] * 2, half[2] * 2, color, { edges: isStep || rotX === 0 });
+    }
     m.position.set(...p);
     m.quaternion.copy(q);
     mesh.add(m);
@@ -86,7 +99,7 @@ export function createLadder(game, { pos, yaw = 0 }) {
     }
   });
   game.scene.add(mesh);
-  const ent = { kind: 'ladder', body, mesh, stepHandles, mass: cfg.mass };
+  const ent = { kind: 'ladder', body, mesh, stepHandles, railHandles, mass: cfg.mass };
   game.addEntity(ent);
   return ent;
 }
