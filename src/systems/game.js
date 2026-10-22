@@ -45,6 +45,14 @@ const INCIDENT_LINES = {
     first: ['A box fell on Dave', 'Dave caught a box. Face first.', 'Dave was hit by a falling load'],
     again: ['Another box fell on Dave', 'Dave is a box magnet'],
   },
+  ladder: {
+    first: ["Ralph knocked Dave's ladder over", 'Dave trusted the ladder', 'The ladder had other plans', 'Dave rode the ladder all the way down', 'Dave fell off the ladder. Three points of contact? Zero.'],
+    again: ['Dave trusted the ladder... again', 'Ladder: 2, Dave: 0', 'Dave and the ladder are no longer speaking'],
+  },
+  ladderHit: {
+    first: ['The ladder fell on Dave', 'Dave got laddered'],
+    again: ['The ladder fell on Dave... again', 'Dave got laddered. Again.'],
+  },
   rack: {
     first: ['Timber! (Dave was underneath)', 'Dave got flattened by the racking', 'The racking fell on Dave'],
     again: ['The racking fell on Dave... again', 'Dave and the racking: a rematch nobody wanted'],

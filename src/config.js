@@ -92,6 +92,21 @@ export const CONFIG = {
     crushSpeed: 1.5, // a rack part moving at the climber faster than this (m/s) = incident
   },
 
+  ladder: {
+    platformHeight: 2.95, // level with shelf 2 (3.0 m), so Dave can step across
+    rise: 0.2, // per step: under the climber's 0.22 m step-up, so the steps work like stairs
+    tread: 0.2,
+    width: 1.0,
+    platformDepth: 0.6,
+    mass: 60,
+    friction: 0.3, // on casters: rolls easily
+    rollSpeedFactor: 0.55, // Dave walks this much slower while rolling a ladder
+    rollGain: 0.35, // how firmly the ladder follows Dave (0-1 per step)
+    maxRollSpeed: 2.5,
+    maxTurnRate: 2.5, // rad/s
+    snagDistance: 0.6, // ladder this far from where it should be (stuck on something) = let go
+  },
+
   items: {
     A: { color: 0xff3fa4, label: 'A' },
     B: { color: 0x22d3ee, label: 'B' },

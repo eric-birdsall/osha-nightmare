@@ -27,7 +27,7 @@ From the forks at max height, Item B is out of reach. To get onto Row B's top de
 |---|---|---|
 | **Climber** move / look | Left / right stick | WASD / mouse or IJKL |
 | Jump | A | Space |
-| Pick up / put down | X | E |
+| Pick up / put down, grab or let go of a ladder, hold on to the forks | X | E |
 | **Driver** steer / look | Left / right stick | A, D / mouse or IJKL |
 | Accelerate / brake (then reverse) | RT / LT | W / S |
 | Forks up / down | RB / LB | R / F |
@@ -57,6 +57,7 @@ Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber an
 - **Tipped forklift** is set back on its wheels after 4 s.
 - **Forks lower faster than they rise** (0.7 vs 0.4 m/s). Lowering the forks onto the Climber's head is an incident, and so is a box or pallet falling on it (the spec's optional head hit).
 - **CCTV incident replays:** eight security cameras are mounted high on the walls. 1.5 s after every incident, the game freezes and replays the moment at half speed in black and white. It cuts between up to three cameras with a clear view of the Climber, and any button skips. The replay is built from a rolling 5 s recording of everything that moves (`src/systems/replay.js`, tuning under `replay` in `config.js`).
+- **Rolling ladders:** two platform ladders sit in the aisles (A/B and C/D). Dave walks up the steps like stairs; the top platform is level with shelf 2 (3.0 m), so he can step onto that shelf or grab Item A without Ralph. It's too low to reach Item B. Ladders are loose physics objects. Aim at one and press E/X to grab it: it then keeps its offset and angle relative to Dave, so walking pushes or pulls it and turning swings it round (at about half walking speed). E/X again lets go, and it lets go by itself if it snags on something. Dave can also just shove one by its frame, and the forklift or a falling rack can knock it over. Falling off or riding it down gets its own incident lines. Tuning is under `ladder` in `config.js`.
 - **Wrap countdown:** a pallet in the WRAP square gets a ring on the floor around it. The outline is red while the pallet is too high (raised on the forks) or tipped, white while it's moving, and it fills yellow over the second it must sit still before wrapping starts. The first pallet into the square also shows a one-time hint.
 - **Placement ghost:** while carrying a box, a translucent copy shows exactly where it will land if you put it down now (same calculation as the put-down itself), including on a raised pallet. Climber's camera only.
 - **See-through cab:** the overhead guard is a grid of bars, and the carriage is an open frame, so the driver can see up through the roof and the load through the backrest.

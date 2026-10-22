@@ -5,6 +5,7 @@ import { CONFIG } from '../config.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { createBox } from '../entities/box.js';
 import { createPallet } from '../entities/pallet.js';
+import { createLadder } from '../entities/ladder.js';
 
 export const ROOM = { halfX: 24, halfZ: 16, wallH: 6 };
 export const SHELF_LEVELS = [1.5, 3.0, 4.5];
@@ -309,6 +310,10 @@ export function buildLevel(game) {
     ['medium', 1.6, 0, -12.0],
   ];
   for (const [type, x, y, z] of loose) createBox(game, { type, pos: [x, y, z], yaw: (Math.random() - 0.5) * 0.3 });
+
+  // Rolling ladders parked in the aisles, steps running along the aisle
+  createLadder(game, { pos: [-8, 0, -12.2], yaw: Math.PI / 2 });
+  createLadder(game, { pos: [-14, 0, 0.8], yaw: -Math.PI / 2 });
 
   // Empty pallets (fork pockets open toward ±local Z)
   createPallet(game, { pos: [2.6, 0, -12.2], yaw: Math.PI / 2 });

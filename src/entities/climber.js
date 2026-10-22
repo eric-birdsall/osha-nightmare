@@ -73,6 +73,8 @@ export class Climber {
     this.mantle = null;
     this.onBlades = false;
     this.holdingOn = false;
+    this.lastOnLadder = -Infinity;
+    this.ladderGrab = null;
     this.holdLocal = new THREE.Vector3();
     this.ragdoll = null;
     this.ragdollTimer = 0;
@@ -157,7 +159,8 @@ export class Climber {
     const my = free ? a.moveY : 0;
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    const wish = fwd.multiplyScalar(my * cfg.walkSpeed).addScaledVector(right, mx * cfg.walkSpeed);
+    const speed = this.ladderGrab ? cfg.walkSpeed * CONFIG.ladder.rollSpeedFactor : cfg.walkSpeed;
+    const wish = fwd.multiplyScalar(my * speed).addScaledVector(right, mx * speed);
 
     const disp = new THREE.Vector3();
     let liftY = 0; // a rising platform carries us up directly (the controller can't push out of a surface)
@@ -214,12 +217,15 @@ export class Climber {
     const t = this.body.translation();
     mv.y += liftY;
     this.body.setNextKinematicTranslation({ x: t.x + mv.x, y: t.y + mv.y, z: t.z + mv.z });
+    if (this.ladderGrab) this.steerLadder(dt, { x: t.x + mv.x, y: t.y + mv.y, z: t.z + mv.z });
     this.velocity.set(mv.x / dt, mv.y / dt, mv.z / dt);
 
     if (this.carried) this.holdCarried();
     if (active && a.interact) {
       if (this.holdingOn) this.letGo();
+      else if (this.ladderGrab) this.releaseLadder();
       else if (this.carried) this.putDown();
+      else if (this.target?.kind === 'ladder') this.grabLadder(this.target);
       else if (this.target) this.pickUp(this.target);
       else if (this.onBlades) this.grab();
     }
@@ -233,6 +239,64 @@ export class Climber {
       .clone()
       .sub(new THREE.Vector3(ct.x, ct.y, ct.z))
       .applyQuaternion(quatToThree(car.rotation()).invert());
+  }
+
+  // Rolling a ladder: it keeps the same offset and angle relative to us, so walking pushes or
+  // pulls it and turning swings it around. Heading = atan2(x, z) of a forward vector.
+  grabLadder(ent) {
+    const lt = ent.body.translation();
+    const c = this.body.translation();
+    const daveQ = new THREE.Quaternion().setFromAxisAngle(UP, this.yaw);
+    this.ladderGrab = {
+      ent,
+      rel: new THREE.Vector3(lt.x - c.x, 0, lt.z - c.z).applyQuaternion(daveQ.invert()),
+      relYaw: this.ladderHeading(ent) - (this.yaw + Math.PI),
+    };
+    this.target = null;
+    sfx.pickup();
+  }
+
+  releaseLadder(quiet = false) {
+    const g = this.ladderGrab;
+    if (!g) return;
+    this.ladderGrab = null;
+    // Let it roll to a gentle stop: keep at most our walking pace, so a snag doesn't fling it
+    const v = g.ent.body.linvel();
+    const h = Math.hypot(v.x, v.z);
+    const k = h > 0 ? Math.min(1, Math.hypot(this.velocity.x, this.velocity.z) / h) * 0.5 : 0;
+    g.ent.body.setLinvel({ x: v.x * k, y: v.y, z: v.z * k }, true);
+    g.ent.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    if (!quiet) sfx.putdown();
+  }
+
+  ladderHeading(ent) {
+    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(quatToThree(ent.body.rotation()));
+    return Math.atan2(f.x, f.z);
+  }
+
+  steerLadder(dt, next) {
+    const g = this.ladderGrab;
+    const body = g.ent.body;
+    const cfg = CONFIG.ladder;
+    const q = quatToThree(body.rotation());
+    const upright = new THREE.Vector3(0, 1, 0).applyQuaternion(q).y;
+    const lt = body.translation();
+    const target = g.rel.clone().applyQuaternion(new THREE.Quaternion().setFromAxisAngle(UP, this.yaw)).add(new THREE.Vector3(next.x, 0, next.z));
+    const err = new THREE.Vector3(target.x - lt.x, 0, target.z - lt.z);
+    // Snagged on something, tipping, or we left the floor: let go
+    if (err.length() > cfg.snagDistance || upright < 0.96 || g.ent.removed || !this.grounded) return this.releaseLadder();
+    const v = err.multiplyScalar(cfg.rollGain / dt);
+    if (v.length() > cfg.maxRollSpeed) v.setLength(cfg.maxRollSpeed);
+    body.setLinvel({ x: v.x, y: body.linvel().y, z: v.z }, true);
+    let yawErr = this.yaw + Math.PI + g.relYaw - this.ladderHeading(g.ent);
+    yawErr = Math.atan2(Math.sin(yawErr), Math.cos(yawErr));
+    const w = THREE.MathUtils.clamp((yawErr * cfg.rollGain) / dt, -cfg.maxTurnRate, cfg.maxTurnRate);
+    // Dave holds it steady: lean back toward upright instead of letting the drag tip it
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+    const axis = new THREE.Vector3().crossVectors(up, UP); // rotate up toward world up
+    const lean = Math.asin(Math.min(1, axis.length()));
+    if (lean > 1e-4) axis.normalize().multiplyScalar((lean * cfg.rollGain) / dt);
+    body.setAngvel({ x: axis.x, y: w, z: axis.z }, true);
   }
 
   // Grab the carriage: from now on we ride it rigidly and can't be thrown off.
@@ -268,7 +332,12 @@ export class Climber {
     for (let i = 0; i < this.kcc.numComputedCollisions(); i++) {
       const hit = this.kcc.computedCollision(i);
       const ent = hit?.collider && this.game.entityForCollider(hit.collider);
-      if (!ent || ent.carried || (ent.kind !== 'box' && ent.kind !== 'pallet')) continue;
+      if (!ent || ent.carried) continue;
+      if (ent.kind === 'ladder') {
+        // Shove a ladder by its frame, not by walking up its steps or while standing on it
+        if (ent.stepHandles.has(hit.collider.handle) || this.support?.body.handle === ent.body.handle) continue;
+        if (this.ladderGrab?.ent === ent) continue;
+      } else if (ent.kind !== 'box' && ent.kind !== 'pallet') continue;
       const rem = hit.translationDeltaRemaining;
       const push = new THREE.Vector3(rem.x, 0, rem.z);
       if (push.lengthSq() < 1e-8) continue;
@@ -375,6 +444,7 @@ export class Climber {
       this.supportAccel.set(0, 0, 0);
     }
     this.prevSupportBody = sb;
+    if (sb && this.game.entityForCollider(this.support.collider)?.kind === 'ladder') this.lastOnLadder = this.game.clock;
     // Scooped: the forks/truck slid under our feet while moving fast (we didn't step on)
     const nowOnTruck = !!(sb && this.game.forklift.ownsCollider(this.support.collider));
     if (nowOnTruck && !this.wasOnTruck && !(this.graceTimer > 0)) {
@@ -526,7 +596,7 @@ export class Climber {
           if (vy < -cfg.crushForkSpeed) reason = 'forks';
         } else {
           const ent = this.game.entityForCollider(c);
-          if (ent && !ent.carried && vy < -cfg.fallingLoadSpeed) reason = ent.kind === 'rack' ? 'rack' : 'load';
+          if (ent && !ent.carried && vy < -cfg.fallingLoadSpeed) reason = ent.kind === 'rack' ? 'rack' : ent.kind === 'ladder' ? 'ladderHit' : 'load';
         }
         return !reason;
       },
@@ -540,7 +610,7 @@ export class Climber {
 
   updateTarget() {
     this.target = null;
-    if (this.state !== 'walk' || this.carried) return;
+    if (this.state !== 'walk' || this.carried || this.ladderGrab) return;
     const cfg = CONFIG.climber;
     const eye = this.eye;
     const dir = this.viewDir();
@@ -551,6 +621,7 @@ export class Climber {
     if (chest.distanceTo(tmp.set(hit.point.x, hit.point.y, hit.point.z)) > cfg.reach) return;
     const ent = this.game.entityForCollider(hit.collider);
     if (ent && ent.kind === 'box') this.target = ent;
+    else if (ent && ent.kind === 'ladder' && this.support?.body.handle !== ent.body.handle) this.target = ent;
   }
 
   // Carried boxes tilt with the view only within a natural range, so looking at your
@@ -746,6 +817,8 @@ export class Climber {
 
   goRagdoll(reason, extraVel = null) {
     if (this.state === 'ragdoll') return;
+    // Came off a ladder (or it went over with us on it): blame the ladder
+    if (['thrown', 'dropped', 'fell'].includes(reason) && this.game.clock - this.lastOnLadder < 1.5) reason = 'ladder';
     const vel = this.velocity.clone();
     if (this.state === 'wrapped') vel.set(0, 0, 0);
     if (extraVel) vel.add(extraVel);
@@ -753,6 +826,7 @@ export class Climber {
       const { pos } = this.holdPose();
       this.releaseCarried(pos, yawQuat(this.yaw), { x: vel.x, y: vel.y, z: vel.z });
     }
+    this.releaseLadder(true);
     this.state = 'ragdoll';
     this.wrapped = null;
     this.mantle = null;
@@ -884,7 +958,7 @@ export class Climber {
       speed: walkSpeed,
       grounded: this.grounded || !!this.mantle || this.state === 'wrapped',
       carrying: !!this.carried,
-      holding: this.holdingOn,
+      holding: this.holdingOn || !!this.ladderGrab,
       holdPitch: this.holdPitch(),
     });
 
@@ -921,7 +995,7 @@ export class Climber {
         arm.rotation.set(0.1, side * 0.22, 0);
         arm.userData.glove.rotation.set(0, 0, -side * 1.25);
       });
-    } else if (this.holdingOn) {
+    } else if (this.holdingOn || this.ladderGrab) {
       // Both hands up, gripping the carriage backrest in front of us
       this.hands.forEach((arm, i) => {
         const side = i === 0 ? -1 : 1;
