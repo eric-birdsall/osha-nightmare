@@ -20,6 +20,17 @@ body {
   display: block;
 }
 
+/* ---------- brand ---------- */
+:root {
+  --hazard-y: #f5c518;
+  --hazard-k: #111214;
+  --hazard: repeating-linear-gradient(-45deg, var(--hazard-y) 0 14px, var(--hazard-k) 14px 28px);
+  --steel-1: #2e353e;
+  --steel-2: #1f242a;
+  --stencil: 'Saira Stencil One', Impact, 'Arial Black', sans-serif;
+  --ui: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+}
+
 /* ---------- screens ---------- */
 .screen {
   position: fixed;
@@ -27,46 +38,114 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 18, 22, 0.72);
+  background: rgba(12, 14, 17, 0.74);
   z-index: 20;
+  font-family: var(--ui);
+}
+/* Hazard tape across the top and bottom of every menu */
+.screen::before,
+.screen::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+  background: var(--hazard);
+  box-shadow: 0 0 0 2px var(--hazard-k);
+}
+.screen::before {
+  top: 0;
+}
+.screen::after {
+  bottom: 0;
+}
+/* Title screen: an empty bay floor under a work light */
+#title {
+  background:
+    radial-gradient(ellipse at 50% 35%, rgba(255, 236, 170, 0.16), transparent 60%),
+    linear-gradient(rgba(255, 255, 255, 0.035) 2px, transparent 2px) 0 0 / 120px 120px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 2px, transparent 2px) 0 0 / 120px 120px,
+    linear-gradient(#1c2026, #121418);
 }
 .screen.hidden {
   display: none;
 }
+/* Panels are steel plates in a hazard-striped frame, bolted at the corners */
 .panel {
-  background: #242a31;
-  border: 3px solid #f5c518;
-  border-radius: 14px;
-  padding: 28px 36px;
-  min-width: 340px;
+  position: relative;
+  background:
+    radial-gradient(circle at 14px 14px, #8d96a1 0 3px, #444b54 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at calc(100% - 14px) 14px, #8d96a1 0 3px, #444b54 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 14px calc(100% - 14px), #8d96a1 0 3px, #444b54 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at calc(100% - 14px) calc(100% - 14px), #8d96a1 0 3px, #444b54 3.5px 5px, transparent 5.5px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 2px, transparent 2px 5px),
+    linear-gradient(var(--steel-1), var(--steel-2));
+  border: 12px solid var(--hazard-k);
+  border-image: var(--hazard) 12;
+  padding: 30px 40px 26px;
+  min-width: 360px;
   max-width: 92vw;
+  max-height: calc(100vh - 70px);
+  overflow: auto;
   text-align: center;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
 }
 .panel.wide {
-  min-width: min(760px, 92vw);
+  min-width: min(780px, 92vw);
 }
 h1 {
-  font-size: 54px;
-  margin: 10px 0 4px;
+  font-family: var(--stencil);
+  font-weight: 400;
+  font-size: 66px;
+  line-height: 0.95;
+  margin: 18px 0 6px;
   letter-spacing: 2px;
-  color: #f5c518;
-  text-shadow: 3px 3px 0 #000;
+  color: var(--hazard-y);
+  text-shadow: 4px 4px 0 #000;
 }
 h1 span {
-  color: #fff;
+  display: block;
+  color: #f2f2ee;
 }
+/* Headings are caution placards: black stencil on yellow */
 h2 {
-  margin: 0 0 14px;
-  color: #f5c518;
+  display: inline-block;
+  margin: 0 0 6px;
+  padding: 4px 22px 2px;
+  font-family: var(--stencil);
+  font-weight: 400;
+  font-size: 30px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--hazard-k);
+  background: var(--hazard-y);
+  border: 3px solid var(--hazard-k);
+  box-shadow: 0 0 0 3px var(--hazard-y);
 }
 h2.big {
-  font-size: 40px;
+  font-size: 42px;
+}
+.subtitle {
+  margin: 4px 0 2px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 5px;
+  text-transform: uppercase;
+  color: #d9dee3;
+}
+.fine {
+  margin: 4px 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #8b96a3;
 }
 .tag {
-  color: #b9c2cc;
-  margin: 6px 0 18px;
-  line-height: 1.4;
+  color: #c3cbd3;
+  margin: 8px 0 16px;
+  font-size: 17px;
+  line-height: 1.35;
   max-width: 640px;
   margin-inline: auto;
 }
@@ -74,109 +153,270 @@ h2.big {
   display: inline-block;
   background: #fff;
   color: #1a7f37;
+  font-family: var(--ui);
   font-weight: 800;
-  padding: 6px 12px;
+  letter-spacing: 1px;
+  padding: 6px 14px;
   border: 4px solid #1a7f37;
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: 4px;
+  font-size: 15px;
 }
 .sign b {
   color: #111;
-  font-size: 18px;
+  font-size: 22px;
 }
+/* Buttons: stencilled steel plates with a hazard tab; the focused one lights up yellow */
 .btn {
+  position: relative;
   display: block;
   width: 100%;
   margin: 10px 0;
-  padding: 12px 18px;
-  font-size: 18px;
+  padding: 10px 18px 10px 34px;
+  font-family: var(--ui);
+  font-size: 22px;
   font-weight: 700;
-  border-radius: 10px;
-  border: 2px solid #3b444f;
-  background: #313943;
-  color: #fff;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: left;
+  border: 2px solid #48515c;
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  background: linear-gradient(#3a424c, #2b3139);
+  color: #eef1f4;
   cursor: pointer;
+}
+.btn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  background: var(--hazard);
+  background-size: 28px 28px;
 }
 .btn:hover,
 .btn.focus {
-  background: #f5c518;
-  color: #111;
-  border-color: #f5c518;
+  background: var(--hazard-y);
+  color: var(--hazard-k);
+  border-color: var(--hazard-y);
+}
+.btn:hover::before,
+.btn.focus::before {
+  background: var(--hazard-k);
+}
+.btn.focus::after {
+  content: '▶';
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
 }
 .pads {
   color: #8b96a3;
-  font-size: 13px;
-  margin-top: 14px;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  margin: 14px 0 0;
 }
 .cols {
   display: flex;
-  gap: 24px;
+  gap: 26px;
   text-align: left;
   justify-content: center;
 }
 .cols .menu {
   min-width: 260px;
 }
+/* Pause screen floor plan: a blueprint pinned to the panel */
 .map {
   flex: 1;
-  min-height: 260px;
-  border: 2px dashed #4b5560;
-  border-radius: 10px;
+  min-width: 300px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #6c7783;
+  padding: 10px 12px 8px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px) 0 0 / 16px 16px,
+    #173a63;
+  border: 2px solid #8fb4dc;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.35);
+  color: #dbe9f7;
+}
+.map-head {
   font-weight: 800;
   letter-spacing: 3px;
-  text-align: center;
-  padding: 16px;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(219, 233, 247, 0.5);
+  padding-bottom: 4px;
+  margin-bottom: 6px;
 }
-.map small {
-  letter-spacing: 0;
-  font-weight: 400;
-  margin-top: 6px;
+.map svg {
+  width: 100%;
+  flex: 1;
 }
+.fp-wall {
+  fill: none;
+  stroke: #dbe9f7;
+  stroke-width: 0.35;
+}
+.fp-racks rect {
+  fill: rgba(219, 233, 247, 0.8);
+  stroke: #dbe9f7;
+  stroke-width: 0.15;
+}
+.fp-labels text,
+.fp-zone {
+  fill: #dbe9f7;
+  font: 700 1.5px var(--ui);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+.fp-labels text {
+  font-size: 1px;
+  letter-spacing: 0.15px;
+  fill: #0e2744;
+}
+.fp-wrap,
+.fp-dock {
+  fill: rgba(245, 197, 24, 0.35);
+  stroke: var(--hazard-y);
+  stroke-width: 0.2;
+  stroke-dasharray: 0.5 0.3;
+}
+.fp-dave {
+  fill: #ff8a3d;
+  stroke: #fff;
+  stroke-width: 0.25;
+}
+.fp-ralph {
+  fill: var(--hazard-y);
+  stroke: #111;
+  stroke-width: 0.3;
+}
+.map-key {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.map-key span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.map-key .k-dave {
+  background: #ff8a3d;
+  border: 2px solid #fff;
+}
+.map-key .k-ralph {
+  background: var(--hazard-y);
+  border: 2px solid #111;
+  margin-left: 8px;
+}
+/* Controls: a laminated safety notice */
 table {
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 16px;
+  background: rgba(0, 0, 0, 0.18);
 }
 th {
   text-align: left;
-  color: #f5c518;
-  padding: 6px 4px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--hazard-k);
+  background: var(--hazard-y);
+  padding: 5px 8px;
 }
 td {
-  padding: 4px 10px 4px 4px;
-  border-top: 1px solid #353d47;
-  color: #d5dbe1;
+  padding: 5px 10px 5px 8px;
+  border-top: 1px solid #3c444e;
+  color: #dde2e7;
+  font-weight: 600;
+}
+td + td {
+  color: var(--hazard-y);
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* Order complete: shipping stamp */
+.stamp {
+  display: inline-block;
+  margin: 14px 0 4px;
+  padding: 2px 18px;
+  font-family: var(--stencil);
+  font-size: 34px;
+  letter-spacing: 6px;
+  color: #3fbf6a;
+  border: 4px solid #3fbf6a;
+  border-radius: 6px;
+  transform: rotate(-6deg);
+  opacity: 0.9;
 }
 .stats {
   display: flex;
-  gap: 30px;
+  gap: 16px;
   justify-content: center;
-  margin: 10px 0;
+  margin: 14px 0 6px;
 }
 .stats div {
   display: flex;
   flex-direction: column;
+  min-width: 130px;
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  border-top: 4px solid var(--hazard-y);
 }
 .stats span {
   color: #9aa5b1;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
 }
 .stats b {
-  font-size: 34px;
+  font-family: var(--stencil);
+  font-weight: 400;
+  font-size: 40px;
+  color: #f2f2ee;
 }
+/* Loading: a hazard barrier sliding along */
 #loading {
   position: fixed;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
   z-index: 30;
-  background: #1b1f24;
+  background: #15181c;
+  font-family: var(--ui);
+}
+.load-box {
+  width: min(360px, 80vw);
+  text-align: center;
+}
+.load-text {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.load-bar {
+  height: 18px;
+  border: 2px solid var(--hazard-y);
+  background: var(--hazard);
+  background-size: 40px 40px;
+  animation: load-slide 0.8s linear infinite;
+}
+@keyframes load-slide {
+  to {
+    background-position: 40px 0;
+  }
 }
 
 /* ---------- HUD ---------- */
@@ -782,4 +1022,55 @@ kbd {
   font-size: 12px;
   color: #888;
   margin-top: 10px;
+}
+
+/* ---------- HUD branding ---------- */
+.timer,
+.roles,
+.rolelabel,
+.prompt,
+.toast,
+.banner,
+.devicehint {
+  font-family: var(--ui);
+}
+.timer {
+  font-size: 26px;
+  letter-spacing: 1px;
+  border-left: 8px solid var(--hazard-y);
+  border-radius: 0;
+}
+.roles {
+  border-radius: 0;
+  border-top: 4px solid var(--hazard-y);
+  letter-spacing: 1px;
+  font-size: 16px;
+}
+.prompt {
+  border-radius: 0;
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+.toast {
+  border-radius: 0;
+  border: 0;
+  border-image: var(--hazard) 8;
+  border-style: solid;
+  border-width: 0 8px;
+  font-size: 22px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: rgba(17, 18, 20, 0.92);
+}
+.banner {
+  border-radius: 0;
+  border: 8px solid;
+  border-image: var(--hazard) 8;
+  font-family: var(--stencil);
+  font-weight: 400;
+  letter-spacing: 1px;
+}
+.banner small {
+  font-family: var(--ui);
+  letter-spacing: 1px;
 }

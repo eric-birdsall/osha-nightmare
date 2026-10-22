@@ -37,7 +37,7 @@ The warehouse is 48 × 32 m. Five racks (A–E, six bays each, single-deep) fill
 | Swap character (single player) | View | Tab |
 | Pause | Menu | Esc |
 
-Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber and gamepad 2 the Driver. If only one pad is connected, player 2 uses keyboard and mouse. Pause → Swap Roles trades characters. **Invert Look** (title screen or pause menu) flips up/down for the mouse, sticks and I/K; it's remembered in this browser.
+Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber and gamepad 2 the Driver. If only one pad is connected, player 2 uses keyboard and mouse. Pause → Swap Roles trades characters. **Invert Look** (title screen or pause menu) flips up/down for the mouse, sticks and I/K; it's remembered in this browser. The pause menu also shows a floor plan of the warehouse with Dave and Ralph marked on it.
 
 ## Layout
 

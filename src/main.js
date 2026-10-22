@@ -151,6 +151,13 @@ function pause() {
   if (state !== 'playing') return;
   state = 'paused';
   pausedAt = performance.now();
+  // Mark Dave and Ralph on the pause screen's floor plan (SVG x/y = world x/z)
+  for (const [id, body] of [['fp-dave', game.climber.body], ['fp-ralph', game.forklift.body]]) {
+    const t = body.translation();
+    const dot = document.getElementById(id);
+    dot.setAttribute('cx', t.x.toFixed(2));
+    dot.setAttribute('cy', t.z.toFixed(2));
+  }
   if (input.pointerLocked) document.exitPointerLock();
   refreshScreens();
 }
