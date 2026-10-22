@@ -11,6 +11,7 @@ const VIEW_HTML = (role) => `
         <tr class="oitem" data-item="B"><td><span class="sw b"></span>Item B</td><td class="loc"></td><td><span class="chk"></span></td></tr>
       </table>
       <div class="odest">Wrap, then ship to <b>DOCK 1</b></div>
+      <div class="osign">Picked by</div>
     </div>
   </div>
   <div class="topright">
