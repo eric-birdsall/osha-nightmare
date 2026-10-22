@@ -37,6 +37,7 @@ export const CONFIG = {
     throwMinSupportSpeed: 1.5, // the support must be moving at least this fast (m/s) to throw you
     dropSpeed: 2.0, // support falling faster than this drops them
     supportLostTime: 0.15, // moving support vanished for this long = thrown
+    lowSupportHeight: 1.2, // thrown/dropped only count when Dave's feet are at least this high off the floor (m)
     ragdollTime: 3.0,
     respawnClearance: 4.0, // skip spawn points this close to the forklift (center, or 1 s ahead)
     respawnGrace: 2.0, // seconds after respawn when forklift contact only nudges

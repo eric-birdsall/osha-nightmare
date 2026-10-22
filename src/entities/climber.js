@@ -338,11 +338,22 @@ export class Climber {
         if (ent.stepHandles.has(hit.collider.handle) || this.support?.body.handle === ent.body.handle) continue;
         if (this.ladderGrab?.ent === ent) continue;
       } else if (ent.kind !== 'box' && ent.kind !== 'pallet') continue;
+      // Only shove things we walk into from the side: never the one we're standing on or
+      // landing on top of (that kicked boxes out from under Dave's feet)
+      if (this.support?.body.handle === ent.body.handle || hit.normal1.y > 0.5) continue;
       const rem = hit.translationDeltaRemaining;
       const push = new THREE.Vector3(rem.x, 0, rem.z);
       if (push.lengthSq() < 1e-8) continue;
-      // Leaning into it: our blocked movement this step, as an impulse from a person-sized mass
-      ent.body.applyImpulseAtPoint(push.multiplyScalar(mass * CONFIG.climber.pushStrength), hit.witness1, true);
+      // Leaning into it: our blocked movement this step, as an impulse from a person-sized mass,
+      // but never faster than walking pace
+      const dir = push.clone().normalize();
+      const v = ent.body.linvel();
+      const room = CONFIG.climber.walkSpeed - (v.x * dir.x + v.z * dir.z);
+      if (room <= 0) continue;
+      const impulse = Math.min(push.length() * mass * CONFIG.climber.pushStrength, room * ent.body.mass());
+      // Push through its middle height so it slides rather than flips
+      const com = ent.body.worldCom();
+      ent.body.applyImpulseAtPoint(dir.multiplyScalar(impulse), { x: hit.witness1.x, y: com.y, z: hit.witness1.z }, true);
     }
   }
 
@@ -367,6 +378,12 @@ export class Climber {
       (c) => c.handle !== this.collider.handle,
     );
     return solid ? null : rail;
+  }
+
+  // Height above the warehouse floor (y = 0). Boxes, pallets, forks and racks are all things
+  // that can move or fall away, so only the floor counts as ground.
+  heightAboveGround(feet) {
+    return feet.y;
   }
 
   isRail(collider) {
@@ -521,13 +538,16 @@ export class Climber {
     if (sb && supportSpeed > 0.5) this.lastMovingSupportTime = 0.4;
     else this.lastMovingSupportTime = Math.max(0, this.lastMovingSupportTime - dt);
 
-    if (!this.holdingOn && sameSupport && this.supportTime > 0.2 && supportSpeed > cfg.throwMinSupportSpeed) {
+    // A box sliding along the floor can't really throw or drop Dave: only count it when he's
+    // high enough off the floor for the fall to hurt.
+    const highUp = this.heightAboveGround(feet) > cfg.lowSupportHeight;
+    if (highUp && !this.holdingOn && sameSupport && this.supportTime > 0.2 && supportSpeed > cfg.throwMinSupportSpeed) {
       const horiz = Math.hypot(this.supportAccel.x, this.supportAccel.z);
       if (horiz > cfg.throwAccel) {
         return this.goRagdoll('thrown', this.supportAccel.clone().setY(0).multiplyScalar(0.12).add(new THREE.Vector3(0, 2, 0)));
       }
     }
-    if (sb && !this.holdingOn && this.supportVel.y < -cfg.dropSpeed) return this.goRagdoll('dropped');
+    if (sb && highUp && !this.holdingOn && this.supportVel.y < -cfg.dropSpeed) return this.goRagdoll('dropped');
     // Lifted into something overhead (rack beam, mast crossbar): crushed
     if (sb && this.supportVel.y > 0.05) {
       const head = { x: center.x, y: center.y + this.centerOff - 0.15, z: center.z };
@@ -543,7 +563,10 @@ export class Climber {
       if (this.grounded) this.lostSupportTimer = -1;
       else {
         this.lostSupportTimer += dt;
-        if (this.lostSupportTimer > cfg.supportLostTime) return this.goRagdoll('dropped');
+        if (this.lostSupportTimer > cfg.supportLostTime) {
+          this.lostSupportTimer = -1;
+          if (this.heightAboveGround(feet) > cfg.lowSupportHeight) return this.goRagdoll('dropped');
+        }
       }
     }
 
