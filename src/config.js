@@ -93,26 +93,33 @@ export const CONFIG = {
     // Wobbly racking: a new hit also rocks the top of the rack along the direction of travel
     tipImpactSpeed: 1.4, // forklift hits slower than this (m/s) just bump it
     tipKick: 1.3, // top impulse = loaded rack mass (rack + boxes on it) x tipKick x hit speed: ~1.8 m/s and up tips it
-    ladderImpactSpeed: 0.6, // a ladder's top moving faster than this when it hits a rack
-    ladderKick: 4, // top impulse = ladder mass x ladderKick x speed, scaled by the rack's load
+    fallImpactSpeed: 0.6, // a falling rack's top moving faster than this when it hits its neighbour
     rackKick: 2.5, // a falling rack hitting its neighbour: falling rack mass x rackKick x top speed, scaled by load
     maxKickSpeed: 3.5, // m/s: cap on how fast any one kick can push a rack's top (no launching racks)
     crushSpeed: 1.5, // a rack part moving at the climber faster than this (m/s) = incident
   },
 
   ladder: {
-    platformHeight: 2.95, // level with shelf 2 (3.0 m), so Dave can step across
-    rise: 0.2, // per step: under the climber's 0.22 m step-up, so the steps work like stairs
-    tread: 0.2,
-    width: 1.0,
-    platformDepth: 0.6,
-    mass: 60,
-    friction: 0.3, // on casters: rolls easily
-    rollSpeedFactor: 0.55, // Dave walks this much slower while rolling a ladder
-    rollGain: 0.35, // how firmly the ladder follows Dave (0-1 per step)
-    maxRollSpeed: 2.5,
-    maxTurnRate: 2.5, // rad/s
-    snagDistance: 0.6, // ladder this far from where it should be (stuck on something) = let go
+    // A-frame step ladder (local +Z = the step side)
+    capHeight: 1.8, // top cap
+    topStep: 1.55, // highest step Dave stands on: his reach covers shelf 2 (3.0 m) but not shelf 3
+    steps: 5,
+    tread: 0.12,
+    width: 0.8, // wide enough for the fork tines to slide between the legs
+    baseFront: 0.48, // feet of the step section (z), spreading to... (front to back fits the 1.1 m forks)
+    topFront: 0.1, // ...the top of it
+    baseBack: -0.45, // rear legs
+    topBack: -0.1,
+    mass: 18,
+    friction: 0.8,
+    climbSpeed: 0.9, // m/s up or down the steps
+    carrySpeedFactor: 0.7, // Dave walks this much slower with a ladder on his shoulder
+    foldHoldTime: 0.5, // s of holding E/X to fold a set-up ladder
+    climbableUp: 0.95, // upright enough to climb (cos of lean)
+    fallUp: 0.85, // leaning further than this with Dave on it = it's going over
+    setupDistance: 1.05, // ladder centre this far in front of Dave when set up
+    jumpKick: 2.5, // m/s at the top cap when Dave jumps off: always enough to send it over
+    maxRideSpeed: 1.5, // m/s: a ladder moving faster than this with Dave on it throws him off
   },
 
   order: {

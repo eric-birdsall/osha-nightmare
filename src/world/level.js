@@ -5,7 +5,7 @@ import { CONFIG } from '../config.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { createBox } from '../entities/box.js';
 import { createPallet } from '../entities/pallet.js';
-import { createLadder } from '../entities/ladder.js';
+import { createLadderStand } from '../entities/ladder.js';
 
 export const ROOM = { halfX: 24, halfZ: 16, wallH: 6 };
 // Lower level: the south-west of the floor sits 1 m down. Dave takes six steps down by the rack
@@ -298,7 +298,7 @@ function backstockSign(location) {
 
 // Three boxes per shelf along the open face, in every bay of every rack. The order has two
 // lines, each a quantity of one SKU, picked from the upstairs racks:
-//  A: 3 boxes from shelf 2 of any rack (reachable from the forks or a rolling ladder). The pick
+//  A: 3 boxes from shelf 2 of any rack (reachable from the forks or an A-frame ladder). The pick
 //     face is always one short: a BACKSTOCK sign on its beam says which lower-level slot holds the rest.
 //  B: 1 or 2 boxes from shelf 3, the top, of a different rack; sometimes short as well.
 // Backstock slots are on the bottom shelf of the lower-level racks, in reach from the floor, and
@@ -734,10 +734,9 @@ export function buildLevel(game) {
   ];
   for (const [type, x, y, z] of loose) createBox(game, { type, sku: game.skus.next(), pos: [x, y, z], yaw: (Math.random() - 0.5) * 0.3 });
 
-  // Rolling ladders parked in the aisles, steps running along the aisle
-  createLadder(game, { pos: [-8, 0, -12.2], yaw: Math.PI / 2 });
-  createLadder(game, { pos: [-14, 0, -5.2], yaw: -Math.PI / 2 });
-  createLadder(game, { pos: [-10, LOWER.y, 12.6], yaw: Math.PI / 2 });
+  // A-frame ladders: two on each LADDERS stand, upstairs and down
+  createLadderStand(game, { pos: [1.0, 0, -halfZ + 0.3] }); // upstairs, north wall east of Rack A
+  createLadderStand(game, { pos: [1.2, LOWER.y, LOWER.z0 + 0.3] }); // downstairs, by the foot of the stairs
 
   // Empty pallets (fork pockets open toward ±local Z)
   createPallet(game, { pos: [2.6, 0, -12.2], yaw: Math.PI / 2 });

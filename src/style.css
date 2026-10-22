@@ -280,6 +280,11 @@ h2.big {
   stroke: var(--hazard-y);
   stroke-width: 0.12;
 }
+.fp-ladders {
+  fill: var(--hazard-y);
+  stroke: #111;
+  stroke-width: 0.1;
+}
 .fp-racks rect {
   fill: rgba(219, 233, 247, 0.8);
   stroke: #dbe9f7;

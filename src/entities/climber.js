@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL, G, groups, castRay, yawQuat, quatToThree } from '../physics.js';
-import { floorHeightAt } from '../world/level.js';
+import { floorHeightAt, ROOM } from '../world/level.js';
+import { buildLadderGhost, ladderFootprint } from './ladder.js';
 import { flatMat } from '../util/meshes.js';
 import { spawnRagdoll } from '../systems/ragdoll.js';
 import { WorkerModel, firstPersonArm } from './worker.js';
@@ -75,7 +76,9 @@ export class Climber {
     this.onBlades = false;
     this.holdingOn = false;
     this.lastOnLadder = -Infinity;
-    this.ladderGrab = null;
+    this.ladderCarry = null; // folded ladder on the shoulder
+    this.onLadder = null; // { ent, h: metres up the steps, heading }
+    this.foldTimer = 0;
     this.holdLocal = new THREE.Vector3();
     this.ragdoll = null;
     this.ragdollTimer = 0;
@@ -150,6 +153,7 @@ export class Climber {
     }
     if (this.state === 'wrapped') return this.wrappedStep(dt);
     if (this.mantle) return this.mantleStep(dt);
+    if (this.onLadder) return this.ladderStep(a, dt, active);
 
     // Turn with a rotating platform (e.g. riding the forks through a turn)
     if (this.grounded && this.support && !this.support.body.isFixed()) this.yaw += this.support.body.angvel().y * dt;
@@ -160,8 +164,14 @@ export class Climber {
     const my = free ? a.moveY : 0;
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    const speed = this.ladderGrab ? cfg.walkSpeed * CONFIG.ladder.rollSpeedFactor : cfg.walkSpeed;
+    const speed = this.ladderCarry ? cfg.walkSpeed * CONFIG.ladder.carrySpeedFactor : cfg.walkSpeed;
     const wish = fwd.multiplyScalar(my * speed).addScaledVector(right, mx * speed);
+
+    // Walking into the steps of a set-up ladder: climb on
+    if (free && this.grounded && my > 0.3 && !this.ladderCarry) {
+      const lad = this.ladderToClimb();
+      if (lad) return this.mountLadder(lad);
+    }
 
     const disp = new THREE.Vector3();
     let liftY = 0; // a rising platform carries us up directly (the controller can't push out of a surface)
@@ -218,16 +228,18 @@ export class Climber {
     const t = this.body.translation();
     mv.y += liftY;
     this.body.setNextKinematicTranslation({ x: t.x + mv.x, y: t.y + mv.y, z: t.z + mv.z });
-    if (this.ladderGrab) this.steerLadder(dt, { x: t.x + mv.x, y: t.y + mv.y, z: t.z + mv.z });
     this.velocity.set(mv.x / dt, mv.y / dt, mv.z / dt);
 
     if (this.carried) this.holdCarried();
+    if (this.ladderCarry) this.holdLadder();
+    this.foldStep(a, dt, active);
     if (active && a.interact) {
       if (this.holdingOn) this.letGo();
-      else if (this.ladderGrab) this.releaseLadder();
+      else if (this.ladderCarry) this.setUpLadder();
       else if (this.carried) this.putDown();
-      else if (this.target?.kind === 'ladder') this.grabLadder(this.target);
-      else if (this.target) this.pickUp(this.target);
+      else if (this.target?.kind === 'ladder') {
+        if (!this.target.standing) this.pickUpLadder(this.target); // a set-up one folds on a hold
+      } else if (this.target) this.pickUp(this.target);
       else if (this.onBlades) this.grab();
     }
   }
@@ -242,74 +254,237 @@ export class Climber {
       .applyQuaternion(quatToThree(car.rotation()).invert());
   }
 
-  // Rolling a ladder: it keeps the same offset and angle relative to us, so walking pushes or
-  // pulls it and turning swings it around. Heading = atan2(x, z) of a forward vector.
-  grabLadder(ent) {
-    const lt = ent.body.translation();
-    const c = this.body.translation();
-    const daveQ = new THREE.Quaternion().setFromAxisAngle(UP, this.yaw);
-    this.ladderGrab = {
-      ent,
-      rel: new THREE.Vector3(lt.x - c.x, 0, lt.z - c.z).applyQuaternion(daveQ.invert()),
-      relYaw: this.ladderHeading(ent) - (this.yaw + Math.PI),
-    };
-    this.target = null;
+  // ---------------------------------------------------------------- A-frame ladders
+
+  ladders() {
+    return this.game.entities.filter((e) => e.kind === 'ladder');
+  }
+
+  // A set-up ladder whose steps Dave is walking into: near the foot of the steps, facing them.
+  ladderToClimb() {
+    const feet = this.feet;
+    const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    for (const lad of this.ladders()) {
+      if (!lad.standing) continue;
+      const foot = lad.footPoint(0);
+      if (Math.abs(foot.y - feet.y) > 0.3) continue;
+      if (Math.hypot(foot.x - feet.x, foot.z - feet.z) < 0.55 && fwd.dot(lad.front) < -0.5) return lad;
+    }
+    return null;
+  }
+
+  mountLadder(lad) {
+    this.onLadder = { ent: lad, h: 0, heading: lad.heading };
+    this.relVel.set(0, 0, 0);
+    this.airVel.set(0, 0, 0);
+    this.vy = 0;
+    this.support = null;
+    this.prevSupportBody = null;
+    this.lostSupportTimer = -1;
     sfx.pickup();
   }
 
-  releaseLadder(quiet = false) {
-    const g = this.ladderGrab;
-    if (!g) return;
-    this.ladderGrab = null;
-    // Let it roll to a gentle stop: keep at most our walking pace, so a snag doesn't fling it
-    const v = g.ent.body.linvel();
-    const h = Math.hypot(v.x, v.z);
-    const k = h > 0 ? Math.min(1, Math.hypot(this.velocity.x, this.velocity.z) / h) * 0.5 : 0;
-    g.ent.body.setLinvel({ x: v.x * k, y: v.y, z: v.z * k }, true);
-    g.ent.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-    if (!quiet) sfx.putdown();
+  // On the ladder: W/S climbs, the view is free, E/X still picks and places boxes. Any jump
+  // sends the ladder over. Dave's feet are pinned to the steps, so he rides along if the
+  // forklift shoves or lifts the ladder.
+  ladderStep(a, dt, active) {
+    const L = this.onLadder;
+    const lad = L.ent;
+    const cfg = CONFIG.ladder;
+    if (active && a.jump) return this.jumpOffLadder();
+    const heading = lad.heading;
+    this.yaw += Math.atan2(Math.sin(heading - L.heading), Math.cos(heading - L.heading)); // turn with it
+    L.heading = heading;
+    const my = active ? a.moveY : 0;
+    if (L.h <= 0 && my < -0.3) return this.stepOffLadder();
+    L.h = THREE.MathUtils.clamp(L.h + my * cfg.climbSpeed * dt, 0, cfg.topStep);
+    const p = lad.footPoint(L.h);
+    const t = this.body.translation();
+    const next = { x: p.x, y: p.y + this.centerOff, z: p.z };
+    this.velocity.set((next.x - t.x) / dt, (next.y - t.y) / dt, (next.z - t.z) / dt);
+    this.body.setNextKinematicTranslation(next);
+    this.grounded = true;
+    this.lastOnLadder = this.game.clock;
+    if (this.carried) this.holdCarried();
+    if (active && a.interact) {
+      if (this.carried) this.putDown();
+      else if (this.target) this.pickUp(this.target);
+    }
   }
 
-  ladderTouchesRack(ent) {
-    let touching = false;
-    for (let i = 0; i < ent.body.numColliders() && !touching; i++) {
-      this.game.world.contactPairsWith(ent.body.collider(i), (other) => {
-        if (this.game.entityForCollider(other)?.kind === 'rack') touching = true;
+  stepOffLadder() {
+    const p = this.onLadder.ent.stepOffPoint();
+    this.onLadder = null;
+    this.body.setNextKinematicTranslation({ x: p.x, y: p.y + this.centerOff + 0.02, z: p.z });
+    this.grounded = false;
+    this.vy = 0;
+    this.peakY = p.y;
+    this.airVel.set(0, 0, 0);
+    this.launchVel.set(0, 0, 0);
+    this.velocity.set(0, 0, 0);
+  }
+
+  // Jumping on a ladder: Dave pushes off backwards and the ladder kicks over the other way.
+  jumpOffLadder() {
+    const lad = this.onLadder.ent;
+    const back = lad.front; // out of the step side, toward where Dave came from
+    // Over sideways (across its narrow width), a little away from Dave
+    const side = new THREE.Vector3(back.z, 0, -back.x).multiplyScalar(Math.random() < 0.5 ? -1 : 1);
+    const kick = side.addScaledVector(back, -0.3).normalize().multiplyScalar(lad.mass * CONFIG.ladder.jumpKick);
+    lad.body.applyImpulseAtPoint(kick, lad.topPoint(), true);
+    this.onLadder = null;
+    sfx.jump();
+    this.goRagdoll('ladderJump', back.multiplyScalar(2.2).add(new THREE.Vector3(0, 2.5, 0)));
+  }
+
+  // While on a ladder: it going over (or being knocked out from under him) ends in an incident.
+  ladderPostStep() {
+    const lad = this.onLadder.ent;
+    const fl = this.game.forklift;
+    for (let i = 0; i < lad.body.numColliders(); i++) {
+      this.game.world.contactPairsWith(lad.body.collider(i), (o) => {
+        if (fl.ownsCollider(o)) lad.forkliftTouched = this.game.clock;
       });
     }
-    return touching;
+    const v = lad.body.linvel();
+    const fast = Math.hypot(v.x, v.z) > CONFIG.ladder.maxRideSpeed; // shoved or driven off with Dave on it
+    if (lad.state !== 'open' || lad.removed || lad.upY < CONFIG.ladder.fallUp || fast) {
+      const byRalph = this.game.clock - lad.forkliftTouched < 2;
+      this.onLadder = null;
+      return this.goRagdoll(byRalph ? 'ladderKnocked' : 'ladder', fast ? new THREE.Vector3(v.x * 0.6, 1.5, v.z * 0.6) : null);
+    }
+    const feet = this.feet;
+    const cfg = CONFIG.climber;
+    // Riding the forks up into something overhead
+    if (lad.body.linvel().y > 0.05) {
+      const head = { x: feet.x, y: feet.y + cfg.height - 0.15, z: feet.z };
+      const hit = castRay(this.game.world, head, { x: 0, y: 1, z: 0 }, 0.2, COL.climberQuery, (c) => c.handle !== this.collider.handle && c.parent()?.handle !== lad.body.handle);
+      if (hit) return this.goRagdoll('crushed', new THREE.Vector3(0, -1, 0));
+    }
+    const headHit = this.overheadHit(feet);
+    if (headHit) return this.goRagdoll(headHit, new THREE.Vector3(0, -1.5, 0));
+    const probeHalf = this.halfH - 0.05;
+    const probeR = cfg.radius + 0.05;
+    const rackHit = this.rackSweep({ x: feet.x, y: feet.y + 0.12 + probeR + probeHalf, z: feet.z }, probeHalf, probeR);
+    if (rackHit) return this.goRagdoll('rack', rackHit);
   }
 
-  ladderHeading(ent) {
-    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(quatToThree(ent.body.rotation()));
-    return Math.atan2(f.x, f.z);
+  pickUpLadder(lad) {
+    lad.setState('carried');
+    this.ladderCarry = lad;
+    this.target = null;
+    if (!this.ladderGhost) {
+      this.ladderGhost = buildLadderGhost();
+      this.ladderGhost.visible = false;
+      this.game.scene.add(this.ladderGhost);
+    }
+    sfx.pickup();
   }
 
-  steerLadder(dt, next) {
-    const g = this.ladderGrab;
-    const body = g.ent.body;
+  // Folded ladder on the right shoulder, running fore and aft (its long axis along our view).
+  shoulderPose() {
+    const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const up = new THREE.Vector3(0, 1, 0);
+    const side = new THREE.Vector3().crossVectors(up, fwd);
+    const quat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(up, fwd, side));
+    const pos = this.feet.add(new THREE.Vector3(0, 1.28, 0)).addScaledVector(right, 0.34).addScaledVector(fwd, -0.8);
+    return { pos, quat };
+  }
+
+  holdLadder() {
+    const { pos, quat } = this.shoulderPose();
+    this.ladderCarry.body.setNextKinematicTranslation(pos);
+    this.ladderCarry.body.setNextKinematicRotation(quat);
+  }
+
+  // Where a carried ladder would be set up: in front of Dave, steps facing him. ok only on flat,
+  // clear floor at Dave's own level (not stairs, the ramp, shelves, pallets or the forks).
+  ladderPlacement() {
     const cfg = CONFIG.ladder;
-    const q = quatToThree(body.rotation());
-    const upright = new THREE.Vector3(0, 1, 0).applyQuaternion(q).y;
-    const lt = body.translation();
-    const target = g.rel.clone().applyQuaternion(new THREE.Quaternion().setFromAxisAngle(UP, this.yaw)).add(new THREE.Vector3(next.x, 0, next.z));
-    const err = new THREE.Vector3(target.x - lt.x, 0, target.z - lt.z);
-    // Snagged on something, tipping, or we left the floor: let go
-    if (err.length() > cfg.snagDistance || upright < 0.96 || g.ent.removed || !this.grounded) return this.releaseLadder();
-    // Touching racking: let go rather than shove the (light) rack over while parking the ladder
-    if (this.ladderTouchesRack(g.ent)) return this.releaseLadder();
-    const v = err.multiplyScalar(cfg.rollGain / dt);
-    if (v.length() > cfg.maxRollSpeed) v.setLength(cfg.maxRollSpeed);
-    body.setLinvel({ x: v.x, y: body.linvel().y, z: v.z }, true);
-    let yawErr = this.yaw + Math.PI + g.relYaw - this.ladderHeading(g.ent);
-    yawErr = Math.atan2(Math.sin(yawErr), Math.cos(yawErr));
-    const w = THREE.MathUtils.clamp((yawErr * cfg.rollGain) / dt, -cfg.maxTurnRate, cfg.maxTurnRate);
-    // Dave holds it steady: lean back toward upright instead of letting the drag tip it
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
-    const axis = new THREE.Vector3().crossVectors(up, UP); // rotate up toward world up
-    const lean = Math.asin(Math.min(1, axis.length()));
-    if (lean > 1e-4) axis.normalize().multiplyScalar((lean * cfg.rollGain) / dt);
-    body.setAngvel({ x: axis.x, y: w, z: axis.z }, true);
+    const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const feet = this.feet;
+    const c = feet.clone().addScaledVector(fwd, cfg.setupDistance);
+    const y = floorHeightAt(c.x, c.z);
+    const q = yawQuat(this.yaw); // local +Z (the steps) = -fwd, back toward Dave
+    const rot = quatToThree(q);
+    const level = (x, z) => {
+      const p = new THREE.Vector3(x, 0, z).applyQuaternion(rot).add(c);
+      return Math.abs(floorHeightAt(p.x, p.z) - y) < 0.01;
+    };
+    const w = cfg.width / 2 + 0.05;
+    let ok = level(-w, cfg.baseBack) && level(w, cfg.baseBack) && level(-w, cfg.baseFront) && level(w, cfg.baseFront);
+    ok &&= Math.abs(feet.y - y) < 0.15;
+    if (ok) {
+      const { half, centerZ } = ladderFootprint();
+      const center = new THREE.Vector3(0, half[1] + 0.05, centerZ).applyQuaternion(rot).add(new THREE.Vector3(c.x, y, c.z));
+      const carried = this.ladderCarry?.body.handle;
+      this.game.world.intersectionsWithShape(
+        center,
+        q,
+        new RAPIER.Cuboid(...half),
+        () => {
+          ok = false;
+          return false;
+        },
+        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+        COL.climberQuery,
+        undefined,
+        undefined,
+        (col) => col.handle !== this.collider.handle && col.parent()?.handle !== carried,
+      );
+    }
+    return { pos: { x: c.x, y: y + 0.005, z: c.z }, yaw: this.yaw, ok };
+  }
+
+  setUpLadder() {
+    const p = this.ladderPlacement();
+    if (!p.ok) {
+      this.game.toast("Can't set the ladder up here", 1.5);
+      return;
+    }
+    this.ladderCarry.setState('open', { pos: p.pos, yaw: p.yaw });
+    this.ladderCarry = null;
+    if (this.ladderGhost) this.ladderGhost.visible = false;
+    sfx.putdown();
+  }
+
+  // Let go of a carried ladder (e.g. Dave went flying): it drops folded where it was.
+  dropLadder() {
+    const lad = this.ladderCarry;
+    if (!lad) return;
+    this.ladderCarry = null;
+    const { pos, quat } = this.shoulderPose();
+    lad.setState('dropped');
+    lad.body.setTranslation(pos, true);
+    lad.body.setRotation(quat, true);
+    lad.body.setLinvel({ x: this.velocity.x, y: this.velocity.y, z: this.velocity.z }, true);
+    if (this.ladderGhost) this.ladderGhost.visible = false;
+  }
+
+  // Holding E/X on a set-up ladder folds it onto the shoulder (a tap does nothing, so picking
+  // boxes nearby can't fold it by accident).
+  foldStep(a, dt, active) {
+    const lad = this.target?.kind === 'ladder' && this.target.standing ? this.target : null;
+    if (active && a.interactHeld && lad && !this.carried && !this.ladderCarry) {
+      this.foldTimer += dt;
+      if (this.foldTimer >= CONFIG.ladder.foldHoldTime) {
+        this.foldTimer = 0;
+        this.pickUpLadder(lad);
+      }
+    } else this.foldTimer = 0;
+  }
+
+  updateLadderGhost() {
+    if (!this.ladderGhost) return;
+    const show = !!this.ladderCarry && this.state === 'walk';
+    this.ladderGhost.visible = show;
+    if (!show) return;
+    const p = this.ladderPlacement();
+    this.ladderGhost.position.set(p.pos.x, p.pos.y, p.pos.z);
+    this.ladderGhost.quaternion.copy(quatToThree(yawQuat(p.yaw)));
+    this.ladderGhost.userData.mat.color.setHex(p.ok ? 0x7cf0a0 : 0xff5a4a);
+    this.ladderPlaceOk = p.ok;
   }
 
   // Grab the carriage: from now on we ride it rigidly and can't be thrown off.
@@ -346,11 +521,7 @@ export class Climber {
       const hit = this.kcc.computedCollision(i);
       const ent = hit?.collider && this.game.entityForCollider(hit.collider);
       if (!ent || ent.carried) continue;
-      if (ent.kind === 'ladder') {
-        // Shove a ladder by its frame, not by walking up its steps or while standing on it
-        if (ent.stepHandles.has(hit.collider.handle) || this.support?.body.handle === ent.body.handle) continue;
-        if (this.ladderGrab?.ent === ent) continue;
-      } else if (ent.kind !== 'box' && ent.kind !== 'pallet') continue;
+      if (ent.kind !== 'box' && ent.kind !== 'pallet') continue;
       // Only shove things we walk into from the side: never the one we're standing on or
       // landing on top of (that kicked boxes out from under Dave's feet)
       if (this.support?.body.handle === ent.body.handle || hit.normal1.y > 0.5) continue;
@@ -370,37 +541,10 @@ export class Climber {
     }
   }
 
-  // The rail we're perched on, if the only thing under our feet is a ladder handrail.
-  // (The ground rays can miss a thin tube, so look at everything just under the feet.)
-  railUnderFeet(feet) {
-    let rail = null;
-    let solid = false;
-    this.game.world.intersectionsWithShape(
-      { x: feet.x, y: feet.y - 0.03, z: feet.z },
-      { x: 0, y: 0, z: 0, w: 1 },
-      new RAPIER.Cylinder(0.04, CONFIG.climber.radius * 0.8),
-      (c) => {
-        if (this.isRail(c)) rail = c;
-        else solid = true;
-        return true;
-      },
-      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-      COL.climberQuery,
-      undefined,
-      undefined,
-      (c) => c.handle !== this.collider.handle,
-    );
-    return solid ? null : rail;
-  }
-
   // Height above the warehouse floor (upper or lower level, stairs or ramp). Boxes, pallets,
   // forks and racks are all things that can move or fall away, so only the floor counts as ground.
   heightAboveGround(feet) {
     return feet.y - floorHeightAt(feet.x, feet.z);
-  }
-
-  isRail(collider) {
-    return !!collider && !!this.game.entityForCollider(collider)?.railHandles?.has(collider.handle);
   }
 
   // In the air and pushing into a ledge just above our feet: climb onto it.
@@ -413,7 +557,7 @@ export class Climber {
     const reach = cfg.radius + 0.12;
     const probe = { x: feet.x + dir.x * reach, y: feet.y + cfg.mantleHeight + 0.05, z: feet.z + dir.z * reach };
     const hit = castRay(this.game.world, probe, { x: 0, y: -1, z: 0 }, cfg.mantleHeight + 0.05, COL.climberQuery, (c) => c.handle !== this.collider.handle);
-    if (!hit || hit.normal.y < 0.7 || this.isRail(hit.collider)) return;
+    if (!hit || hit.normal.y < 0.7) return;
     const dh = hit.point.y - feet.y;
     if (dh <= 0.02) return;
     this.mantle = { topY: hit.point.y + 0.04, dir, forward: 0 };
@@ -449,6 +593,7 @@ export class Climber {
 
   postStep(dt) {
     if (this.state !== 'walk') return;
+    if (this.onLadder) return this.ladderPostStep(dt);
     const cfg = CONFIG.climber;
     const feet = this.feet;
 
@@ -477,23 +622,6 @@ export class Climber {
           break;
         }
       }
-    }
-
-    // Handrails are round tubes: no standing on them. Slip off toward the inside of the ladder.
-    const rail = this.grounded ? this.railUnderFeet(feet) : null;
-    if (rail) {
-      const lad = this.game.entityForCollider(rail);
-      const lt = lad.body.translation();
-      // Across the ladder (its local X), pointing from the rail we're on toward the middle
-      const across = new THREE.Vector3(1, 0, 0).applyQuaternion(quatToThree(lad.body.rotation())).setY(0).normalize();
-      const side = Math.sign(new THREE.Vector3(feet.x - lt.x, 0, feet.z - lt.z).dot(across)) || 1;
-      const inward = across.multiplyScalar(-side);
-      this.support = null;
-      this.grounded = false;
-      this.vy = Math.min(this.vy, 0);
-      this.airVel.copy(inward.multiplyScalar(1.6));
-      this.launchVel.set(0, 0, 0);
-      this.relVel.set(0, 0, 0);
     }
 
     // Support velocity and acceleration (thrown-off check)
@@ -690,7 +818,7 @@ export class Climber {
 
   updateTarget() {
     this.target = null;
-    if (this.state !== 'walk' || this.carried || this.ladderGrab) return;
+    if (this.state !== 'walk' || this.carried || this.ladderCarry) return;
     const cfg = CONFIG.climber;
     const eye = this.eye;
     const dir = this.viewDir();
@@ -700,9 +828,9 @@ export class Climber {
     if (hit && chest.distanceTo(tmp.set(hit.point.x, hit.point.y, hit.point.z)) <= cfg.reach) {
       const ent = this.game.entityForCollider(hit.collider);
       if (ent && ent.kind === 'box') this.target = ent;
-      else if (ent && ent.kind === 'ladder' && this.support?.body.handle !== ent.body.handle) this.target = ent;
+      else if (ent && ent.kind === 'ladder' && !this.onLadder && ent.state !== 'carried' && this.support?.body.handle !== ent.body.handle) this.target = ent;
     }
-    if (!this.target) this.target = this.nearbyLadder(chest, dir);
+    if (!this.target && !this.onLadder) this.target = this.nearbyLadder(chest, dir);
   }
 
   // A ladder in arm's reach and roughly in front of Dave, wherever the crosshair is: standing
@@ -713,7 +841,7 @@ export class Climber {
     let best = null;
     let bestD = reach;
     for (const ent of this.game.entities) {
-      if (ent.kind !== 'ladder' || this.support?.body.handle === ent.body.handle) continue;
+      if (ent.kind !== 'ladder' || ent.state === 'carried' || this.support?.body.handle === ent.body.handle) continue;
       for (let i = 0; i < ent.body.numColliders(); i++) {
         const p = ent.body.collider(i).projectPoint(chest, true)?.point;
         if (!p) continue;
@@ -937,7 +1065,8 @@ export class Climber {
       const { pos } = this.holdPose();
       this.releaseCarried(pos, yawQuat(this.yaw), { x: vel.x, y: vel.y, z: vel.z });
     }
-    this.releaseLadder(true);
+    this.dropLadder();
+    this.onLadder = null;
     this.state = 'ragdoll';
     this.wrapped = null;
     this.mantle = null;
@@ -1068,8 +1197,8 @@ export class Climber {
       pitch: this.pitch,
       speed: walkSpeed,
       grounded: this.grounded || !!this.mantle || this.state === 'wrapped',
-      carrying: !!this.carried,
-      holding: this.holdingOn || !!this.ladderGrab,
+      carrying: !!this.carried || !!this.ladderCarry,
+      holding: this.holdingOn || !!this.onLadder,
       holdPitch: this.holdPitch(),
     });
 
@@ -1087,6 +1216,12 @@ export class Climber {
     } else this.blob.visible = false;
 
     this.updateGhost();
+    this.updateLadderGhost();
+    if (this.ladderCarry) {
+      const { pos, quat } = this.shoulderPose();
+      this.ladderCarry.mesh.position.copy(pos);
+      this.ladderCarry.mesh.quaternion.copy(quat);
+    }
 
     // Carried box follows the camera smoothly (its physics body collides with nothing)
     this.armPhase += dt * walkSpeed * 2.2;
@@ -1106,8 +1241,8 @@ export class Climber {
         arm.rotation.set(0.1, side * 0.22, 0);
         arm.userData.glove.rotation.set(0, 0, -side * 1.25);
       });
-    } else if (this.holdingOn || this.ladderGrab) {
-      // Both hands up, gripping the carriage backrest in front of us
+    } else if (this.holdingOn || this.onLadder || this.ladderCarry) {
+      // Both hands up, gripping the carriage backrest, the ladder or the one on our shoulder
       this.hands.forEach((arm, i) => {
         const side = i === 0 ? -1 : 1;
         arm.position.set(side * 0.22, -0.3, -0.2);
@@ -1132,9 +1267,9 @@ export class Climber {
       const target = new THREE.Vector3(p.x, p.y, p.z);
       const back = new THREE.Vector3(Math.sin(this.ragdollYaw), 0, Math.cos(this.ragdollYaw)).multiplyScalar(3.2);
       const want = target.clone().add(back).add(new THREE.Vector3(0, 1.8, 0));
-      want.x = Math.max(-14.6, Math.min(14.6, want.x));
-      want.z = Math.max(-9.6, Math.min(9.6, want.z));
-      want.y = Math.max(0.4, want.y);
+      want.x = Math.max(-ROOM.halfX + 0.6, Math.min(ROOM.halfX - 0.6, want.x));
+      want.z = Math.max(-ROOM.halfZ + 0.6, Math.min(ROOM.halfZ - 0.6, want.z));
+      want.y = Math.max(floorHeightAt(want.x, want.z) + 0.4, want.y);
       this.camPos.lerp(want, 1 - Math.exp(-dt * 6));
       cam.position.copy(this.camPos);
       cam.lookAt(target);

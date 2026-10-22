@@ -127,8 +127,15 @@ export class Hud {
         const key = game.keyHint(role, 'interact');
         if (c.state === 'wrapped') p = 'You are wrapped. Wait for it…';
         else if (c.holdingOn) p = `Holding on · Let go <kbd>${key}</kbd>`;
-        else if (c.ladderGrab) p = `Rolling the ladder · Let go <kbd>${key}</kbd>`;
-        else if (c.target?.kind === 'ladder') p = `Grab ladder <kbd>${key}</kbd>`;
+        else if (c.onLadder && !c.carried && !c.target) {
+          const climb = game.usesKeyboard(role) ? '<kbd>W</kbd> <kbd>S</kbd> climb' : 'Stick up / down to climb';
+          p = `On the ladder · ${climb} · No jumping!`;
+        } else if (c.ladderCarry) p = c.ladderPlaceOk ? `Set up ladder <kbd>${key}</kbd>` : 'Find flat, clear floor for the ladder';
+        else if (c.target?.kind === 'ladder') {
+          if (!c.target.standing) p = `Pick up ladder <kbd>${key}</kbd>`;
+          else if (c.foldTimer > 0) p = `Folding ladder${'.'.repeat(1 + Math.floor((c.foldTimer / 0.5) * 3))}`;
+          else p = `Walk into the steps to climb · Hold <kbd>${key}</kbd> to fold`;
+        }
         else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
         else if (c.carried) p = `Put down SKU ${c.carried.sku} <kbd>${key}</kbd>`;
         else if (c.target) p = `Pick up SKU ${c.target.sku} <kbd>${key}</kbd>`;

@@ -49,8 +49,16 @@ const INCIDENT_LINES = {
     again: ['Another box fell on Dave', 'Dave is a box magnet'],
   },
   ladder: {
-    first: ["Ralph knocked Dave's ladder over", 'Dave trusted the ladder', 'The ladder had other plans', 'Dave rode the ladder all the way down', 'Dave fell off the ladder. Three points of contact? Zero.'],
+    first: ['Dave trusted the ladder', 'The ladder had other plans', 'Dave rode the ladder all the way down', 'Dave fell off the ladder. Three points of contact? Zero.'],
     again: ['Dave trusted the ladder... again', 'Ladder: 2, Dave: 0', 'Dave and the ladder are no longer speaking'],
+  },
+  ladderJump: {
+    first: ['Dave tried to jump off the ladder', "Dave jumped. The ladder didn't stay.", 'Dave dismounted the ladder. Badly.', 'Dave: 0, ladder: 1'],
+    again: ['Dave jumped off the ladder... again', 'Dave keeps jumping off ladders', 'The ladder saw that coming'],
+  },
+  ladderKnocked: {
+    first: ["Ralph knocked Dave's ladder over", "Ralph forklifted Dave's ladder", 'Ralph took the ladder out from under Dave'],
+    again: ["Ralph knocked Dave's ladder over... again", 'Ralph and the ladder: round two'],
   },
   ladderHit: {
     first: ['The ladder fell on Dave', 'Dave got laddered'],
@@ -327,7 +335,7 @@ export class Game {
     return incident;
   }
 
-  // Racking is wobbly: when the forklift or a falling ladder newly hits a rack, the impact also
+  // Racking is wobbly: when the forklift or a falling neighbour newly hits a rack, the impact also
   // rocks the top of the rack in the direction of travel, so medium-speed hits tip it over.
   // (The raw contact mostly pushes on the uprights' feet, which would only slide it.)
   rackImpacts(dt) {
@@ -367,21 +375,6 @@ export class Game {
     }
     const lv = fl.body.linvel();
     this.prevForkliftVel = { x: lv.x, z: lv.z };
-    // Ladders falling against a rack: use the speed of the ladder's top
-    for (const lad of this.entities) {
-      if (lad.kind !== 'ladder') continue;
-      const topPoint = new THREE.Vector3(0, 3.5, 0).applyQuaternion(quatToThree(lad.body.rotation())).add(lad.body.translation());
-      const tv = lad.body.velocityAtPoint(topPoint);
-      for (let i = 0; i < lad.body.numColliders(); i++) {
-        this.world.contactPairsWith(lad.body.collider(i), (other) => {
-          const ent = this.entityForCollider(other);
-          if (ent?.kind === 'rack') {
-            ent.ladderTouched = this.clock;
-            hit(`lad:${lad.body.handle}:${ent.name}`, ent, tv, lad.mass, cfg.ladderKick, cfg.ladderImpactSpeed);
-          }
-        });
-      }
-    }
     // A falling rack hitting its neighbour (dominoes): use the speed of the falling rack's top
     for (const r of this.level.racks) {
       if (!this.rackTilted(r)) continue; // still standing
@@ -390,7 +383,7 @@ export class Game {
       for (let i = 0; i < r.body.numColliders(); i++) {
         this.world.contactPairsWith(r.body.collider(i), (other) => {
           const ent = this.entityForCollider(other);
-          if (ent?.kind === 'rack' && ent !== r) hit(`rk:${r.name}:${ent.name}`, ent, tv, r.mass, cfg.rackKick, cfg.ladderImpactSpeed);
+          if (ent?.kind === 'rack' && ent !== r) hit(`rk:${r.name}:${ent.name}`, ent, tv, r.mass, cfg.rackKick, cfg.fallImpactSpeed);
         });
       }
     }
@@ -435,7 +428,6 @@ export class Game {
       if (up.y > Math.cos((40 * Math.PI) / 180)) continue;
       r.fallen = true;
       const byRalph = this.clock - (r.ralphTouched ?? -Infinity) < 4;
-      const byLadder = !byRalph && this.clock - (r.ladderTouched ?? -Infinity) < 4;
       const run = this.rackRun;
       if (run && this.clock - run.time < 6) {
         // Part of the same domino run: grow the existing incident instead of adding one
@@ -452,11 +444,8 @@ export class Game {
       const incident = this.onIncident('rackDown', {
         victim: byRalph ? 'Ralph' : 'Nobody',
         culprit: byRalph ? 'Ralph' : undefined,
-        causes: byLadder ? ['The ladder', 'The racking', 'Gravity'] : undefined,
         subject: `rack:${r.name}`,
-        line: byLadder
-          ? pick([`The ladder took out Rack ${r.name}`, `Rack ${r.name} lost a fight with a ladder`, `A ladder knocked over Rack ${r.name}. The ladder is fine.`])
-          : rackDownLine([r.name], byRalph, again),
+        line: rackDownLine([r.name], byRalph, again),
         at: { x: t.x, y: 0, z: t.z },
       });
       this.rackRun = { time: this.clock, rows: [r.name], byRalph, incident };

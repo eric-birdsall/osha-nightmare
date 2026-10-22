@@ -13,6 +13,8 @@ const CAUSES = {
   forks: ['Ralph'],
   load: ['Gravity'],
   ladder: ['Dave', 'The ladder', 'Gravity'],
+  ladderJump: ['Dave', 'The ladder', 'Gravity'],
+  ladderKnocked: ['Ralph', 'The ladder', 'Gravity'],
   ladderHit: ['The ladder', 'Gravity'],
   rack: ['The racking', 'Gravity'],
   tipped: ['Ralph', 'Gravity'],
