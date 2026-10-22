@@ -135,6 +135,7 @@ function buildRack(game, rack) {
         .setTranslation(...pos)
         .setMass((totalMass * half[0] * half[1] * half[2]) / vol)
         .setFriction(cfg.friction)
+        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Max) // feet grip like they're bolted down
         .setCollisionGroups(COL.dyn),
       body,
     );
@@ -144,7 +145,7 @@ function buildRack(game, rack) {
   }
   labelRack(group, rack, cx, cz);
   game.scene.add(group);
-  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass };
+  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass, depth: z1 - z0 };
   game.addEntity(ent);
   return ent;
 }

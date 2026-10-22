@@ -88,9 +88,15 @@ export const CONFIG = {
   },
 
   racks: {
-    massPerBay: 300, // kg; a 6-bay single-deep row is ~1.8 t
+    massPerBay: 60, // kg: light racking
     doubleDeepFactor: 1.6,
-    friction: 0.8, // feet grip the floor so a falling neighbour tips a row instead of sliding it
+    friction: 3.0, // feet grip the floor hard, so hits rock a row instead of skating it along
+    // Wobbly racking: a new hit also rocks the top of the row along the direction of travel
+    tipImpactSpeed: 1.4, // forklift hits slower than this (m/s) just bump it
+    tipKick: 0.5, // top impulse = rack mass x tipKick x hit speed (scaled up for deeper rows)
+    ladderImpactSpeed: 0.6, // a ladder's top moving faster than this when it hits a row
+    ladderKick: 1.8, // top impulse = ladder mass x ladderKick x speed (scaled up for deeper rows)
+    rackKick: 0.3, // a falling row hitting its neighbour: falling row mass x rackKick x top speed
     crushSpeed: 1.5, // a rack part moving at the climber faster than this (m/s) = incident
   },
 

@@ -296,6 +296,7 @@ export class Game {
       line: opts.line || this.incidentLine(reason),
       victim: opts.victim || 'Dave',
       culprit: opts.culprit,
+      causes: opts.causes,
       subject,
       where: describeLocation(at),
     };
@@ -306,6 +307,66 @@ export class Game {
       this.pendingReplay = { incidentTime: this.clock, at: this.clock + CONFIG.replay.delay, incident };
     }
     return incident;
+  }
+
+  // Racking is wobbly: when the forklift or a falling ladder newly hits a row, the impact also
+  // rocks the top of the row in the direction of travel, so medium-speed hits tip it over.
+  // (The raw contact mostly pushes on the uprights' feet, which would only slide it.)
+  rackImpacts(dt) {
+    const cfg = CONFIG.racks;
+    const now = new Set();
+    const hit = (key, rack, velocity, mass, kick, minSpeed) => {
+      now.add(key);
+      if (this.rackContacts?.has(key) || rack.fallen) return;
+      const speed = Math.hypot(velocity.x, velocity.z);
+      if (speed < minSpeed) return;
+      const depth = rack.depth / 1.2; // deeper rows need more to go over
+      const dir = new THREE.Vector3(velocity.x, 0, velocity.z).normalize();
+      const top = new THREE.Vector3(0, 5.0, 0).applyQuaternion(quatToThree(rack.body.rotation())).add(rack.body.translation());
+      rack.body.applyImpulseAtPoint(dir.multiplyScalar(mass * kick * speed * depth), top, true);
+    };
+    // The forklift (chassis or forks), using its velocity from before this step's collision
+    const fl = this.forklift;
+    const v = this.prevForkliftVel || { x: 0, z: 0 };
+    for (const body of [fl.body, fl.carriage]) {
+      for (let i = 0; i < body.numColliders(); i++) {
+        this.world.contactPairsWith(body.collider(i), (other) => {
+          const ent = this.entityForCollider(other);
+          if (ent?.kind === 'rack') hit(`fl:${ent.name}`, ent, v, ent.mass, cfg.tipKick, cfg.tipImpactSpeed);
+        });
+      }
+    }
+    const lv = fl.body.linvel();
+    this.prevForkliftVel = { x: lv.x, z: lv.z };
+    // Ladders falling against a row: use the speed of the ladder's top
+    for (const lad of this.entities) {
+      if (lad.kind !== 'ladder') continue;
+      const topPoint = new THREE.Vector3(0, 3.5, 0).applyQuaternion(quatToThree(lad.body.rotation())).add(lad.body.translation());
+      const tv = lad.body.velocityAtPoint(topPoint);
+      for (let i = 0; i < lad.body.numColliders(); i++) {
+        this.world.contactPairsWith(lad.body.collider(i), (other) => {
+          const ent = this.entityForCollider(other);
+          if (ent?.kind === 'rack') {
+            ent.ladderTouched = this.clock;
+            hit(`lad:${lad.body.handle}:${ent.name}`, ent, tv, lad.mass, cfg.ladderKick, cfg.ladderImpactSpeed);
+          }
+        });
+      }
+    }
+    // A falling row hitting its neighbour (dominoes): use the speed of the falling row's top
+    for (const r of this.level.racks) {
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(r.body.rotation()));
+      if (up.y > Math.cos((8 * Math.PI) / 180)) continue; // still standing
+      const top = new THREE.Vector3(0, 5.0, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
+      const tv = r.body.velocityAtPoint(top);
+      for (let i = 0; i < r.body.numColliders(); i++) {
+        this.world.contactPairsWith(r.body.collider(i), (other) => {
+          const ent = this.entityForCollider(other);
+          if (ent?.kind === 'rack' && ent !== r) hit(`rk:${r.name}:${ent.name}`, ent, tv, r.mass, cfg.rackKick, cfg.ladderImpactSpeed);
+        });
+      }
+    }
+    this.rackContacts = now;
   }
 
   // Racks: note when the forklift touches one, and raise an incident when a row goes over.
@@ -324,12 +385,14 @@ export class Game {
         }
       }
     }
+    this.rackImpacts(dt);
     for (const r of this.level.racks) {
       if (r.fallen) continue;
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(r.body.rotation()));
       if (up.y > Math.cos((40 * Math.PI) / 180)) continue;
       r.fallen = true;
       const byRalph = this.clock - (r.ralphTouched ?? -Infinity) < 4;
+      const byLadder = !byRalph && this.clock - (r.ladderTouched ?? -Infinity) < 4;
       const run = this.rackRun;
       if (run && this.clock - run.time < 6) {
         // Part of the same domino run: grow the existing incident instead of adding one
@@ -346,8 +409,11 @@ export class Game {
       const incident = this.onIncident('rackDown', {
         victim: byRalph ? 'Ralph' : 'Nobody',
         culprit: byRalph ? 'Ralph' : undefined,
+        causes: byLadder ? ['The ladder', 'The racking', 'Gravity'] : undefined,
         subject: `rack:${r.name}`,
-        line: rackDownLine([r.name], byRalph, again),
+        line: byLadder
+          ? pick([`The ladder took out Row ${r.name}`, `Row ${r.name} lost a fight with a ladder`, `A ladder knocked over Row ${r.name}. The ladder is fine.`])
+          : rackDownLine([r.name], byRalph, again),
         at: { x: t.x, y: 0, z: t.z },
       });
       this.rackRun = { time: this.clock, rows: [r.name], byRalph, incident };

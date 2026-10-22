@@ -269,6 +269,16 @@ export class Climber {
     if (!quiet) sfx.putdown();
   }
 
+  ladderTouchesRack(ent) {
+    let touching = false;
+    for (let i = 0; i < ent.body.numColliders() && !touching; i++) {
+      this.game.world.contactPairsWith(ent.body.collider(i), (other) => {
+        if (this.game.entityForCollider(other)?.kind === 'rack') touching = true;
+      });
+    }
+    return touching;
+  }
+
   ladderHeading(ent) {
     const f = new THREE.Vector3(0, 0, 1).applyQuaternion(quatToThree(ent.body.rotation()));
     return Math.atan2(f.x, f.z);
@@ -285,6 +295,8 @@ export class Climber {
     const err = new THREE.Vector3(target.x - lt.x, 0, target.z - lt.z);
     // Snagged on something, tipping, or we left the floor: let go
     if (err.length() > cfg.snagDistance || upright < 0.96 || g.ent.removed || !this.grounded) return this.releaseLadder();
+    // Touching racking: let go rather than shove the (light) rack over while parking the ladder
+    if (this.ladderTouchesRack(g.ent)) return this.releaseLadder();
     const v = err.multiplyScalar(cfg.rollGain / dt);
     if (v.length() > cfg.maxRollSpeed) v.setLength(cfg.maxRollSpeed);
     body.setLinvel({ x: v.x, y: body.linvel().y, z: v.z }, true);

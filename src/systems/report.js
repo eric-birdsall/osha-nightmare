@@ -63,7 +63,7 @@ export class IncidentReport {
     this.shownAt = performance.now();
     const who = incident.victim || 'Dave';
     const role = who === 'Ralph' ? 'Forklift operator' : who === 'Dave' ? 'Order picker / climber' : 'N/A';
-    const causes = new Set(CAUSES[incident.key] || ['Gravity']);
+    const causes = new Set(incident.causes || CAUSES[incident.key] || ['Gravity']);
     if (incident.culprit === 'Ralph') causes.add('Ralph');
     // Corrective action goes to whoever is to blame: Ralph if he's a root cause, else the employee
     const blame = incident.culprit || (causes.has('Ralph') ? 'Ralph' : who);
