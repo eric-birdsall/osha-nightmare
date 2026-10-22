@@ -190,6 +190,31 @@ function makeZone(game, name, cx, cz, w, d) {
   };
 }
 
+// Human-readable spot for incident reports: a rack row, an aisle and bay, or a floor zone.
+export function describeLocation(p) {
+  const x1 = RACK_X0 + BAYS * BAY_W;
+  if (Math.abs(p.x - 12) < 1.4 && Math.abs(p.z - 9) < 1.4) return 'The WRAP square';
+  if (p.x > ROOM.halfX - 4 && Math.abs(p.z - 2) < 2.2) return 'Dock 1';
+  if (p.x < RACK_X0 - 0.5) return 'West wall, behind the racking';
+  const rows = [...RACKS].sort((a, b) => a.z0 - b.z0);
+  if (p.x > x1 + 0.5) {
+    // Just past the row ends: name the aisle we're at the end of
+    if (p.x < x1 + 4) {
+      for (let i = 0; i < rows.length - 1; i++) {
+        if (p.z > rows[i].z1 && p.z < rows[i + 1].z0) return `End of aisle ${rows[i].name}/${rows[i + 1].name}`;
+      }
+    }
+    return 'Open floor, east side';
+  }
+  const bay = Math.min(BAYS, Math.max(1, Math.floor((p.x - RACK_X0) / BAY_W) + 1));
+  const up = p.y > 0.5 ? `, ${p.y.toFixed(1)} m up` : '';
+  for (const r of rows) if (p.z >= r.z0 - 0.2 && p.z <= r.z1 + 0.2) return `Row ${r.name}, bay ${bay}${up}`;
+  for (let i = 0; i < rows.length - 1; i++) {
+    if (p.z > rows[i].z1 && p.z < rows[i + 1].z0) return `Aisle ${rows[i].name}/${rows[i + 1].name}, by bay ${bay}${up}`;
+  }
+  return p.z < rows[0].z0 ? 'Behind Row A' : `South of Row ${rows[rows.length - 1].name}`;
+}
+
 export function buildLevel(game) {
   const { scene } = game;
   const { halfX, halfZ, wallH } = ROOM;

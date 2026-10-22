@@ -215,6 +215,7 @@ export class Forklift {
     wheelMount.add(column, spinner);
     root.add(wheelMount);
     this.wheelMount = wheelMount;
+    this.buildDashboard(root);
     this.steeringWheel = spinner;
     // Beacon
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff8800 }));
@@ -341,6 +342,11 @@ export class Forklift {
     // Tipped over: after a few seconds the night shift sets it back on its wheels
     const upY = new THREE.Vector3(0, 1, 0).applyQuaternion(q).y;
     this.tippedTime = upY < 0.5 ? (this.tippedTime || 0) + dt : 0;
+    if (this.tippedTime > 0.6 && !this.tipReported) {
+      this.tipReported = true;
+      this.game.onIncident('tipped', { victim: 'Ralph', culprit: 'Ralph', subject: 'forklift' });
+    }
+    if (upY > 0.9) this.tipReported = false;
     if (this.tippedTime > cfg.rightAfter) {
       this.tippedTime = 0;
       const yaw = Math.atan2(fwd.x, fwd.z);
@@ -390,7 +396,13 @@ export class Forklift {
       .multiplyScalar(cfg.mass);
     const maxJ = cfg.traction * cfg.mass * 9.81 * dt * this.groundFrac;
     if (J.length() > maxJ) J.setLength(maxJ);
-    body.applyImpulse({ x: J.x, y: 0, z: J.z }, true);
+    // Drive/brake acts through the centre of mass; the sideways tire grip acts at the floor,
+    // so hard cornering rolls the truck toward the outside of the turn (and can tip it).
+    const lat = right.clone().multiplyScalar(J.dot(right));
+    const lon = J.clone().sub(lat);
+    body.applyImpulse({ x: lon.x, y: 0, z: lon.z }, true);
+    const com = body.worldCom();
+    body.applyImpulseAtPoint({ x: lat.x, y: 0, z: lat.z }, { x: com.x, y: t.y + cfg.gripHeight, z: com.z }, true);
 
     const av = body.angvel();
     const dw = Math.max(-cfg.yawAccel * dt, Math.min(cfg.yawAccel * dt, yawTarget - av.y));
@@ -413,6 +425,157 @@ export class Forklift {
     this.lookPitch = Math.max(-cfg.lookPitchLimit, Math.min(cfg.lookPitchLimit, this.lookPitch - a.lookY));
   }
 
+  // Dashboard screen built into a sloped yellow binnacle on top of the dash, centred behind
+  // the steering wheel and tilted up toward the driver: speedometer, D/R gear, fork height.
+  buildDashboard(root) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 300;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    // Slope rises toward the front: from the dash top (y 1.05, z 0.54) to (y 1.17, z 0.72)
+    const back = new THREE.Vector3(0, 1.05, 0.54);
+    const front = new THREE.Vector3(0, 1.17, 0.72);
+    const along = front.clone().sub(back);
+    const slopeLen = along.length();
+    along.normalize();
+    const normal = new THREE.Vector3(0, along.z, -along.y); // up and back, toward the driver
+    // Screen axes: right = driver's right (-X), up = up the slope, out = normal
+    const basis = new THREE.Matrix4().makeBasis(new THREE.Vector3(-1, 0, 0), along, normal);
+    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
+    const mid = back.clone().add(front).multiplyScalar(0.5);
+    const binnacle = boxMesh(0.64, slopeLen + 0.02, 0.14, 0xf2b705);
+    binnacle.quaternion.copy(q);
+    binnacle.position.copy(mid).addScaledVector(normal, -0.07);
+    const bezel = boxMesh(0.47, 0.215, 0.012, 0x15181c, { edges: false });
+    bezel.quaternion.copy(q);
+    bezel.position.copy(mid).addScaledVector(normal, -0.004);
+    const w = 0.44;
+    const h = (w * canvas.height) / canvas.width;
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
+    screen.quaternion.copy(q);
+    screen.position.copy(mid).addScaledVector(normal, 0.003);
+    root.add(binnacle, bezel, screen);
+    this.dash = { canvas, tex, key: null };
+    this.drawDashboard();
+  }
+
+  drawDashboard() {
+    const mph = Math.abs(this.speed) * 2.237;
+    const height = this.measuredHeight ? Math.max(0, this.measuredHeight()) : this.height;
+    const key = `${mph.toFixed(1)}|${this.gear}|${height.toFixed(2)}`;
+    if (key === this.dash.key) return;
+    this.dash.key = key;
+    const cfg = CONFIG.forklift;
+    const g = this.dash.canvas.getContext('2d');
+    const W = this.dash.canvas.width;
+    const H = this.dash.canvas.height;
+    g.fillStyle = '#0d1014';
+    g.fillRect(0, 0, W, H);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    const label = (text, x, y) => {
+      g.font = 'bold 20px system-ui, sans-serif';
+      g.fillStyle = '#7d8793';
+      g.fillText(text, x, y);
+    };
+
+    // --- Speedometer: needle sweeps 0-10 mph across 240°
+    const cx = 150;
+    const cy = 150;
+    const R = 128;
+    const max = 10;
+    const a0 = Math.PI * 0.833;
+    const sweep = Math.PI * 1.333;
+    const ang = (v) => a0 + (Math.min(v, max) / max) * sweep;
+    g.strokeStyle = '#c62828';
+    g.lineWidth = 12;
+    g.beginPath();
+    g.arc(cx, cy, R - 22, ang(8), ang(10));
+    g.stroke();
+    g.font = 'bold 24px system-ui, sans-serif';
+    for (let v = 0; v <= max; v++) {
+      const a = ang(v);
+      const major = v % 2 === 0;
+      g.strokeStyle = '#e8e8e8';
+      g.lineWidth = major ? 5 : 3;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * (major ? R - 40 : R - 32), cy + Math.sin(a) * (major ? R - 40 : R - 32));
+      g.lineTo(cx + Math.cos(a) * (R - 16), cy + Math.sin(a) * (R - 16));
+      g.stroke();
+      if (major) {
+        g.fillStyle = '#e8e8e8';
+        g.fillText(String(v), cx + Math.cos(a) * (R - 60), cy + Math.sin(a) * (R - 60));
+      }
+    }
+    g.font = 'bold 40px system-ui, sans-serif';
+    g.fillStyle = '#ffd400';
+    g.fillText(mph.toFixed(1), cx, cy + 52);
+    label('MPH', cx, cy + 86);
+    const a = ang(mph);
+    g.strokeStyle = '#ff5a1f';
+    g.lineWidth = 7;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(cx - Math.cos(a) * 14, cy - Math.sin(a) * 14);
+    g.lineTo(cx + Math.cos(a) * (R - 24), cy + Math.sin(a) * (R - 24));
+    g.stroke();
+    g.lineCap = 'butt';
+    g.fillStyle = '#ff5a1f';
+    g.beginPath();
+    g.arc(cx, cy, 12, 0, Math.PI * 2);
+    g.fill();
+
+    // --- Gear: D and R lights, the active one lit
+    const gx = 360;
+    label('GEAR', gx, 40);
+    for (const [txt, y, on, color] of [
+      ['D', 115, this.gear === 1, '#31d07a'],
+      ['R', 215, this.gear === -1, '#ff4040'],
+    ]) {
+      g.fillStyle = on ? color : '#1f252c';
+      g.fillRect(gx - 44, y - 42, 88, 84);
+      g.strokeStyle = on ? color : '#38414b';
+      g.lineWidth = 3;
+      g.strokeRect(gx - 44, y - 42, 88, 84);
+      g.font = 'bold 64px system-ui, sans-serif';
+      g.fillStyle = on ? '#0d1014' : '#4a535d';
+      g.fillText(txt, gx, y + 3);
+    }
+
+    // --- Fork height: vertical bar from liftMin to liftMax, plus metres
+    const fx = 520;
+    label('FORKS', fx + 30, 40);
+    const barX = fx - 30;
+    const barTop = 66;
+    const barH = 196;
+    const frac = Math.min(1, Math.max(0, height / cfg.liftMax));
+    g.strokeStyle = '#7d8793';
+    g.lineWidth = 3;
+    g.strokeRect(barX, barTop, 34, barH);
+    g.fillStyle = '#ffd400';
+    g.fillRect(barX + 3, barTop + 3 + (barH - 6) * (1 - frac), 28, (barH - 6) * frac);
+    // Shelf heights as tick marks on the bar
+    g.strokeStyle = '#e86a1c';
+    g.lineWidth = 3;
+    for (const y of [1.5, 3.0]) {
+      const ty = barTop + barH * (1 - y / cfg.liftMax);
+      g.beginPath();
+      g.moveTo(barX - 8, ty);
+      g.lineTo(barX + 42, ty);
+      g.stroke();
+    }
+    g.textAlign = 'left';
+    g.font = 'bold 44px system-ui, sans-serif';
+    g.fillStyle = '#ffffff';
+    g.fillText(height.toFixed(2), barX + 46, barTop + barH / 2 - 8);
+    g.font = 'bold 22px system-ui, sans-serif';
+    g.fillStyle = '#7d8793';
+    g.fillText('m', barX + 46, barTop + barH / 2 + 28);
+    this.dash.tex.needsUpdate = true;
+  }
+
   updateVisuals(dt) {
     const t = this.body.translation();
     const r = this.body.rotation();
@@ -425,6 +588,7 @@ export class Forklift {
       w.tire.rotation.x = this.wheelSpin;
     }
     this.steeringWheel.rotation.z = -this.steer * 3;
+    this.drawDashboard();
     // Driver's gloves on the rim at ten and two, following the wheel as it turns
     this.driver.sit();
     this.mesh.updateMatrixWorld(true);

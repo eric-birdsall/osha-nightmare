@@ -7,6 +7,9 @@ import { Forklift } from '../entities/forklift.js';
 import { Climber } from '../entities/climber.js';
 import { WrapSystem, collectStack } from './wrapping.js';
 import { Recorder, ReplayDirector, buildCctvFixtures } from './replay.js';
+import { IncidentReport } from './report.js';
+import { describeLocation } from '../world/level.js';
+import { quatToThree } from '../physics.js';
 import { disposeTree } from '../util/meshes.js';
 import { sfx } from './audio.js';
 
@@ -53,12 +56,33 @@ const INCIDENT_LINES = {
     first: ['The ladder fell on Dave', 'Dave got laddered'],
     again: ['The ladder fell on Dave... again', 'Dave got laddered. Again.'],
   },
+  tipped: {
+    first: ['Ralph tipped the forklift', 'Ralph took that corner on two wheels. Then zero.', 'Ralph wore a seatbelt. The forklift did not.', "The forklift is lying down. Ralph says it's tired."],
+    again: ['Ralph tipped the forklift... again', 'Ralph has now tipped more forklifts than orders shipped', 'The forklift is lying down again'],
+  },
   rack: {
     first: ['Timber! (Dave was underneath)', 'Dave got flattened by the racking', 'The racking fell on Dave'],
     again: ['The racking fell on Dave... again', 'Dave and the racking: a rematch nobody wanted'],
   },
 };
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+const listRows = (rows) => (rows.length === 1 ? rows[0] : `${rows.slice(0, -1).join(', ')} and ${rows[rows.length - 1]}`);
+// A row (or a domino run of rows) fell over. byRalph: the forklift touched one of them recently.
+function rackDownLine(rows, byRalph, again) {
+  const r = listRows(rows);
+  if (rows.length > 1) {
+    return byRalph
+      ? pick([`Ralph took out Rows ${r}`, `Ralph started a domino show: Rows ${r}`, `Rows ${r} are now horizontal. Thanks, Ralph.`])
+      : pick([`Rows ${r} went down like dominoes`, `Rows ${r} fell over. Nobody saw anything.`]);
+  }
+  if (byRalph) {
+    return again
+      ? pick([`Ralph knocked over Row ${r}... again`, `Ralph and the racking: another one`])
+      : pick([`Ralph knocked over Row ${r}`, `Ralph found Row ${r}. With the forklift.`, `Row ${r} is now horizontal. Thanks, Ralph.`]);
+  }
+  return pick([`Row ${r} fell over. Nobody saw anything.`, `Row ${r} gave up`]);
+}
 
 // Owns one playthrough: physics world, scene, entities, order state, swap logic.
 export class Game {
@@ -180,6 +204,7 @@ export class Game {
     this.climber.preStep(actions.climber, dt, climberOn);
     this.world.step();
     this.climber.postStep(dt);
+    this.watchRacks(dt);
     this.wrap.step(dt);
     this.orderStep(dt);
     if (!this.complete) this.time += dt;
@@ -256,24 +281,91 @@ export class Game {
     return pick(this.incidentCounts[reason] > 1 ? lines.again : lines.first);
   }
 
-  onIncident(reason) {
+  // opts: { victim: 'Dave' | 'Ralph' | 'Nobody', culprit, subject: replay camera target, line, at: position }
+  onIncident(reason, opts = {}) {
     this.falls++;
     this.days = 0;
     this.dayTimer = 0;
     sfx.thud();
     setTimeout(sfx.incident, 250);
-    const line = this.incidentLine(reason);
-    this.hud?.banner(`⚠ INCIDENT ⚠<small>${line}</small>`);
-    // Queue the CCTV replay once the ragdoll has had a moment to flail
-    if (!this.replay && !this.pendingReplay) {
-      this.pendingReplay = { incidentTime: this.clock, at: this.clock + CONFIG.replay.delay, reason: line };
+    const subject = opts.subject || 'climber';
+    const at = opts.at || (subject === 'forklift' ? this.forklift.body.translation() : this.climber.feet);
+    const incident = {
+      key: reason,
+      number: this.falls,
+      line: opts.line || this.incidentLine(reason),
+      victim: opts.victim || 'Dave',
+      culprit: opts.culprit,
+      subject,
+      where: describeLocation(at),
+    };
+    this.lastIncident = incident;
+    this.hud?.banner(`⚠ INCIDENT ⚠<small>${incident.line}</small>`);
+    // Queue the CCTV replay once things have had a moment to fall over
+    if (!this.replay && !this.pendingReplay && !this.report) {
+      this.pendingReplay = { incidentTime: this.clock, at: this.clock + CONFIG.replay.delay, incident };
+    }
+    return incident;
+  }
+
+  // Racks: note when the forklift touches one, and raise an incident when a row goes over.
+  // Rows falling within a few seconds of each other are one domino incident.
+  watchRacks(dt) {
+    const fl = this.forklift;
+    this.rackTouchTimer = (this.rackTouchTimer || 0) - dt;
+    if (this.rackTouchTimer <= 0) {
+      this.rackTouchTimer = 0.1;
+      for (const body of [fl.body, fl.carriage]) {
+        for (let i = 0; i < body.numColliders(); i++) {
+          this.world.contactPairsWith(body.collider(i), (other) => {
+            const ent = this.entityForCollider(other);
+            if (ent?.kind === 'rack') ent.ralphTouched = this.clock;
+          });
+        }
+      }
+    }
+    for (const r of this.level.racks) {
+      if (r.fallen) continue;
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(r.body.rotation()));
+      if (up.y > Math.cos((40 * Math.PI) / 180)) continue;
+      r.fallen = true;
+      const byRalph = this.clock - (r.ralphTouched ?? -Infinity) < 4;
+      const run = this.rackRun;
+      if (run && this.clock - run.time < 6) {
+        // Part of the same domino run: grow the existing incident instead of adding one
+        run.rows.push(r.name);
+        run.time = this.clock;
+        run.byRalph ||= byRalph;
+        run.incident.line = rackDownLine(run.rows, run.byRalph, false);
+        run.incident.culprit = run.byRalph ? 'Ralph' : undefined;
+        this.hud?.banner(`⚠ INCIDENT ⚠<small>${run.incident.line}</small>`);
+        continue;
+      }
+      const again = (this.incidentCounts.rackDown = (this.incidentCounts.rackDown || 0) + 1) > 1;
+      const t = r.body.translation();
+      const incident = this.onIncident('rackDown', {
+        victim: byRalph ? 'Ralph' : 'Nobody',
+        culprit: byRalph ? 'Ralph' : undefined,
+        subject: `rack:${r.name}`,
+        line: rackDownLine([r.name], byRalph, again),
+        at: { x: t.x, y: 0, z: t.z },
+      });
+      this.rackRun = { time: this.clock, rows: [r.name], byRalph, incident };
     }
   }
 
-  // Advance the replay; returns true while it is still showing.
+  // Advance the replay, then the incident report after it. Returns true while either is showing.
   updateReplay(dt, skip) {
-    if (this.replay && !this.replay.update(dt, skip)) this.replay = null;
-    return !!this.replay;
+    if (this.replay) {
+      if (!this.replay.update(dt, skip)) {
+        const incident = this.replay.incident;
+        this.replay = null;
+        this.report = new IncidentReport(this, incident);
+      }
+      return true;
+    }
+    if (this.report && !this.report.update(skip)) this.report = null;
+    return !!this.report;
   }
 
   // ---------------------------------------------------------------- per frame
@@ -320,6 +412,7 @@ export class Game {
 
   dispose() {
     this.replay?.finish();
+    this.report?.close();
     disposeTree(this.scene);
     this.world.free();
   }

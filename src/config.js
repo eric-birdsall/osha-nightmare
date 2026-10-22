@@ -46,7 +46,8 @@ export const CONFIG = {
 
   forklift: {
     mass: 3000,
-    centerOfMass: [0, 0.5, -0.35], // low and toward the counterweight
+    centerOfMass: [0, 0.8, -0.35], // toward the counterweight; at 0.8 m a hard turn at full speed (~4 m/s) tips it
+    gripHeight: 0, // where the sideways tire grip acts (0 = the floor)
     inertia: [1700, 1800, 650],
     topSpeed: 4.0,
     reverseSpeed: 2.5,

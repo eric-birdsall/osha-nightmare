@@ -25,8 +25,7 @@ const VIEW_HTML = (role) => `
   ${
     role === 'climber'
       ? `<div class="crosshair"></div><div class="prompt"></div>`
-      : `<div class="forkh card"><div class="fl">FORKS</div><div class="fv">0.10 m</div><div class="fbar"><div class="ffill"></div></div></div>
-         <div class="gear card">D</div>`
+      : '' /* speed, gear and fork height are on the forklift's dashboard */
   }
   <div class="rolelabel">${role === 'climber' ? 'DAVE · CLIMBER' : 'RALPH · DRIVER'}</div>
   <div class="toast"></div>
@@ -60,9 +59,6 @@ export class Hud {
         roles: q('.roles'),
         prompt: q('.prompt'),
         crosshair: q('.crosshair'),
-        forkV: q('.fv'),
-        forkFill: q('.ffill'),
-        gear: q('.gear'),
         toast: q('.toast'),
         banner: q('.banner'),
         deviceHint: q('.devicehint'),
@@ -140,11 +136,6 @@ export class Hud {
         v.crosshair.classList.toggle('hot', !!c.target);
         v.fade.style.opacity = Math.max(c.fade, c.fadeIn / 0.5);
       } else {
-        const f = game.forklift;
-        v.forkV.textContent = `${f.height.toFixed(2)} m`;
-        v.forkFill.style.height = `${(f.height / 3.5) * 100}%`;
-        v.gear.textContent = f.gear === 1 ? 'D' : 'R';
-        v.gear.classList.toggle('rev', f.gear === -1);
         v.fade.style.opacity = 0;
       }
     }

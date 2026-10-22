@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { G, groups, castRay } from '../physics.js';
+import { G, groups, castRay, quatToThree } from '../physics.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
 import { ROOM } from '../world/level.js';
 
@@ -74,9 +74,21 @@ export class Recorder {
       data[k + 6] = o.quaternion.w;
       data[k + 7] = o.visible ? 1 : 0;
     });
-    const c = this.game.climber;
+    return { time, objs, data, subjects: this.subjects() };
+  }
+
+  // Things a replay camera can follow: Dave, the forklift, and the middle of each rack row.
+  subjects() {
+    const g = this.game;
+    const c = g.climber;
     const s = c.ragdoll ? c.ragdoll.pelvis.translation() : c.body.translation();
-    return { time, objs, data, subject: new THREE.Vector3(s.x, s.y, s.z) };
+    const f = g.forklift.body.translation();
+    const out = { climber: new THREE.Vector3(s.x, s.y, s.z), forklift: new THREE.Vector3(f.x, f.y + 1.2, f.z) };
+    for (const r of g.level.racks) {
+      const mid = new THREE.Vector3(0, 2.6, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
+      out[`rack:${r.name}`] = mid;
+    }
+    return out;
   }
 
   capture(time) {
@@ -86,7 +98,7 @@ export class Recorder {
   }
 
   // Pose every recorded object as it was at `time` (interpolating between captures).
-  static apply(frames, time) {
+  static apply(frames, time, key = 'climber') {
     if (!frames.length) return null;
     let i = frames.findIndex((f) => f.time >= time);
     if (i < 0) i = frames.length - 1;
@@ -111,16 +123,20 @@ export class Recorder {
       }
       o.visible = d[k + 7] > 0.5;
     });
-    return sameObjs && a !== b ? a.subject.clone().lerp(b.subject, t) : b.subject.clone();
+    const sa = a.subjects[key] || a.subjects.climber;
+    const sb = b.subjects[key] || b.subjects.climber;
+    return sameObjs && a !== b ? sa.clone().lerp(sb, t) : sb.clone();
   }
 }
 
 // Plays the recorded incident back in slow motion, cutting between security cameras.
 export class ReplayDirector {
-  constructor(game, { incidentTime, reason }) {
+  constructor(game, { incidentTime, incident }) {
     this.game = game;
     const cfg = CONFIG.replay;
-    this.reason = reason;
+    this.incident = incident;
+    this.subjectKey = incident.subject || 'climber';
+    const reason = incident.line;
     this.frames = game.recorder.frames.slice();
     this.live = game.recorder.snapshot(game.clock); // restored afterwards
     // Objects seen in the clip start hidden; each frame shows what was visible then.
@@ -138,6 +154,7 @@ export class ReplayDirector {
       const [a, b] = windows[i];
       return { cam, from: Math.max(t0, a), to: Math.min(t1, b) };
     });
+    incident.cams = cams.map((c) => `CAM ${c.id}`);
     this.seg = 0;
     this.t = this.segments[0]?.from ?? T;
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
@@ -155,7 +172,7 @@ export class ReplayDirector {
   subjectAt(time) {
     let best = this.frames[0];
     for (const f of this.frames) if (Math.abs(f.time - time) < Math.abs(best.time - time)) best = f;
-    return best ? best.subject.clone() : new THREE.Vector3();
+    return best ? (best.subjects[this.subjectKey] || best.subjects.climber).clone() : new THREE.Vector3();
   }
 
   // Up to three cameras with a clear line of sight, nearest first.
@@ -196,7 +213,7 @@ export class ReplayDirector {
       this.startCut();
     }
     for (const o of this.union) o.visible = false;
-    const subject = Recorder.apply(this.frames, this.t) || this.subjectAt(this.t);
+    const subject = Recorder.apply(this.frames, this.t, this.subjectKey) || this.subjectAt(this.t);
     // PTZ camera: follow the subject, zoomed so they fill the frame
     const cam = this.segments[this.seg].cam;
     if (!this.look) this.look = subject.clone();
@@ -206,6 +223,7 @@ export class ReplayDirector {
     this.camera.lookAt(this.look);
     const d = cam.pos.distanceTo(this.look);
     this.camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(2.6 / d)), 16, 60);
+    this.overlay.reason.textContent = this.incident.line;
     const stamp = new Date(Date.UTC(2026, 9, 22, 14, 32, 0) + this.t * 1000);
     this.overlay.time.textContent = stamp.toISOString().slice(0, 19).replace('T', '  ');
     return true;

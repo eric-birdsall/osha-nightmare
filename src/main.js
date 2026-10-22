@@ -245,8 +245,8 @@ function tick(now) {
       Object.assign(actions.driver, window.osha.override.driver);
     }
     const kbPause = input.pressed.has('Escape');
-    if (game.replay) {
-      // Incident replay: the world is frozen; any button skips it
+    if (game.replay || game.report) {
+      // Incident replay, then the incident report: the world is frozen; any button moves on
       const m = input.menu();
       const skip =
         actions.climber.jump || actions.climber.interact || actions.climber.pause || actions.driver.pause ||
@@ -285,7 +285,7 @@ function tick(now) {
       input.lockFailed && !input.pointerLocked ? 'Mouse lock unavailable: drag with a mouse button held, or use IJKL, to look' : '';
     game.render(renderer, innerWidth, innerHeight); // CSS pixels: setViewport applies the pixel ratio
     hud.update(game);
-    hud.show(!game.replay);
+    hud.show(!game.replay && !game.report);
     canvas.classList.toggle('cctv', !!game.replay);
   } else {
     canvas.classList.remove('cctv');
