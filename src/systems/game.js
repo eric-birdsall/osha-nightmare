@@ -413,10 +413,10 @@ export class Game {
   // Stand every disturbed rack back up where it belongs and put the stock that fell off back on
   // its shelves. Boxes Dave has handled (holding, or moved somewhere), and anything on a pallet
   // or wrapped load, stay where they are.
-  // Returns null when done, or a reason it can't be done yet.
+  // Returns null if there's nothing to reset, else { forkliftMoved }.
   resetRacks() {
     const racks = this.level.racks.filter((r) => this.rackDisturbed(r));
-    if (!racks.length) return 'nothing';
+    if (!racks.length) return null;
     const knocked = racks.filter((r) => this.rackKnocked(r));
     const world = this.world;
     const footprint = (r) => ({
@@ -433,8 +433,21 @@ export class Game {
       return hit;
     };
     const fl = this.forklift;
-    if (knocked.some((r) => inside(r, (c) => fl.ownsCollider(c)))) return 'forklift';
-    if (knocked.some((r) => inside(r, (c) => c.handle === this.climber.collider.handle))) return 'dave';
+    // The forklift parked (or lying) where a rack goes: the night shift drives it back to its bay
+    const forkliftMoved = knocked.some((r) => inside(r, (c) => fl.ownsCollider(c)));
+    if (forkliftMoved) {
+      if (this.climber.holdingOn) this.climber.letGo();
+      fl.height = CONFIG.forklift.liftMin;
+      fl.liftVel = 0;
+      fl.teleport(this.level.forkliftSpawn.pos, this.level.forkliftSpawn.yaw);
+    }
+    // Dave standing where a rack goes: step him out into its aisle
+    const daveIn = knocked.find((r) => inside(r, (c) => c.handle === this.climber.collider.handle));
+    if (daveIn) {
+      const f = this.climber.feet;
+      const z = daveIn.face === 'south' ? daveIn.z1 + 1.0 : daveIn.z0 - 1.0;
+      this.climber.body.setTranslation({ x: f.x, y: daveIn.base + this.climber.centerOff + 0.05, z }, true);
+    }
 
     const names = new Set(knocked.map((r) => r.name));
     // Stock that's been picked onto a pallet stays picked
@@ -475,7 +488,7 @@ export class Game {
     }
     this.rackRun = null;
     this.rackContacts = new Set();
-    return null;
+    return { forkliftMoved };
   }
 
   // Leaning more than 8 degrees: on its way over.

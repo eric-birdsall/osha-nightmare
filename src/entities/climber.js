@@ -475,12 +475,10 @@ export class Climber {
     this.resetTimer += dt;
     if (this.resetTimer < CONFIG.racks.resetHoldTime) return;
     this.resetTimer = 0;
-    const why = this.game.resetRacks();
-    if (!why) {
-      this.game.toast('Racking reset. Stock is back on the shelves.', 2.5);
-      sfx.putdown();
-    } else if (why === 'forklift') this.game.toast('Move the forklift out of the way first', 2.5);
-    else if (why === 'dave') this.game.toast("Step out of the way: you're standing where the rack goes", 2.5);
+    const done = this.game.resetRacks();
+    if (!done) return;
+    this.game.toast(done.forkliftMoved ? 'Racking reset. The forklift went back to its bay.' : 'Racking reset. Stock is back on the shelves.', 2.5);
+    sfx.putdown();
   }
 
   // A knocked-over (or shoved) rack, or one that's lost stock, within reach of a reset.

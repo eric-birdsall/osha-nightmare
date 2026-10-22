@@ -695,6 +695,33 @@ td + td {
 .prompt {
   text-align: center;
 }
+/* Hold-to-reset progress ring round the crosshair */
+.holdring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+}
+.holdring svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.holdring circle {
+  fill: none;
+  stroke-width: 5;
+}
+.holdring .trk {
+  stroke: rgba(17, 18, 20, 0.6);
+}
+.holdring .fil {
+  stroke: var(--hazard-y);
+  stroke-dasharray: 113.1;
+  stroke-dashoffset: 113.1;
+  stroke-linecap: round;
+}
 .prompt small {
   display: block;
   margin-top: 4px;

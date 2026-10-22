@@ -1,3 +1,5 @@
+import { CONFIG } from '../config.js';
+
 // Per-view HUD overlays (DOM). One view per character; single player shows only the active one.
 
 const VIEW_HTML = (role) => `
@@ -23,7 +25,8 @@ const VIEW_HTML = (role) => `
   </div>
   ${
     role === 'climber'
-      ? `<div class="crosshair"></div><div class="prompt"></div>`
+      ? `<div class="crosshair"></div><div class="prompt"></div>
+         <div class="holdring"><svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="18"/><circle class="fil" cx="22" cy="22" r="18"/></svg></div>`
       : '' /* speed, gear and fork height are on the forklift's dashboard */
   }
   <div class="rolelabel">${role === 'climber' ? 'DAVE · CLIMBER' : 'RALPH · DRIVER'}</div>
@@ -55,6 +58,8 @@ export class Hud {
         timer: q('.timer'),
         roles: q('.roles'),
         prompt: q('.prompt'),
+        holdRing: q('.holdring'),
+        holdFill: q('.holdring .fil'),
         crosshair: q('.crosshair'),
         toast: q('.toast'),
         banner: q('.banner'),
@@ -138,13 +143,16 @@ export class Hud {
         else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
         else if (c.carried) p = `Put down SKU ${c.carried.sku} <kbd>${key}</kbd>`;
         else if (c.target) p = `Pick up SKU ${c.target.sku} <kbd>${key}</kbd>`;
-        // Knocked-over racking nearby: offer the reset (alongside any box prompt)
+        // Knocked-over racking nearby: offer the reset (alongside any box prompt), and fill a
+        // ring round the crosshair while E/X is held
+        const hold = CONFIG.racks.resetHoldTime;
+        const resetting = c.resetTimer > 0;
         if (c.nearKnockedRack && !c.onLadder && !c.ladderCarry && c.state === 'walk') {
-          const r = c.resetTimer > 0
-            ? `Resetting the racking… ${Math.ceil(3 - c.resetTimer)}`
-            : `Hold <kbd>${key}</kbd> 3 s to reset the racking`;
+          const r = resetting ? `Resetting the racking… ${Math.ceil(hold - c.resetTimer)}` : `Hold <kbd>${key}</kbd> ${hold} s to reset the racking`;
           p = p ? `${p}<br><small>${r}</small>` : r;
         }
+        v.holdRing.style.display = resetting ? '' : 'none';
+        if (resetting) v.holdFill.style.strokeDashoffset = String(113.1 * (1 - Math.min(1, c.resetTimer / hold)));
         v.prompt.innerHTML = p;
         v.prompt.style.display = p ? '' : 'none';
         v.crosshair.classList.toggle('hot', !!c.target);
