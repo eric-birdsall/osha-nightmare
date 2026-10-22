@@ -51,8 +51,8 @@ function tagPlane(text, w, h, { bg = '#ffffff', fg = '#111111', border = '#11111
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
 }
 
-// Labels on every open face of a rack: row signs at both ends, a bay header above
-// each bay, and a Row-Bay-Shelf tag hanging under each shelf beam.
+// Labels on every open face of a rack: row signs at both ends and a Row-Bay-Shelf
+// tag hanging under each shelf beam.
 function labelRack(game, { name, z0, z1, double }) {
   const x0 = RACK_X0;
   const x1 = RACK_X0 + BAYS * BAY_W;
@@ -66,7 +66,6 @@ function labelRack(game, { name, z0, z1, double }) {
   for (const [z, ry] of faces) {
     for (const x of [x0 - 0.65, x1 + 0.65]) add(tagPlane(`ROW ${name}`, 1.2, 0.4, { bg: '#1d3f80', fg: '#fff', border: '#fff' }), x, 2.2, z, ry);
     for (let b = 0; b < BAYS; b++) {
-      add(tagPlane(`${name} · BAY ${b + 1}`, 1.1, 0.32, { bg: '#1d3f80', fg: '#fff', border: '#f5c518' }), bayX(b), UPRIGHT_H - 0.25, z, ry);
       SHELF_LEVELS.forEach((y, sh) => {
         add(tagPlane(locationCode(name, b, sh), 0.5, 0.19), bayX(b), y - 0.13 - 0.1, z + (ry ? -0.004 : 0.004), ry);
       });

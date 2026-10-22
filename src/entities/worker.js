@@ -150,7 +150,7 @@ export class WorkerModel {
   }
 
   // speed: walking speed over the ground (m/s). Rotations about X: negative swings a limb forward.
-  update(dt, { yaw, pitch = 0, speed = 0, grounded = true, carrying = false }) {
+  update(dt, { yaw, pitch = 0, speed = 0, grounded = true, carrying = false, holdPitch = 0 }) {
     const P = this.pivots;
     this.body.rotation.y = yaw + Math.PI;
     const amp = grounded ? Math.min(1, speed / 3.5) * 0.65 : 0;
@@ -176,8 +176,9 @@ export class WorkerModel {
       armOut = 0.45;
     }
     if (carrying) {
-      shL = shR = -1.15;
-      elL = elR = -0.35;
+      // Forearms reach forward to the box; raise/lower with the carry pitch
+      shL = shR = -1.0 - holdPitch * 0.9;
+      elL = elR = -0.45;
       armOut = -0.12;
     }
     lerp(P.hipL.rotation, 'x', hipL);

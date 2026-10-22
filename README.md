@@ -15,7 +15,7 @@ Open the printed URL in Chrome. Click the canvas to capture the mouse.
 
 Get **Item A** (pink, location `A-3-2`) and **Item B** (cyan, `B-2-3`, the middle of Row B's 3 m deep top deck) onto one pallet. Leave that pallet still in the yellow **WRAP** square until it's wrapped, then bring the wrapped pallet to **DOCK 1** and stop there.
 
-Locations read Row-Bay-Shelf. Bays are numbered 1–4 from the west end of each row, and shelves 1–3 from the bottom (1.5 m, 3.0 m, 4.5 m). Every rack face shows row signs at both ends, a bay header above each bay, and a location tag under each shelf beam.
+Locations read Row-Bay-Shelf. Bays are numbered 1–4 from the west end of each row, and shelves 1–3 from the bottom (1.5 m, 3.0 m, 4.5 m). Every rack face shows row signs at both ends and a location tag under each shelf beam.
 
 From the forks at max height, Item B is out of reach. To get onto Row B's top deck, either stack a box on the raised pallet, or jump from the pallet and mantle onto the beam.
 
@@ -53,7 +53,7 @@ Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber an
 - **Tipped forklift** is set back on its wheels after 4 s.
 - **Forks lower faster than they rise** (0.7 vs 0.4 m/s). Lowering the forks onto the Climber's head is an incident, and so is a box or pallet falling on it (the spec's optional head hit).
 - **See-through cab:** the overhead guard is a grid of bars, and the carriage is an open frame, so the driver can see up through the roof and the load through the backrest.
-- **Throw threshold** is 6 m/s² of smoothed horizontal support acceleration. A full brake (about 5.3 m/s²) does not throw you; clipping a rack does.
+- **Throw threshold:** the support must be moving at 1.5 m/s or more and accelerate by more than 10 m/s² (smoothed). A full brake (about 5.3 m/s²) does not throw you; clipping a rack at speed does.
 - Not built: the optional falling-box head hit.
 
 ## Playtest console

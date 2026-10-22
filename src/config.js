@@ -31,9 +31,9 @@ export const CONFIG = {
     hitSpeed: 1.5, // forklift relative speed that bowls the climber over
     crushForkSpeed: 0.1, // lowering forks this fast onto the climber's head = incident
     fallingLoadSpeed: 1.0, // a box/pallet falling this fast onto the climber's head = incident
-    throwAccel: 6, // support horizontal acceleration that throws them off
+    throwAccel: 10, // support horizontal acceleration (m/s², smoothed) that throws them off
     throwAccelSmoothing: 0.35, // EMA factor per step (higher = twitchier)
-    throwMinSupportSpeed: 0.3, // ignore accel spikes on a near-still support
+    throwMinSupportSpeed: 1.5, // the support must be moving at least this fast (m/s) to throw you
     dropSpeed: 2.0, // support falling faster than this drops them
     supportLostTime: 0.15, // moving support vanished for this long = thrown
     ragdollTime: 3.0,

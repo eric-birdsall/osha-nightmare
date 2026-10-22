@@ -110,10 +110,13 @@ export class Climber {
     this.game.scene.add(this.bodyMesh);
 
     // First-person forearms and gloves (layer 2 = only the climber camera)
+    // Arms hang off a rig at the eye that follows the carry pitch, not the raw view pitch
+    this.armRig = new THREE.Group();
+    this.camera.add(this.armRig);
     this.hands = [-1, 1].map((side) => {
       const arm = firstPersonArm(side);
       arm.traverse((o) => o.layers.set(2));
-      this.camera.add(arm);
+      this.armRig.add(arm);
       return arm;
     });
     this.armPhase = 0;
@@ -427,10 +430,16 @@ export class Climber {
     if (ent && ent.kind === 'box') this.target = ent;
   }
 
+  // Carried boxes tilt with the view only within a natural range, so looking at your
+  // feet doesn't swing the box under and behind you.
+  holdPitch() {
+    return Math.max(-0.5, Math.min(0.45, this.pitch));
+  }
+
   holdPose() {
     const ent = this.carried;
     const eye = this.eye;
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.holdPitch(), this.yaw, 0, 'YXZ'));
     const off = new THREE.Vector3(0, HOLD_Y, -(HOLD_Z + ent.size[2] / 2)).applyQuaternion(q);
     return { pos: eye.add(off), quat: q };
   }
@@ -670,6 +679,7 @@ export class Climber {
       speed: walkSpeed,
       grounded: this.grounded || !!this.mantle || this.state === 'wrapped',
       carrying: !!this.carried,
+      holdPitch: this.holdPitch(),
     });
 
     // Blob shadow on whatever is below us
@@ -688,6 +698,7 @@ export class Climber {
     // Carried box follows the camera smoothly (its physics body collides with nothing)
     this.armPhase += dt * walkSpeed * 2.2;
     const bob = Math.sin(this.armPhase * 2) * 0.008 * Math.min(1, walkSpeed / 3.5);
+    this.armRig.rotation.x = this.carried ? this.holdPitch() - this.pitch : 0;
     if (this.carried) {
       const { pos } = this.holdPose();
       this.carried.mesh.position.copy(pos);
