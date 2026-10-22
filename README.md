@@ -2,6 +2,8 @@
 
 Greybox prototype: first-person stacking, jumping and forklift-riding. Three.js + Rapier + Vite.
 
+**Play:** https://eric-birdsall.github.io/osha-nightmare/ (every push to `main` redeploys via GitHub Actions).
+
 ```bash
 npm install
 npm run dev
