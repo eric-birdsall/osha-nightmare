@@ -18,7 +18,8 @@ const MAST_Z = 0.85;
 const PLATE_Z = 0.95;
 const FORK_X = 0.225;
 const FORK_LEN = 1.1;
-const FORK_T = 0.05;
+const FORK_W = 0.15;
+const FORK_T = 0.035;
 const FORK_Z = PLATE_Z + 0.03 + FORK_LEN / 2;
 
 // Static parts on the chassis body: [half extents, position, color]
@@ -98,7 +99,7 @@ export class Forklift {
     addCarriageCol(RAPIER.ColliderDesc.cuboid(0.45, 0.3, 0.03).setTranslation(0, 0.25, 0).setFriction(0.6), 90);
     for (const sx of [-1, 1]) {
       addCarriageCol(
-        RAPIER.ColliderDesc.cuboid(0.05, FORK_T / 2, FORK_LEN / 2)
+        RAPIER.ColliderDesc.cuboid(FORK_W / 2, FORK_T / 2, FORK_LEN / 2)
           .setTranslation(sx * FORK_X, -FORK_T / 2, FORK_Z - PLATE_Z)
           .setFriction(0.7),
         35,
@@ -204,18 +205,24 @@ export class Forklift {
       bar.position.set(i * 0.13, 0.75, PLATE_Z);
       carriage.add(bar);
     }
+    // Forged steel forks: an L-shaped blade (vertical shank up the carriage plate + flat blade)
+    // with a bevelled tip and a small yellow mark so the tips read against the floor.
+    const steel = new THREE.MeshLambertMaterial({ color: 0xc3c9d0 });
+    const steelDark = new THREE.MeshLambertMaterial({ color: 0x9aa1a9 });
+    const tipLen = 0.14;
     for (const s of [-1, 1]) {
-      const fork = boxMesh(0.1, FORK_T, FORK_LEN, 0x222222);
-      fork.position.set(s * FORK_X, -FORK_T / 2, FORK_Z);
-      carriage.add(fork);
-      // Hazard-painted fork tips so the driver can line them up with pallet pockets
-      const tipLen = 0.22;
-      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.104, FORK_T + 0.004, tipLen), new THREE.MeshBasicMaterial({ color: 0xffd400 }));
-      tip.position.set(s * FORK_X, -FORK_T / 2, FORK_Z + FORK_LEN / 2 - tipLen / 2 + 0.002);
-      const band = new THREE.Mesh(new THREE.BoxGeometry(0.106, FORK_T + 0.006, 0.05), new THREE.MeshBasicMaterial({ color: 0x111111 }));
-      band.position.z = -0.03;
-      tip.add(band);
+      const blade = boxMesh(FORK_W, FORK_T, FORK_LEN - tipLen, 0, { material: steel });
+      blade.position.set(s * FORK_X, -FORK_T / 2, FORK_Z - tipLen / 2);
+      carriage.add(blade);
+      const tip = boxMesh(FORK_W * 0.9, FORK_T * 0.55, tipLen, 0, { material: steel });
+      tip.position.set(s * FORK_X, -FORK_T * 0.275, FORK_Z + FORK_LEN / 2 - tipLen / 2);
       carriage.add(tip);
+      const mark = new THREE.Mesh(new THREE.BoxGeometry(FORK_W * 0.6, 0.003, 0.05), new THREE.MeshBasicMaterial({ color: 0xffd400 }));
+      mark.position.set(s * FORK_X, 0.0015, FORK_Z + FORK_LEN / 2 - tipLen - 0.04);
+      carriage.add(mark);
+      const shank = boxMesh(FORK_W, 0.55, FORK_T, 0, { material: steelDark });
+      shank.position.set(s * FORK_X, 0.24, PLATE_Z + 0.03 + FORK_T / 2);
+      carriage.add(shank);
     }
     root.add(carriage);
     this.carriageMesh = carriage;

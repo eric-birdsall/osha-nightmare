@@ -4,9 +4,13 @@ import { CONFIG } from '../config.js';
 import { COL, G, groups, castRay, yawQuat, quatToThree } from '../physics.js';
 import { flatMat } from '../util/meshes.js';
 import { spawnRagdoll } from '../systems/ragdoll.js';
+import { WorkerModel, firstPersonArm } from './worker.js';
 import { sfx } from '../systems/audio.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+// Carried box position in camera space: its near face sits HOLD_Z in front of the eye
+const HOLD_Y = -0.4;
+const HOLD_Z = 0.58;
 const tmp = new THREE.Vector3();
 
 function approach(v, target, maxDelta) {
@@ -96,40 +100,23 @@ export class Climber {
 
   buildMeshes() {
     const cfg = CONFIG.climber;
-    // Body seen by the driver (layer 1 = hidden from the climber's own camera)
-    const g = new THREE.Group();
-    const vest = new THREE.Mesh(new THREE.CapsuleGeometry(cfg.radius * 0.85, this.halfH * 2 - 0.2, 6, 12), flatMat(0xff7a00));
-    vest.position.y = 0.9;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10), flatMat(0xe0b48a));
-    head.position.y = 1.62;
-    const hat = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), flatMat(0xffd400));
-    hat.position.y = 1.66;
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.1), flatMat(0xffd400));
-    visor.position.set(0, 1.66, -0.17);
-    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(cfg.radius * 0.87, cfg.radius * 0.87, 0.06, 14), flatMat(0xdddddd));
-    stripe.position.y = 1.0;
-    g.add(vest, head, hat, visor, stripe);
-    g.traverse((o) => {
+    // Jointed worker seen by the driver (layer 1 = hidden from the climber's own camera)
+    this.worker = new WorkerModel();
+    this.worker.root.traverse((o) => {
       o.layers.set(1);
       if (o.isMesh) o.castShadow = true;
     });
-    this.bodyMesh = g;
-    this.game.scene.add(g);
+    this.bodyMesh = this.worker.root;
+    this.game.scene.add(this.bodyMesh);
 
-    // Hands (layer 2 = only the climber camera)
-    const handMat = flatMat(0xe0b48a);
-    const sleeveMat = flatMat(0x3b6fd6);
-    this.hands = [-1, 1].map((s) => {
-      const h = new THREE.Group();
-      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.045, 0.09), handMat);
-      const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.065, 0.1), sleeveMat);
-      sleeve.position.z = 0.09;
-      h.add(palm, sleeve);
-      h.position.set(s * 0.3, -0.3, -0.65);
-      h.traverse((o) => o.layers.set(2));
-      this.camera.add(h);
-      return h;
+    // First-person forearms and gloves (layer 2 = only the climber camera)
+    this.hands = [-1, 1].map((side) => {
+      const arm = firstPersonArm(side);
+      arm.traverse((o) => o.layers.set(2));
+      this.camera.add(arm);
+      return arm;
     });
+    this.armPhase = 0;
 
     // Blob shadow
     const blob = new THREE.Mesh(
@@ -412,8 +399,8 @@ export class Climber {
   holdPose() {
     const ent = this.carried;
     const eye = this.eye;
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.pitch * 0.6, this.yaw, 0, 'YXZ'));
-    const off = new THREE.Vector3(0, -0.32, -(0.45 + ent.size[2] / 2)).applyQuaternion(q);
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+    const off = new THREE.Vector3(0, HOLD_Y, -(HOLD_Z + ent.size[2] / 2)).applyQuaternion(q);
     return { pos: eye.add(off), quat: q };
   }
 
@@ -637,7 +624,7 @@ export class Climber {
 
   // ---------------------------------------------------------------- per render frame
 
-  updateVisuals() {
+  updateVisuals(dt = 1 / 60) {
     if (this.state === 'ragdoll') {
       this.ragdoll.sync();
       this.blob.visible = false;
@@ -645,7 +632,14 @@ export class Climber {
     }
     const f = this.feet;
     this.bodyMesh.position.copy(f);
-    this.bodyMesh.rotation.y = this.yaw;
+    const walkSpeed = this.grounded ? Math.hypot(this.relVel.x, this.relVel.z) : 0;
+    this.worker.update(dt, {
+      yaw: this.yaw,
+      pitch: this.pitch,
+      speed: walkSpeed,
+      grounded: this.grounded || !!this.mantle || this.state === 'wrapped',
+      carrying: !!this.carried,
+    });
 
     // Blob shadow on whatever is below us
     const c = this.body.translation();
@@ -661,16 +655,27 @@ export class Climber {
     } else this.blob.visible = false;
 
     // Carried box follows the camera smoothly (its physics body collides with nothing)
+    this.armPhase += dt * walkSpeed * 2.2;
+    const bob = Math.sin(this.armPhase * 2) * 0.008 * Math.min(1, walkSpeed / 3.5);
     if (this.carried) {
       const { pos } = this.holdPose();
       this.carried.mesh.position.copy(pos);
       this.carried.mesh.quaternion.setFromAxisAngle(UP, this.yaw);
-      const [sx, , sz] = this.carried.size;
-      this.hands[0].position.set(-(sx / 2 + 0.04), -0.3, -(0.45 + sz / 2));
-      this.hands[1].position.set(sx / 2 + 0.04, -0.3, -(0.45 + sz / 2));
+      const [sx] = this.carried.size;
+      // Gloves flat against the sides of the box, palms in
+      this.hands.forEach((arm, i) => {
+        const side = i === 0 ? -1 : 1;
+        arm.position.set(side * (sx / 2 + 0.035), HOLD_Y + 0.02 + bob, -(HOLD_Z + 0.05) + 0.375); // gloves wrap the front corners
+        arm.rotation.set(0.1, side * 0.22, 0);
+        arm.userData.glove.rotation.set(0, 0, -side * 1.25);
+      });
     } else {
-      this.hands[0].position.set(-0.3, -0.3, -0.65);
-      this.hands[1].position.set(0.3, -0.3, -0.65);
+      this.hands.forEach((arm, i) => {
+        const side = i === 0 ? -1 : 1;
+        arm.position.set(side * 0.27, -0.36 + bob * (i ? 1 : -1), -0.24);
+        arm.rotation.set(0.14, side * 0.16, 0);
+        arm.userData.glove.rotation.set(0, 0, -side * 0.35);
+      });
     }
   }
 

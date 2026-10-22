@@ -218,7 +218,7 @@ export class Game {
     }
     this.forklift.updateVisuals(dt);
     this.climber.updateTarget();
-    this.climber.updateVisuals();
+    this.climber.updateVisuals(dt);
     this.climber.updateCamera(dt);
     this.forklift.updateCamera();
     this.incidentSign.set(this.days);
