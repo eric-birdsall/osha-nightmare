@@ -581,6 +581,8 @@ export class Climber {
     this.carried = ent;
     this.target = null;
     ent.carried = true;
+    this.makeGhost(ent);
+    this.makeHeldView(ent);
     sfx.pickup();
     this.game.onPickup?.(ent);
   }
@@ -598,9 +600,86 @@ export class Climber {
     body.wakeUp();
     ent.carried = false;
     this.carried = null;
+    if (this.ghost) this.ghost.visible = false;
+    this.dropHeldView(ent);
   }
 
-  putDown() {
+  // In our own view the carried box is see-through so the placement ghost shows through it.
+  // The real mesh moves to layer 1 (everyone but us); a translucent copy goes on layer 2 (only us).
+  makeHeldView(ent) {
+    ent.mesh.traverse((o) => o.layers.set(1));
+    const view = ent.mesh.clone(true);
+    view.traverse((o) => {
+      o.layers.set(2);
+      if (o.material) {
+        o.material = o.material.clone();
+        o.material.transparent = true;
+        o.material.opacity *= 0.35;
+        o.material.depthWrite = false;
+      }
+      o.castShadow = false;
+    });
+    this.heldView = view;
+    this.game.scene.add(view);
+  }
+
+  dropHeldView(ent) {
+    ent.mesh.traverse((o) => o.layers.set(0));
+    if (!this.heldView) return;
+    this.game.scene.remove(this.heldView);
+    this.heldView.traverse((o) => o.material?.dispose());
+    this.heldView = null;
+  }
+
+  // Translucent box showing where the carried box will land (climber's camera only).
+  makeGhost(ent) {
+    if (this.ghost) {
+      this.game.scene.remove(this.ghost);
+      this.ghost.traverse((o) => o.geometry?.dispose());
+    }
+    const geo = new THREE.BoxGeometry(...ent.size);
+    const ghost = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({ color: 0x7cf0a0, transparent: true, opacity: 0.28, depthWrite: false }),
+    );
+    ghost.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff })));
+    // Drop line from the ghost down to where it lands is implied; mark the footprint on the surface
+    const foot = new THREE.Mesh(
+      new THREE.PlaneGeometry(ent.size[0], ent.size[2]),
+      new THREE.MeshBasicMaterial({ color: 0x7cf0a0, transparent: true, opacity: 0.45, depthWrite: false }),
+    );
+    foot.rotation.x = -Math.PI / 2;
+    foot.position.y = -ent.size[1] / 2 + 0.006;
+    ghost.add(foot);
+    ghost.renderOrder = 4;
+    ghost.traverse((o) => o.layers.set(2));
+    ghost.visible = false;
+    this.ghost = ghost;
+    this.game.scene.add(ghost);
+  }
+
+  updateGhost() {
+    if (!this.ghost) return;
+    if (!this.carried || this.state !== 'walk') {
+      this.ghost.visible = false;
+      return;
+    }
+    const p = this.computePlacement();
+    const [, sy] = this.carried.size;
+    this.ghost.visible = true;
+    this.ghost.position.set(p.pos.x, p.pos.y, p.pos.z);
+    this.ghost.quaternion.set(p.rot.x, p.rot.y, p.rot.z, p.rot.w);
+    // Green: it will sit on that surface. Orange: nothing under it, it'll just be dropped.
+    const color = p.onSurface ? 0x7cf0a0 : 0xffa040;
+    this.ghost.material.color.setHex(color);
+    this.ghost.children[1].material.color.setHex(color);
+    this.ghost.children[1].visible = p.onSurface && sy > 0;
+  }
+
+  // Where the carried box would land if put down now: aimed point, nudged off walls and out
+  // of our own capsule, then dropped straight down onto whatever is below.
+  // onSurface is false when there's nowhere sensible and it would just be let go.
+  computePlacement() {
     const ent = this.carried;
     const cfg = CONFIG.climber;
     const world = this.game.world;
@@ -608,7 +687,8 @@ export class Climber {
     const ext = Math.max(hx, hz);
     const eye = this.eye;
     const dir = this.viewDir();
-    const hit = castRay(world, eye, dir, cfg.placeReach, COL.climberQuery, (c) => c.handle !== this.collider.handle);
+    const notMe = (c) => c.handle !== this.collider.handle;
+    const hit = castRay(world, eye, dir, cfg.placeReach, COL.climberQuery, notMe);
     const base = new THREE.Vector3();
     if (hit) {
       base.set(hit.point.x, hit.point.y, hit.point.z);
@@ -628,38 +708,39 @@ export class Climber {
     }
     const rot = yawQuat(this.yaw);
     const shape = new RAPIER.Cuboid(hx, hy, hz);
-    let placed = null;
-    let vel = { x: 0, y: 0, z: 0 };
     for (const lift of [0.3, 0.8]) {
       const start = { x: base.x, y: base.y + hy + lift, z: base.z };
       const sh = world.castShape(
         start, rot, { x: 0, y: -1, z: 0 }, shape, 0.005, 8, true,
-        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, undefined, undefined,
-        (c) => c.handle !== this.collider.handle,
+        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, undefined, undefined, notMe,
       );
-      if (!sh) {
-        placed = start;
-        break;
-      }
+      if (!sh) return { pos: start, rot, vel: { x: 0, y: 0, z: 0 }, onSurface: false };
       if (sh.time_of_impact > 1e-3) {
-        placed = { x: start.x, y: start.y - sh.time_of_impact + 0.005, z: start.z };
+        const pos = { x: start.x, y: start.y - sh.time_of_impact + 0.005, z: start.z };
+        let vel = { x: 0, y: 0, z: 0 };
         const sb = sh.collider.parent();
         if (sb && !sb.isFixed()) {
           const fl = this.game.forklift;
-          vel = fl.ownsCollider(sh.collider) ? fl.pointVelocity(placed, sh.collider) : sb.velocityAtPoint(placed);
+          vel = fl.ownsCollider(sh.collider) ? fl.pointVelocity(pos, sh.collider) : sb.velocityAtPoint(pos);
         }
-        break;
+        return { pos, rot, vel, onSurface: true };
       }
     }
-    if (!placed) {
-      // Nowhere sensible: just let go in front of us
-      const { pos } = this.holdPose();
-      placed = pos;
-      vel = { x: this.velocity.x, y: this.velocity.y, z: this.velocity.z };
-    }
-    this.releaseCarried(placed, rot, vel);
+    // Nowhere sensible: just let go in front of us
+    return {
+      pos: this.holdPose().pos,
+      rot,
+      vel: { x: this.velocity.x, y: this.velocity.y, z: this.velocity.z },
+      onSurface: false,
+    };
+  }
+
+  putDown() {
+    const { pos, rot, vel } = this.computePlacement();
+    this.releaseCarried(pos, rot, vel);
     sfx.putdown();
   }
+
 
   // ---------------------------------------------------------------- ragdoll
 
@@ -820,6 +901,8 @@ export class Climber {
       this.blob.scale.setScalar(1 - Math.min(0.5, h / 12));
     } else this.blob.visible = false;
 
+    this.updateGhost();
+
     // Carried box follows the camera smoothly (its physics body collides with nothing)
     this.armPhase += dt * walkSpeed * 2.2;
     const bob = Math.sin(this.armPhase * 2) * 0.008 * Math.min(1, walkSpeed / 3.5);
@@ -828,6 +911,8 @@ export class Climber {
       const { pos } = this.holdPose();
       this.carried.mesh.position.copy(pos);
       this.carried.mesh.quaternion.setFromAxisAngle(UP, this.yaw);
+      this.heldView?.position.copy(pos);
+      this.heldView?.quaternion.copy(this.carried.mesh.quaternion);
       const [sx] = this.carried.size;
       // Gloves flat against the sides of the box, palms in
       this.hands.forEach((arm, i) => {

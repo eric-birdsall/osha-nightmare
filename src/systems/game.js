@@ -10,17 +10,47 @@ import { Recorder, ReplayDirector, buildCctvFixtures } from './replay.js';
 import { disposeTree } from '../util/meshes.js';
 import { sfx } from './audio.js';
 
+// The crew: Dave climbs, Ralph drives. Each incident type has a few lines picked at random;
+// 'again' lines are used once that same thing has already happened this shift.
 const INCIDENT_LINES = {
-  fell: 'Fell from height',
-  hit: 'Struck by forklift',
-  thrown: 'Thrown from load',
-  dropped: 'Load dropped out',
-  wrapped: 'Shrink-wrapped',
-  crushed: 'Lifted into the racking',
-  forks: 'Forks lowered onto worker',
-  load: 'Struck by falling load',
-  rack: 'Crushed by falling racking',
+  fell: {
+    first: ['Dave tried to fly. Dave cannot fly.', 'Dave took the express route down', 'Dave forgot about gravity', 'Dave missed the jump. Dave hit the floor.'],
+    again: ['Dave fell off something... again', 'Gravity: 2, Dave: 0', 'Dave has still not learned to fly'],
+  },
+  hit: {
+    first: ['Ralph ran over Dave', 'Dave got impaled', 'Dave got forked', "Ralph didn't see Dave", 'Ralph says Dave "came out of nowhere"'],
+    again: ['Ralph ran over Dave... again', 'Ralph and Dave need to talk', 'Dave got forked. Again.', 'Ralph still doesn\'t see Dave'],
+  },
+  thrown: {
+    first: ['Ralph took that corner way too fast', 'Dave got yeeted off the load', 'Ralph floored it. Dave did not hold on.'],
+    again: ['Ralph yeeted Dave... again', 'Dave forgot to hold on. Again.', 'Ralph drives like this on purpose'],
+  },
+  dropped: {
+    first: ['Ralph dropped Dave', 'The pallet left. Dave stayed in the air.', 'Dave lost the floor'],
+    again: ['Ralph dropped Dave... again', 'Dave keeps trusting Ralph', 'Ralph dropped Dave. Classic Ralph.'],
+  },
+  wrapped: {
+    first: ['Dave got shrink-wrapped', 'Dave is now part of the order', 'Dave has been wrapped for freshness'],
+    again: ['Dave got shrink-wrapped... again', 'Dave keeps standing in the wrapper'],
+  },
+  crushed: {
+    first: ['Ralph lifted Dave into the racking', 'Dave headbutted the shelf. The shelf won.', 'Ralph found the ceiling. With Dave.'],
+    again: ['Ralph lifted Dave into the racking... again', 'Dave and the top shelf, round two'],
+  },
+  forks: {
+    first: ['Ralph lowered the forks onto Dave', 'Dave was under the forks. Ralph knew.', 'Ralph parked the forks on Dave'],
+    again: ['Ralph lowered the forks onto Dave... again', 'Dave keeps standing under the forks'],
+  },
+  load: {
+    first: ['A box fell on Dave', 'Dave caught a box. Face first.', 'Dave was hit by a falling load'],
+    again: ['Another box fell on Dave', 'Dave is a box magnet'],
+  },
+  rack: {
+    first: ['Timber! (Dave was underneath)', 'Dave got flattened by the racking', 'The racking fell on Dave'],
+    again: ['The racking fell on Dave... again', 'Dave and the racking: a rematch nobody wanted'],
+  },
 };
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 // Owns one playthrough: physics world, scene, entities, order state, swap logic.
 export class Game {
@@ -51,6 +81,7 @@ export class Game {
     this.deviceHints = { climber: '', driver: '' };
     this.time = 0;
     this.falls = 0;
+    this.incidentCounts = {};
     this.days = CONFIG.hud.startDays;
     this.dayTimer = 0;
     this.itemStatus = { A: false, B: false };
@@ -210,16 +241,24 @@ export class Game {
     this.onComplete?.({ time: this.time, falls: this.falls });
   }
 
+  incidentLine(reason) {
+    const lines = INCIDENT_LINES[reason];
+    if (!lines) return 'Dave had an incident';
+    this.incidentCounts[reason] = (this.incidentCounts[reason] || 0) + 1;
+    return pick(this.incidentCounts[reason] > 1 ? lines.again : lines.first);
+  }
+
   onIncident(reason) {
     this.falls++;
     this.days = 0;
     this.dayTimer = 0;
     sfx.thud();
     setTimeout(sfx.incident, 250);
-    this.hud?.banner(`⚠ INCIDENT ⚠<small>${INCIDENT_LINES[reason] || 'Oops'}</small>`);
+    const line = this.incidentLine(reason);
+    this.hud?.banner(`⚠ INCIDENT ⚠<small>${line}</small>`);
     // Queue the CCTV replay once the ragdoll has had a moment to flail
     if (!this.replay && !this.pendingReplay) {
-      this.pendingReplay = { incidentTime: this.clock, at: this.clock + CONFIG.replay.delay, reason: INCIDENT_LINES[reason] || 'Incident' };
+      this.pendingReplay = { incidentTime: this.clock, at: this.clock + CONFIG.replay.delay, reason: line };
     }
   }
 

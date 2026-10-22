@@ -156,10 +156,10 @@ function resume() {
 }
 
 const QUIPS = [
-  'OSHA has been notified.',
-  'Nobody saw anything.',
-  'The incident report writes itself.',
-  'Flawless. Suspiciously flawless.',
+  'Flawless. Ralph and Dave are suspicious of themselves.',
+  'Dave is fine. Mostly.',
+  'Ralph would like it noted that Dave keeps getting in the way.',
+  'OSHA has been notified. OSHA has questions for Ralph.',
 ];
 
 function showComplete({ time, falls }) {
@@ -168,7 +168,7 @@ function showComplete({ time, falls }) {
   const s = Math.floor(time % 60);
   document.getElementById('c-time').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   document.getElementById('c-falls').textContent = falls;
-  document.getElementById('c-quip').textContent = falls === 0 ? QUIPS[3] : QUIPS[Math.min(falls - 1, 2)];
+  document.getElementById('c-quip').textContent = QUIPS[Math.min(falls, 3)];
   if (input.pointerLocked) document.exitPointerLock();
   refreshScreens();
 }

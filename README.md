@@ -2,6 +2,8 @@
 
 Greybox prototype: first-person stacking, jumping and forklift-riding. Three.js + Rapier + Vite.
 
+The crew: **Dave** climbs, **Ralph** drives the forklift. Incident banners and CCTV replays name who did what to whom.
+
 **Play:** https://eric-birdsall.github.io/osha-nightmare/ (every push to `main` redeploys via GitHub Actions).
 
 ```bash
@@ -55,6 +57,8 @@ Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber an
 - **Tipped forklift** is set back on its wheels after 4 s.
 - **Forks lower faster than they rise** (0.7 vs 0.4 m/s). Lowering the forks onto the Climber's head is an incident, and so is a box or pallet falling on it (the spec's optional head hit).
 - **CCTV incident replays:** eight security cameras are mounted high on the walls. 1.5 s after every incident, the game freezes and replays the moment at half speed in black and white. It cuts between up to three cameras with a clear view of the Climber, and any button skips. The replay is built from a rolling 5 s recording of everything that moves (`src/systems/replay.js`, tuning under `replay` in `config.js`).
+- **Wrap countdown:** a pallet in the WRAP square gets a ring on the floor around it. The outline is red while the pallet is too high (raised on the forks) or tipped, white while it's moving, and it fills yellow over the second it must sit still before wrapping starts. The first pallet into the square also shows a one-time hint.
+- **Placement ghost:** while carrying a box, a translucent copy shows exactly where it will land if you put it down now (same calculation as the put-down itself), including on a raised pallet. Climber's camera only.
 - **See-through cab:** the overhead guard is a grid of bars, and the carriage is an open frame, so the driver can see up through the roof and the load through the backrest.
 - **Throw threshold:** the support must be moving at 1.5 m/s or more and accelerate by more than 10 m/s² (smoothed). A full brake (about 5.3 m/s²) does not throw you; clipping a rack at speed does.
 

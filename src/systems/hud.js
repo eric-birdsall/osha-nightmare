@@ -19,7 +19,7 @@ const VIEW_HTML = (role) => `
     <div class="days card"><div class="dl">DAYS SINCE LAST INCIDENT</div><div class="dn">47</div></div>
   </div>
   <div class="roles card">
-    <span data-r="climber">🧗 Climber</span><span data-r="driver">🚜 Driver</span>
+    <span data-r="climber">🧗 Dave</span><span data-r="driver">🚜 Ralph</span>
     <span class="swaphint">Tab / View to swap</span>
   </div>
   ${
@@ -28,7 +28,7 @@ const VIEW_HTML = (role) => `
       : `<div class="forkh card"><div class="fl">FORKS</div><div class="fv">0.10 m</div><div class="fbar"><div class="ffill"></div></div></div>
          <div class="gear card">D</div>`
   }
-  <div class="rolelabel">${role === 'climber' ? 'CLIMBER' : 'DRIVER'}</div>
+  <div class="rolelabel">${role === 'climber' ? 'DAVE · CLIMBER' : 'RALPH · DRIVER'}</div>
   <div class="toast"></div>
   <div class="banner"></div>
   <div class="devicehint"></div>

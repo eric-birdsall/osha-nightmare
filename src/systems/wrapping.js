@@ -48,32 +48,91 @@ export class WrapSystem {
     this.ringPivot.add(roll);
     this.ringPivot.visible = false;
     game.scene.add(this.ringPivot);
+
+    // Countdown ring on the floor around a pallet in the square: an outline while it's in the
+    // square, filling up while it sits still. Red outline = too high or tipped to wrap.
+    this.countdown = new THREE.Group();
+    this.countdown.rotation.x = -Math.PI / 2;
+    this.ringBack = new THREE.Mesh(
+      new THREE.RingGeometry(0.86, 0.98, 48),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false }),
+    );
+    this.ringFill = new THREE.Mesh(
+      new THREE.RingGeometry(0.84, 1.0, 48, 1, 0, 0.01),
+      new THREE.MeshBasicMaterial({ color: 0xffd400, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    this.ringFill.position.z = 0.002;
+    this.countdown.add(this.ringBack, this.ringFill);
+    this.countdown.renderOrder = 3;
+    this.countdown.visible = false;
+    this.fillShown = -1;
+    game.scene.add(this.countdown);
+    this.hinted = false;
+  }
+
+  // Draw the countdown for the pallet closest to wrapping (progress 0..1; blocked = can't wrap there).
+  showCountdown(pallet, progress, blocked) {
+    if (!pallet) {
+      this.countdown.visible = false;
+      return;
+    }
+    const t = pallet.body.translation();
+    this.countdown.visible = true;
+    this.countdown.position.set(t.x, 0.015, t.z);
+    this.ringBack.material.color.setHex(blocked ? 0xff4040 : 0xffffff);
+    const steps = Math.round(progress * 48);
+    if (steps !== this.fillShown) {
+      this.fillShown = steps;
+      this.ringFill.geometry.dispose();
+      // Fills clockwise from 12 o'clock
+      const len = Math.max(0.01, (steps / 48) * Math.PI * 2);
+      this.ringFill.geometry = new THREE.RingGeometry(0.84, 1.0, 48, 1, Math.PI / 2 - len, len);
+      this.ringFill.visible = steps > 0;
+    }
   }
 
   step(dt) {
-    if (this.job) return this.updateJob(dt);
+    if (this.job) {
+      this.countdown.visible = false;
+      return this.updateJob(dt);
+    }
     const cfg = CONFIG.wrap;
     const zone = this.game.level.wrapZone;
+    let shown = null;
+    let shownProgress = -1;
+    let shownBlocked = false;
     for (const ent of this.game.entities) {
       if (ent.kind !== 'pallet') continue;
       const b = ent.body;
       const t = b.translation();
+      if (!zone.contains(t)) {
+        this.rest.set(ent, 0);
+        continue;
+      }
       const lv = b.linvel();
       const av = b.angvel();
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(b.rotation()));
-      const ok =
-        zone.contains(t) &&
-        t.y < cfg.maxPalletHeight &&
-        Math.hypot(lv.x, lv.y, lv.z) < cfg.restSpeed &&
-        Math.hypot(av.x, av.y, av.z) < 0.3 &&
-        up.y > 0.9;
-      const r = ok ? (this.rest.get(ent) || 0) + dt : 0;
+      const blocked = t.y >= cfg.maxPalletHeight || up.y <= 0.9; // raised on the forks, or tipped
+      const still = Math.hypot(lv.x, lv.y, lv.z) < cfg.restSpeed && Math.hypot(av.x, av.y, av.z) < 0.3;
+      const r = !blocked && still ? (this.rest.get(ent) || 0) + dt : 0;
       this.rest.set(ent, r);
+      const progress = Math.min(1, r / cfg.restTime);
+      if (progress > shownProgress) {
+        shown = ent;
+        shownProgress = progress;
+        shownBlocked = blocked;
+      }
+      // First pallet into the square gets a one-time hint
+      if (!this.hinted) {
+        this.hinted = true;
+        this.game.toast(blocked ? 'Lower the pallet to wrap it' : 'Hold the pallet still to wrap it', 2.5);
+      }
       if (r >= cfg.restTime) {
         this.startJob(ent);
         break;
       }
     }
+    this.showCountdown(this.job ? null : shown, shownProgress, shownBlocked);
   }
 
   startJob(pallet) {

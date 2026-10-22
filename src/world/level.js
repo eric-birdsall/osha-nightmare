@@ -12,6 +12,8 @@ const BAY_W = 2.7;
 const BAYS = 6;
 const RACK_X0 = -20;
 const UPRIGHT_H = 5.2;
+const BEAM_H = 0.16; // shelf beam height (labels go on its face)
+const BEAM_D = 0.06; // beam depth
 
 // Five rows in the west half of the warehouse, 4.4 m aisles between them. The aisles are
 // narrower than the racks are tall, so a toppled row falls onto its neighbour (dominoes).
@@ -73,7 +75,8 @@ function labelRack(group, { name, z0, z1, double }, cx, cz) {
     for (const x of [x0 + 0.65, x1 - 0.65]) add(tagPlane(`ROW ${name}`, 1.2, 0.4, { bg: '#1d3f80', fg: '#fff', border: '#fff' }), x, 2.2, z, ry);
     for (let b = 0; b < BAYS; b++) {
       SHELF_LEVELS.forEach((y, sh) => {
-        add(tagPlane(locationCode(name, b, sh), 0.5, 0.19), bayX(b), y - 0.13 - 0.1, z + (ry ? -0.004 : 0.004), ry);
+        // Tag stuck on the beam face, a few mm proud of it
+        add(tagPlane(locationCode(name, b, sh), 0.42, BEAM_H - 0.03), bayX(b), y - BEAM_H / 2, z + (ry ? 0.008 : -0.008), ry);
       });
     }
   }
@@ -111,8 +114,12 @@ function buildRack(game, rack) {
     for (const z of uprightZs) parts.push([[0.045, UPRIGHT_H / 2, 0.045], [x0 + i * BAY_W - cx, UPRIGHT_H / 2, z - cz], blue, true]);
   }
   for (const y of SHELF_LEVELS) {
-    parts.push([[len / 2, 0.02, (z1 - z0) / 2], [0, y - 0.02, 0], deckGrey, false]); // deck (walkable)
-    for (const z of [z0 + 0.03, z1 - 0.03]) parts.push([[len / 2, 0.065, 0.03], [0, y - 0.065, z - cz], orange, true]); // beams
+    // Deck fits between the beams (no coplanar faces with them, so no z-fighting flicker)
+    const deckHalfZ = (z1 - z0) / 2 - BEAM_D;
+    parts.push([[len / 2, 0.02, deckHalfZ], [0, y - 0.02, 0], deckGrey, false]); // deck (walkable)
+    for (const z of [z0 + BEAM_D / 2, z1 - BEAM_D / 2]) {
+      parts.push([[len / 2, BEAM_H / 2, BEAM_D / 2], [0, y - BEAM_H / 2, z - cz], orange, true]); // beams
+    }
   }
   const cfg = CONFIG.racks;
   const totalMass = cfg.massPerBay * BAYS * (double ? cfg.doubleDeepFactor : 1);
