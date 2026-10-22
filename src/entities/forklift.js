@@ -405,6 +405,11 @@ export class Forklift {
     body.applyImpulseAtPoint({ x: lat.x, y: 0, z: lat.z }, { x: com.x, y: t.y + cfg.gripHeight, z: com.z }, true);
 
     const av = body.angvel();
+    // Roll damping (tires and mast soak up the lurch): a quick flick of the wheel rocks the
+    // truck instead of tipping it, but holding a hard turn at full speed still rolls it over.
+    const rollRate = av.x * fwd.x + av.y * fwd.y + av.z * fwd.z;
+    const roll = fwd.clone().multiplyScalar(-cfg.rollDamping * cfg.inertia[2] * rollRate * dt * this.groundFrac);
+    body.applyTorqueImpulse({ x: roll.x, y: roll.y, z: roll.z }, true);
     const dw = Math.max(-cfg.yawAccel * dt, Math.min(cfg.yawAccel * dt, yawTarget - av.y));
     body.applyTorqueImpulse({ x: 0, y: cfg.inertia[1] * dw * this.groundFrac, z: 0 }, true);
 

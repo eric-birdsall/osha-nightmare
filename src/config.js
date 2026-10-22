@@ -47,7 +47,7 @@ export const CONFIG = {
 
   forklift: {
     mass: 3000,
-    centerOfMass: [0, 0.8, -0.35], // toward the counterweight; at 0.8 m a hard turn at full speed (~4 m/s) tips it
+    centerOfMass: [0, 0.8, -0.35], // toward the counterweight; with rollDamping, a hard turn at full speed (~4 m/s) tips it
     gripHeight: 0, // where the sideways tire grip acts (0 = the floor)
     inertia: [1700, 1800, 650],
     topSpeed: 4.0,
@@ -61,6 +61,7 @@ export const CONFIG = {
     steerMax: deg(60),
     steerRate: deg(140), // how fast the rear wheels turn
     maxYawRate: 1.7,
+    rollDamping: 6, // 1/s: higher = harder to tip; at 6 only a sharp turn at full throttle tips it
     yawAccel: 4.0,
     wheelbase: 1.4,
     liftMin: 0.1,
