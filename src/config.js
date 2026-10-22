@@ -101,6 +101,13 @@ export const CONFIG = {
     restTime: 0.5,
   },
 
+  replay: {
+    delay: 1.5, // seconds after an incident before the replay starts
+    speed: 0.5, // slow motion
+    postSeconds: 1.4, // how much after the incident the last angle shows
+    bufferSeconds: 5,
+  },
+
   input: {
     deadZone: 0.15,
   },

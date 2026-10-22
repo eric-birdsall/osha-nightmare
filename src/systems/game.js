@@ -6,6 +6,7 @@ import { buildLevel } from '../world/level.js';
 import { Forklift } from '../entities/forklift.js';
 import { Climber } from '../entities/climber.js';
 import { WrapSystem, collectStack } from './wrapping.js';
+import { Recorder, ReplayDirector, buildCctvFixtures } from './replay.js';
 import { disposeTree } from '../util/meshes.js';
 import { sfx } from './audio.js';
 
@@ -37,6 +38,11 @@ export class Game {
     this.forklift = new Forklift(this, this.level.forkliftSpawn);
     this.climber = new Climber(this, this.level.climberSpawn);
     this.wrap = new WrapSystem(this);
+    buildCctvFixtures(this.scene);
+    this.clock = 0; // simulation time, for the replay buffer
+    this.recorder = new Recorder(this);
+    this.pendingReplay = null;
+    this.replay = null;
 
     this.active = 'climber'; // single player: who you control
     this.rolesSwapped = false; // co-op: players traded characters
@@ -125,6 +131,7 @@ export class Game {
   // ---------------------------------------------------------------- simulation
 
   step(dt, actions) {
+    this.clock += dt;
     const singleActive = (role) => this.mode !== 'single' || this.active === role;
     const driverOn = singleActive('driver') && this.devices.driver.length > 0;
     const climberOn = singleActive('climber') && this.devices.climber.length > 0;
@@ -209,6 +216,16 @@ export class Game {
     sfx.thud();
     setTimeout(sfx.incident, 250);
     this.hud?.banner(`⚠ INCIDENT ⚠<small>${INCIDENT_LINES[reason] || 'Oops'}</small>`);
+    // Queue the CCTV replay once the ragdoll has had a moment to flail
+    if (!this.replay && !this.pendingReplay) {
+      this.pendingReplay = { incidentTime: this.clock, at: this.clock + CONFIG.replay.delay, reason: INCIDENT_LINES[reason] || 'Incident' };
+    }
+  }
+
+  // Advance the replay; returns true while it is still showing.
+  updateReplay(dt, skip) {
+    if (this.replay && !this.replay.update(dt, skip)) this.replay = null;
+    return !!this.replay;
   }
 
   // ---------------------------------------------------------------- per frame
@@ -224,10 +241,16 @@ export class Game {
     this.climber.updateCamera(dt);
     this.forklift.updateCamera();
     this.incidentSign.set(this.days);
+    this.recorder.capture(this.clock);
+    if (this.pendingReplay && this.clock >= this.pendingReplay.at) {
+      this.replay = new ReplayDirector(this, this.pendingReplay);
+      this.pendingReplay = null;
+    }
   }
 
   render(renderer, w, h) {
     renderer.shadowMap.needsUpdate = true;
+    if (this.replay) return this.replay.render(renderer, w, h);
     const views =
       this.mode === 'single'
         ? [[this.active === 'climber' ? this.climber.camera : this.forklift.camera, 0, 0, w, h]]
@@ -248,6 +271,7 @@ export class Game {
   }
 
   dispose() {
+    this.replay?.finish();
     disposeTree(this.scene);
     this.world.free();
   }

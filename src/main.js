@@ -217,7 +217,15 @@ function frame(now) {
       Object.assign(actions.driver, window.osha.override.driver);
     }
     const kbPause = input.pressed.has('Escape');
-    if (actions.climber.pause || actions.driver.pause || kbPause) {
+    if (game.replay) {
+      // Incident replay: the world is frozen; any button skips it
+      const m = input.menu();
+      const skip =
+        actions.climber.jump || actions.climber.interact || actions.climber.pause || actions.driver.pause ||
+        actions.climber.swap || actions.driver.swap || kbPause || m.confirm || m.back || input.pressed.size > 0;
+      game.updateReplay(dt, skip);
+      acc = 0;
+    } else if (actions.climber.pause || actions.driver.pause || kbPause) {
       pause();
     } else {
       if (actions.climber.swap || actions.driver.swap) {
@@ -244,7 +252,10 @@ function frame(now) {
       input.lockFailed && !input.pointerLocked ? 'Mouse lock unavailable: drag with a mouse button held, or use IJKL, to look' : '';
     game.render(renderer, innerWidth, innerHeight); // CSS pixels: setViewport applies the pixel ratio
     hud.update(game);
+    hud.show(!game.replay);
+    canvas.classList.toggle('cctv', !!game.replay);
   } else {
+    canvas.classList.remove('cctv');
     renderer.setClearColor(0x1b1f24);
     renderer.clear();
   }
