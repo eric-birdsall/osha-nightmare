@@ -6,9 +6,9 @@ const VIEW_HTML = (role) => `
     <div class="paper">
       <div class="otitle"><span>PICK LIST</span><span>ORDER #1</span></div>
       <table class="otable">
-        <tr><th>SKU</th><th>Location</th><th></th></tr>
-        <tr class="oitem" data-item="A"><td class="sku"></td><td class="loc"></td><td><span class="chk"></span></td></tr>
-        <tr class="oitem" data-item="B"><td class="sku"></td><td class="loc"></td><td><span class="chk"></span></td></tr>
+        <tr><th>SKU</th><th>Qty</th><th>Location</th><th></th></tr>
+        <tr class="oitem" data-item="A"><td class="sku"></td><td class="qty"></td><td class="loc"></td><td><span class="chk"></span></td></tr>
+        <tr class="oitem" data-item="B"><td class="sku"></td><td class="qty"></td><td class="loc"></td><td><span class="chk"></span></td></tr>
       </table>
       <div class="odest">Wrap, then ship to <b>DOCK 1</b></div>
       <div class="osign">Picked by</div>
@@ -16,7 +16,6 @@ const VIEW_HTML = (role) => `
   </div>
   <div class="topright">
     <div class="timer card">00:00</div>
-    <div class="days card"><div class="dl">DAYS SINCE LAST INCIDENT</div><div class="dn">47</div></div>
   </div>
   <div class="roles card">
     <span data-r="climber">🧗 Dave</span><span data-r="driver">🚜 Ralph</span>
@@ -54,8 +53,6 @@ export class Hud {
         el,
         items: { A: q('[data-item="A"]'), B: q('[data-item="B"]') },
         timer: q('.timer'),
-        days: q('.days'),
-        daysN: q('.dn'),
         roles: q('.roles'),
         prompt: q('.prompt'),
         crosshair: q('.crosshair'),
@@ -67,7 +64,6 @@ export class Hud {
     }
     this.toastUntil = 0;
     this.bannerUntil = 0;
-    this.lastDays = null;
   }
 
   show(on) {
@@ -103,16 +99,19 @@ export class Hud {
       v.el.classList.toggle('bottom', !single && role === 'driver');
       if (!visible) continue;
       for (const k of ['A', 'B']) {
-        v.items[k].classList.toggle('done', !!game.itemStatus[k]);
         const line = game.level.order.find((o) => o.line === k);
+        const have = Math.min(line.qty, game.itemStatus[k]);
+        v.items[k].classList.toggle('done', have >= line.qty);
+        // Quantity, with a running tally once some are on the pallet: "2/3"
+        const qty = v.items[k].querySelector('.qty');
+        const qtyText = have > 0 && have < line.qty ? `${have}/${line.qty}` : String(line.qty);
+        if (qty.textContent !== qtyText) qty.textContent = qtyText;
         const loc = v.items[k].querySelector('.loc');
         const sku = v.items[k].querySelector('.sku');
         if (loc.textContent !== line.location) loc.textContent = line.location;
         if (sku.textContent !== String(line.sku)) sku.textContent = line.sku;
       }
       v.timer.textContent = fmt(game.time);
-      v.daysN.textContent = game.days;
-      v.days.classList.toggle('zero', game.days === 0);
       v.roles.style.display = single ? '' : 'none';
       if (single) {
         for (const s of v.roles.querySelectorAll('[data-r]')) s.classList.toggle('on', s.dataset.r === game.active);

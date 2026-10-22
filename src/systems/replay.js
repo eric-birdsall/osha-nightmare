@@ -11,12 +11,13 @@ export const CCTV = [
   ['02', 'AISLE A', [-8, 5.4, -HZ + 0.35]],
   ['03', 'NORTH EAST', [HX - 0.4, 5.4, -HZ + 0.4]],
   ['04', 'WEST WALL · N', [-HX + 0.35, 5.0, -5.5]],
-  ['05', 'WEST WALL · S', [-HX + 0.35, 5.0, 9]],
+  ['05', 'LOWER LEVEL · W', [-HX + 0.35, 4.6, 9]],
   ['06', 'RACK END', [0, 5.6, -HZ + 0.35]],
   ['07', 'EAST WALL', [HX - 0.35, 5.0, -7]],
-  ['08', 'SOUTH WEST', [-HX + 0.4, 5.4, HZ - 0.4]],
-  ['09', 'FLOOR · SOUTH', [2, 5.4, HZ - 0.35]],
+  ['08', 'LOWER LEVEL · SW', [-HX + 0.4, 5.0, HZ - 0.4]],
+  ['09', 'LOWER LEVEL · S', [2, 5.0, HZ - 0.35]],
   ['10', 'DOCK 1', [HX - 0.4, 5.4, HZ - 0.4]],
+  ['11', 'RAMP', [16, 5.0, HZ - 0.35]],
 ];
 
 // Camera housings on brackets, aimed at the middle of the floor.

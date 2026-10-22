@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL, G, groups, castRay, yawQuat, quatToThree } from '../physics.js';
+import { floorHeightAt } from '../world/level.js';
 import { flatMat } from '../util/meshes.js';
 import { spawnRagdoll } from '../systems/ragdoll.js';
 import { WorkerModel, firstPersonArm } from './worker.js';
@@ -392,10 +393,10 @@ export class Climber {
     return solid ? null : rail;
   }
 
-  // Height above the warehouse floor (y = 0). Boxes, pallets, forks and racks are all things
-  // that can move or fall away, so only the floor counts as ground.
+  // Height above the warehouse floor (upper or lower level, stairs or ramp). Boxes, pallets,
+  // forks and racks are all things that can move or fall away, so only the floor counts as ground.
   heightAboveGround(feet) {
-    return feet.y;
+    return feet.y - floorHeightAt(feet.x, feet.z);
   }
 
   isRail(collider) {
@@ -694,13 +695,39 @@ export class Climber {
     const eye = this.eye;
     const dir = this.viewDir();
     const hit = castRay(this.game.world, eye, dir, cfg.reach + 1, COL.climberQuery, (c) => c.handle !== this.collider.handle);
-    if (!hit) return;
     // Arm's reach, measured from the chest so boxes at your feet are grabbable
     const chest = eye.clone().setY(eye.y - cfg.chestDrop);
-    if (chest.distanceTo(tmp.set(hit.point.x, hit.point.y, hit.point.z)) > cfg.reach) return;
-    const ent = this.game.entityForCollider(hit.collider);
-    if (ent && ent.kind === 'box') this.target = ent;
-    else if (ent && ent.kind === 'ladder' && this.support?.body.handle !== ent.body.handle) this.target = ent;
+    if (hit && chest.distanceTo(tmp.set(hit.point.x, hit.point.y, hit.point.z)) <= cfg.reach) {
+      const ent = this.game.entityForCollider(hit.collider);
+      if (ent && ent.kind === 'box') this.target = ent;
+      else if (ent && ent.kind === 'ladder' && this.support?.body.handle !== ent.body.handle) this.target = ent;
+    }
+    if (!this.target) this.target = this.nearbyLadder(chest, dir);
+  }
+
+  // A ladder in arm's reach and roughly in front of Dave, wherever the crosshair is: standing
+  // at its foot or beside it, you can grab it without aiming at a rail.
+  nearbyLadder(chest, dir) {
+    const reach = CONFIG.climber.reach;
+    const fwd = new THREE.Vector3(dir.x, 0, dir.z).normalize();
+    let best = null;
+    let bestD = reach;
+    for (const ent of this.game.entities) {
+      if (ent.kind !== 'ladder' || this.support?.body.handle === ent.body.handle) continue;
+      for (let i = 0; i < ent.body.numColliders(); i++) {
+        const p = ent.body.collider(i).projectPoint(chest, true)?.point;
+        if (!p) continue;
+        const to = new THREE.Vector3(p.x - chest.x, p.y - chest.y, p.z - chest.z);
+        const d = to.length();
+        if (d >= bestD) continue;
+        const flat = to.setY(0);
+        // Within ~75 degrees of where Dave faces (or right up against it)
+        if (flat.length() > 0.35 && flat.normalize().dot(fwd) < 0.25) continue;
+        best = ent;
+        bestD = d;
+      }
+    }
+    return best;
   }
 
   // Carried boxes tilt with the view only within a natural range, so looking at your

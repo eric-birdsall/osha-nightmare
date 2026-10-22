@@ -48,12 +48,20 @@
               <div class="map-head">FLOOR PLAN · BUILDING 1</div>
               <svg viewBox="-25 -17 50 34" aria-label="Warehouse floor plan">
                 <rect x="-24" y="-16" width="48" height="32" class="fp-wall" />
+                <rect x="-24" y="3.8" width="30" height="12.2" class="fp-lower" />
+                <rect x="6" y="12" width="8" height="4" class="fp-ramp" />
+                <path d="M12.6 14 H7.6 M8.8 13.2 L7.6 14 L8.8 14.8" class="fp-arrow" />
+                <rect x="-2.6" y="3.8" width="2" height="1.5" class="fp-stairs" />
+                <text x="-12" y="6" class="fp-zone">LOWER LEVEL · 1 M DOWN</text>
                 <g class="fp-racks">
                   <rect x="-20" y="-15.6" width="16.2" height="1.2" />
                   <rect x="-20" y="-10" width="16.2" height="1.2" />
                   <rect x="-20" y="-8.6" width="16.2" height="1.2" />
                   <rect x="-20" y="-3" width="16.2" height="1.2" />
                   <rect x="-20" y="-1.6" width="16.2" height="1.2" />
+                  <rect x="-20" y="8" width="16.2" height="1.2" />
+                  <rect x="-20" y="9.4" width="16.2" height="1.2" />
+                  <rect x="-20" y="14.75" width="16.2" height="1.2" />
                 </g>
                 <g class="fp-labels">
                   <text x="-11.9" y="-15">RACK A</text>
@@ -61,11 +69,15 @@
                   <text x="-11.9" y="-8">RACK C</text>
                   <text x="-11.9" y="-2.4">RACK D</text>
                   <text x="-11.9" y="-1">RACK E</text>
+                  <text x="-11.9" y="8.6">RACK F</text>
+                  <text x="-11.9" y="10">RACK G</text>
+                  <text x="-11.9" y="15.35">RACK H</text>
                 </g>
                 <rect x="10.75" y="7.75" width="2.5" height="2.5" class="fp-wrap" />
-                <text x="12" y="12" class="fp-zone">WRAP</text>
+                <text x="12" y="7" class="fp-zone">WRAP</text>
                 <rect x="20.3" y="0" width="3.6" height="4" class="fp-dock" />
                 <text x="22.1" y="-0.8" class="fp-zone">DOCK 1</text>
+                <text x="10" y="12.9" class="fp-zone">RAMP</text>
                 <circle id="fp-dave" r="0.9" class="fp-dave" />
                 <circle id="fp-ralph" r="1.1" class="fp-ralph" />
               </svg>
@@ -115,7 +127,8 @@
           </div>
           <p class="tag">
             The order: find each SKU on the clipboard at its Rack-Bay-Shelf location (check the label,
-            some neighbours look similar), get both boxes onto one pallet, set it down in the WRAP square
+            some neighbours look similar). If a slot is short, its orange BACKSTOCK sign says where
+            the rest is downstairs. Get the full quantity of both onto one pallet, set it down in the WRAP square
             and back the forklift out, then deliver the wrapped pallet to DOCK 1.
           </p>
           <button class="btn" data-act="back">Back</button>

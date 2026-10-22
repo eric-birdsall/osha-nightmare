@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL, castRay, yawQuat, quatToThree } from '../physics.js';
+import { floorHeightAt } from '../world/level.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
 import { sfx } from '../systems/audio.js';
 import { WorkerModel } from './worker.js';
@@ -126,9 +127,10 @@ export class Forklift {
   // Move the truck (and its carriage) somewhere, at rest. Used by debug tools.
   teleport(pos, yaw) {
     const q = yawQuat(yaw);
-    this.body.setTranslation({ x: pos.x, y: 0.02, z: pos.z }, true);
+    const floor = floorHeightAt(pos.x, pos.z); // upper or lower level, or partway down the ramp
+    this.body.setTranslation({ x: pos.x, y: floor + 0.02, z: pos.z }, true);
     this.body.setRotation(q, true);
-    const c = new THREE.Vector3(0, this.height + 0.02, PLATE_Z).applyQuaternion(quatToThree(q)).add(new THREE.Vector3(pos.x, 0, pos.z));
+    const c = new THREE.Vector3(0, this.height + 0.02, PLATE_Z).applyQuaternion(quatToThree(q)).add(new THREE.Vector3(pos.x, floor, pos.z));
     this.carriage.setTranslation(c, true);
     this.carriage.setRotation(q, true);
     for (const b of [this.body, this.carriage]) {
@@ -379,6 +381,10 @@ export class Forklift {
         dv = toward0(cfg.coastDecel);
       }
     }
+    // On the ramp the drive holds the truck against the slope (hydrostatic drive, no freewheeling),
+    // so it drives, brakes and coasts the same as on the flat
+    const pitchY = new THREE.Vector3(0, 0, 1).applyQuaternion(q).y;
+    if (this.groundFrac > 0 && this.tippedTime === 0) dv += 9.81 * pitchY * dt;
     const vfNew = vf + dv;
 
     // Rear-wheel steering, bicycle model around the front axle: the tail swings out.

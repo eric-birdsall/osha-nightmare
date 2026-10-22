@@ -8,6 +8,25 @@ import { createPallet } from '../entities/pallet.js';
 import { createLadder } from '../entities/ladder.js';
 
 export const ROOM = { halfX: 24, halfZ: 16, wallH: 6 };
+// Lower level: the south-west of the floor sits 1 m down. Dave takes six steps down by the rack
+// ends; the forklift has a fixed ramp along the south wall that runs down westward.
+export const LOWER = { y: -1.0, x0: -ROOM.halfX, x1: 6, z0: 3.8, z1: ROOM.halfZ };
+export const RAMP = { x0: 6, x1: 14, z0: 12, z1: ROOM.halfZ }; // top at x1, bottom at x0
+export const STAIRS = { x0: -2.6, x1: -0.6, z0: LOWER.z0, steps: 6, tread: 0.3 };
+const FLOOR_BOTTOM = -1.5; // floor slabs are solid down to here; their sides are the pit walls
+
+export const inLowerLevel = (x, z) => x < LOWER.x1 && z > LOWER.z0;
+
+// Height of the floor (not counting anything standing on it) at a spot.
+export function floorHeightAt(x, z) {
+  if (x >= RAMP.x0 && x <= RAMP.x1 && z >= RAMP.z0) return (LOWER.y * (RAMP.x1 - x)) / (RAMP.x1 - RAMP.x0);
+  if (!inLowerLevel(x, z)) return 0;
+  if (x >= STAIRS.x0 && x <= STAIRS.x1) {
+    const step = Math.floor((z - STAIRS.z0) / STAIRS.tread) + 1; // step 1 is the first one down
+    if (step < STAIRS.steps) return (LOWER.y * step) / STAIRS.steps;
+  }
+  return LOWER.y;
+}
 export const SHELF_LEVELS = [1.5, 3.0, 4.5];
 const BAY_W = 2.7;
 const BAYS = 6;
@@ -16,16 +35,20 @@ const UPRIGHT_H = 5.2;
 const BEAM_H = 0.16; // shelf beam height (labels go on its face)
 const BEAM_D = 0.06; // beam depth
 
-// Five racks in the west half of the warehouse, laid out like a real one: Rack A against the
-// north wall, B and C back to back, D and E back to back, with 4.4 m aisles between the pairs.
-// Each rack is single-deep (1.2 m) and open on its aisle face. The aisles are narrower than the
-// racks are tall, so a toppled rack falls onto its neighbour (dominoes).
+// Racks in the west half of the warehouse, laid out like a real one. Upstairs: Rack A against
+// the north wall, B and C back to back, D and E back to back, with 4.4 m aisles between the
+// pairs. Downstairs (base 1 m lower): F and G back to back, H against the south wall, with
+// 4.2 m aisles. Each rack is single-deep (1.2 m) and open on its aisle face. The aisles are
+// narrower than the racks are tall, so a toppled rack falls onto its neighbour (dominoes).
 export const RACKS = [
   { name: 'A', z0: -15.6, z1: -14.4, face: 'south' },
   { name: 'B', z0: -10.0, z1: -8.8, face: 'north' },
   { name: 'C', z0: -8.6, z1: -7.4, face: 'south' },
   { name: 'D', z0: -3.0, z1: -1.8, face: 'north' },
   { name: 'E', z0: -1.6, z1: -0.4, face: 'south' },
+  { name: 'F', z0: 8.0, z1: 9.2, face: 'north', base: LOWER.y },
+  { name: 'G', z0: 9.4, z1: 10.6, face: 'south', base: LOWER.y },
+  { name: 'H', z0: 14.75, z1: 15.95, face: 'north', base: LOWER.y },
 ];
 
 const bayX = (i) => RACK_X0 + (i + 0.5) * BAY_W;
@@ -122,7 +145,7 @@ function addStatic(game, half, pos, color, { mesh = true, edges = true } = {}) {
 // One rack = one rigid body (uprights, decks, beams). It can be shoved, tipped
 // over, and knocked into the next rack. Boxes on its shelves ride along.
 function buildRack(game, rack) {
-  const { name, z0, z1 } = rack;
+  const { name, z0, z1, base = 0 } = rack;
   const x0 = RACK_X0;
   const x1 = RACK_X0 + BAYS * BAY_W;
   const len = x1 - x0;
@@ -148,7 +171,7 @@ function buildRack(game, rack) {
   const totalMass = cfg.massPerBay * BAYS;
   const vol = parts.reduce((v, [h]) => v + h[0] * h[1] * h[2], 0);
   const body = game.world.createRigidBody(
-    RAPIER.RigidBodyDesc.dynamic().setTranslation(cx, 0, cz).setCanSleep(true).setAdditionalSolverIterations(4),
+    RAPIER.RigidBodyDesc.dynamic().setTranslation(cx, base, cz).setCanSleep(true).setAdditionalSolverIterations(4),
   );
   const group = new THREE.Group();
   for (const [half, pos, color, edges] of parts) {
@@ -167,7 +190,7 @@ function buildRack(game, rack) {
   }
   labelRack(group, rack, cx, cz);
   game.scene.add(group);
-  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass, z0, z1 };
+  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass, z0, z1, base };
   game.addEntity(ent);
   return ent;
 }
@@ -186,10 +209,10 @@ function floorMarking(game, cx, cz, w, d, color, thickness = 0.12) {
   add(cx + w / 2, cz, thickness, d);
 }
 
-function floorText(game, text, x, z, w, h, rotY = 0, color = '#f5c518') {
+function floorText(game, text, x, z, w, h, rotY = 0, color = '#f5c518', y = 0) {
   const p = labelPlane(text, w, h, { bg: 'rgba(0,0,0,0)', fg: color, transparent: true });
   p.rotation.set(-Math.PI / 2, 0, rotY);
-  p.position.set(x, 0.008, z);
+  p.position.set(x, y + 0.008, z);
   game.scene.add(p);
 }
 
@@ -249,51 +272,110 @@ class SkuPool {
 
 const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
 
-// Three boxes per shelf along the open face, in every bay of every rack. The two order lines:
-//  A: shelf 2 of any rack (reachable from the forks or a rolling ladder)
-//  B: shelf 3, the top, of a different rack (the forks at full height, or a ladder plus a stack)
-// Each order slot also holds two other boxes; usually one is a near-miss SKU (a decoy).
-function stockShelves(game) {
+// Backstock placard hung under a short pick face's beam: where the rest of that SKU is kept.
+function backstockSign(location) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ff8a1f';
+  g.fillRect(0, 0, 256, 96);
+  g.strokeStyle = '#111';
+  g.lineWidth = 6;
+  g.strokeRect(3, 3, 250, 90);
+  g.fillStyle = '#111';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = 'bold 26px system-ui, sans-serif';
+  g.fillText('BACKSTOCK', 128, 26);
+  g.font = 'bold 44px system-ui, sans-serif';
+  g.fillText(`→ ${location}`, 128, 66);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.23), new THREE.MeshBasicMaterial({ map: tex }));
+}
+
+// Three boxes per shelf along the open face, in every bay of every rack. The order has two
+// lines, each a quantity of one SKU, picked from the upstairs racks:
+//  A: 3 boxes from shelf 2 of any rack (reachable from the forks or a rolling ladder). The pick
+//     face is always one short: a BACKSTOCK sign on its beam says which lower-level slot holds the rest.
+//  B: 1 or 2 boxes from shelf 3, the top, of a different rack; sometimes short as well.
+// Backstock slots are on the bottom shelf of the lower-level racks, in reach from the floor, and
+// hold a full row of the SKU. A short pick face has a gap where the missing box would be; other
+// spare spots in an order slot usually hold a near-miss SKU (a decoy).
+function stockShelves(game, racks) {
   const cfg = CONFIG.order;
   game.skus = new SkuPool();
-  const names = RACKS.map((r) => r.name);
-  const rackA = pickOne(names);
+  const upstairs = RACKS.filter((r) => !r.base).map((r) => r.name);
+  const downstairs = RACKS.filter((r) => r.base).map((r) => r.name);
+  const bay = () => Math.floor(Math.random() * BAYS);
+  const rackA = pickOne(upstairs);
+  const qtyB = Math.random() < 0.5 ? 1 : 2;
   const lines = {
-    A: { row: rackA, bay: Math.floor(Math.random() * BAYS), shelf: 1 },
-    B: { row: pickOne(names.filter((n) => n !== rackA)), bay: Math.floor(Math.random() * BAYS), shelf: 2 },
+    A: { rack: rackA, bay: bay(), shelf: 1, qty: 3, short: 1 },
+    B: { rack: pickOne(upstairs.filter((n) => n !== rackA)), bay: bay(), shelf: 2, qty: qtyB, short: qtyB > 1 && Math.random() < cfg.backstockChance ? 1 : 0 },
   };
   const order = [];
-  const orderBoxes = {};
-  for (const [line, slot] of Object.entries(lines)) {
-    slot.sku = game.skus.next();
-    order.push({ line, sku: slot.sku, location: locationCode(slot.row, slot.bay, slot.shelf) });
+  const slots = []; // [{ rack, bay, shelf, line, sku, count, gap, backstock }]
+  for (const [line, l] of Object.entries(lines)) {
+    l.sku = game.skus.next();
+    slots.push({ rack: l.rack, bay: l.bay, shelf: l.shelf, line, sku: l.sku, count: l.qty - l.short, gap: l.short > 0, decoys: true });
+    let backstock = null;
+    if (l.short) {
+      // A free bottom-shelf slot downstairs
+      let b;
+      do b = { rack: pickOne(downstairs), bay: bay(), shelf: 0 };
+      while (slots.some((o) => o.rack === b.rack && o.bay === b.bay && o.shelf === b.shelf));
+      backstock = locationCode(b.rack, b.bay, b.shelf);
+      slots.push({ ...b, line, sku: l.sku, count: 3 });
+      slots[slots.length - 2].backstock = backstock;
+    }
+    order.push({ line, sku: l.sku, qty: l.qty, location: locationCode(l.rack, l.bay, l.shelf), backstock });
   }
+
+  const orderBoxes = { A: [], B: [] };
   const types = ['small', 'medium', 'medium', 'large'];
   for (const rack of RACKS) {
-    const { name, z0, z1, face: openFace } = rack;
-    const facesFor = () => [openFace];
-    for (let bay = 0; bay < BAYS; bay++) {
+    const { name, z0, z1, face, base = 0 } = rack;
+    const ent = racks.find((r) => r.name === name);
+    for (let b = 0; b < BAYS; b++) {
       for (let shelf = 0; shelf < SHELF_LEVELS.length; shelf++) {
-        const target = Object.entries(lines).find(([, l]) => l.row === name && l.bay === bay && l.shelf === shelf);
-        for (const face of facesFor(shelf)) {
-          const decoySpot = target && Math.random() < cfg.decoyChance ? pickOne([0, 2]) : -1;
-          [-0.85, 0, 0.85].forEach((dx, i) => {
-            const isOrder = target && i === 1 && face === facesFor(shelf)[0];
-            const type = isOrder ? 'medium' : pickOne(types);
-            const half = CONFIG.objects[type].size[2] / 2;
-            const z = typeof face === 'number' ? face : face === 'south' ? z1 - BEAM_D - 0.03 - half : z0 + BEAM_D + 0.03 + half;
-            let sku;
-            if (isOrder) sku = target[1].sku;
-            else if (i === decoySpot) sku = game.skus.nearMiss(target[1].sku);
-            else sku = game.skus.next();
-            const box = createBox(game, {
-              type,
-              sku,
-              item: isOrder ? target[0] : null,
-              pos: [bayX(bay) + dx + (Math.random() - 0.5) * 0.12, SHELF_LEVELS[shelf] + 0.005, z],
-            });
-            if (isOrder) orderBoxes[target[0]] = box;
+        const slot = slots.find((o) => o.rack === name && o.bay === b && o.shelf === shelf);
+        // What goes in each of the three spots: 'sku' (an order box), 'decoy', 'gap' or a random box
+        const spots = [null, null, null];
+        if (slot) {
+          const fill = [1, 0, 2].slice(0, slot.count); // middle first, so a short face shows a gap at the end
+          for (const i of fill) spots[i] = 'sku';
+          const free = [0, 1, 2].filter((i) => !spots[i]);
+          if (slot.gap && free.length) spots[free.shift()] = 'gap';
+          if (slot.decoys && free.length && Math.random() < cfg.decoyChance) spots[pickOne(free)] = 'decoy';
+        }
+        [-0.85, 0, 0.85].forEach((dx, i) => {
+          if (spots[i] === 'gap') return;
+          const isOrder = spots[i] === 'sku';
+          const type = isOrder ? 'medium' : pickOne(types);
+          const half = CONFIG.objects[type].size[2] / 2;
+          const z = face === 'south' ? z1 - BEAM_D - 0.03 - half : z0 + BEAM_D + 0.03 + half;
+          let sku;
+          if (isOrder) sku = slot.sku;
+          else if (spots[i] === 'decoy') sku = game.skus.nearMiss(slot.sku);
+          else sku = game.skus.next();
+          const box = createBox(game, {
+            type,
+            sku,
+            item: isOrder ? slot.line : null,
+            pos: [bayX(b) + dx + (Math.random() - 0.5) * 0.12, base + SHELF_LEVELS[shelf] + 0.005, z],
           });
+          if (isOrder) orderBoxes[slot.line].push(box);
+        });
+        if (slot?.backstock) {
+          // Hung under this shelf's beam, beside the location tag, so it moves with the rack
+          const sign = backstockSign(slot.backstock);
+          const fz = face === 'south' ? z1 + 0.016 : z0 - 0.016;
+          sign.position.set(bayX(b) + 0.62 - (RACK_X0 + (BAYS * BAY_W) / 2), SHELF_LEVELS[shelf] - BEAM_H - 0.13, fz - (z0 + z1) / 2);
+          sign.rotation.y = face === 'south' ? 0 : Math.PI;
+          ent.mesh.add(sign);
         }
       }
     }
@@ -301,13 +383,221 @@ function stockShelves(game) {
   return { order, orderBoxes };
 }
 
+// ---------------------------------------------------------------- floors
+
+// Concrete with a 1 m grid scored into it, repeated across each slab.
+let floorCanvas = null;
+function floorMaterial(w, d) {
+  if (!floorCanvas) {
+    floorCanvas = document.createElement('canvas');
+    floorCanvas.width = floorCanvas.height = 128;
+    const g = floorCanvas.getContext('2d');
+    g.fillStyle = '#7d8187';
+    g.fillRect(0, 0, 128, 128);
+    g.fillStyle = '#6c7077';
+    g.fillRect(0, 0, 128, 3);
+    g.fillRect(0, 0, 3, 128);
+  }
+  const tex = new THREE.CanvasTexture(floorCanvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(w, d);
+  tex.anisotropy = 8;
+  return new THREE.MeshLambertMaterial({ map: tex });
+}
+
+// Diagonal black and yellow hazard stripes, about `pitch` metres per stripe pair.
+let hazardCanvas = null;
+function hazardMaterial(length, pitch = 0.5) {
+  if (!hazardCanvas) {
+    hazardCanvas = document.createElement('canvas');
+    hazardCanvas.width = 64;
+    hazardCanvas.height = 32;
+    const g = hazardCanvas.getContext('2d');
+    g.fillStyle = '#f5c518';
+    g.fillRect(0, 0, 64, 32);
+    g.fillStyle = '#16171a';
+    for (const x0 of [-64, 0, 64]) {
+      g.beginPath();
+      g.moveTo(x0, 32);
+      g.lineTo(x0 + 32, 0);
+      g.lineTo(x0 + 64, 0);
+      g.lineTo(x0 + 32, 32);
+      g.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(hazardCanvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.repeat.set(length / pitch, 1);
+  return new THREE.MeshBasicMaterial({ map: tex });
+}
+
+// A solid floor slab from FLOOR_BOTTOM up to `top`, with a concrete top surface.
+function floorSlab(game, x0, x1, z0, z1, top, { mesh = true } = {}) {
+  const w = x1 - x0;
+  const d = z1 - z0;
+  addStatic(game, [w / 2, (top - FLOOR_BOTTOM) / 2, d / 2], [(x0 + x1) / 2, (top + FLOOR_BOTTOM) / 2, (z0 + z1) / 2], 0, { mesh: false });
+  if (!mesh) return;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), floorMaterial(w, d));
+  m.rotation.x = -Math.PI / 2;
+  m.position.set((x0 + x1) / 2, top, (z0 + z1) / 2);
+  m.receiveShadow = true;
+  game.scene.add(m);
+}
+
+// The 1 m drop at the edge of the upper level: a concrete face with hazard paint along its lip.
+// (x, z) is the middle of the edge; ry turns the face toward the lower side.
+function pitWall(game, x, z, length, ry) {
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(length, -LOWER.y), flatMat(0x9a9fa6));
+  face.position.set(x, LOWER.y / 2, z);
+  face.rotation.y = ry;
+  face.receiveShadow = true;
+  const lip = new THREE.Mesh(new THREE.PlaneGeometry(length, 0.18), hazardMaterial(length));
+  lip.position.set(x, -0.09, z);
+  lip.rotation.y = ry;
+  lip.translateZ(0.004);
+  game.scene.add(face, lip);
+}
+
+// Safety railing: yellow posts and two rails from (x0, z0) to (x1, z1). Its collider is taller
+// than the rails, so Dave can't jump and climb over it (the forks can still lift him past it).
+function guardrail(game, x0, z0, x1, z1, y = 0) {
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  const ry = Math.atan2(-(z1 - z0), x1 - x0);
+  const mx = (x0 + x1) / 2;
+  const mz = (z0 + z1) / 2;
+  game.world.createCollider(
+    RAPIER.ColliderDesc.cuboid(len / 2, 0.75, 0.05)
+      .setTranslation(mx, y + 0.75, mz)
+      .setRotation({ x: 0, y: Math.sin(ry / 2), z: 0, w: Math.cos(ry / 2) })
+      .setCollisionGroups(COL.static),
+    game.staticBody,
+  );
+  const yellow = 0xf5c518;
+  const group = new THREE.Group();
+  group.position.set(mx, y, mz);
+  group.rotation.y = ry;
+  const posts = Math.max(1, Math.ceil(len / 2));
+  for (let i = 0; i <= posts; i++) {
+    const post = boxMesh(0.07, 1.1, 0.07, yellow, { edges: false });
+    post.position.set(-len / 2 + (i * len) / posts, 0.55, 0);
+    group.add(post);
+  }
+  for (const h of [0.55, 1.08]) {
+    const rail = boxMesh(len, 0.05, 0.05, yellow, { edges: false });
+    rail.position.y = h;
+    group.add(rail);
+  }
+  const toe = boxMesh(len, 0.12, 0.02, 0x16171a, { edges: false }); // toe board
+  toe.position.y = 0.06;
+  group.add(toe);
+  game.scene.add(group);
+}
+
+function buildFloors(game) {
+  const { halfX, halfZ } = ROOM;
+  // Upper level: everything north of the pit, and east of it (the ramp is cut out of the latter)
+  floorSlab(game, -halfX, halfX, -halfZ, LOWER.z0, 0);
+  floorSlab(game, LOWER.x1, halfX, LOWER.z0, RAMP.z0, 0);
+  floorSlab(game, RAMP.x1, halfX, RAMP.z0, halfZ, 0);
+  // Lower level, and solid fill under the ramp
+  floorSlab(game, LOWER.x0, LOWER.x1, LOWER.z0, LOWER.z1, LOWER.y);
+  floorSlab(game, RAMP.x0, RAMP.x1, RAMP.z0, RAMP.z1, LOWER.y, { mesh: false });
+
+  // Pit walls: the north and east edges of the lower level, and the side of the ramp cutting
+  pitWall(game, (LOWER.x0 + LOWER.x1) / 2, LOWER.z0, LOWER.x1 - LOWER.x0, 0);
+  pitWall(game, LOWER.x1, (LOWER.z0 + RAMP.z0) / 2, RAMP.z0 - LOWER.z0, -Math.PI / 2);
+  pitWall(game, (RAMP.x0 + RAMP.x1) / 2, RAMP.z0, RAMP.x1 - RAMP.x0, 0);
+
+  // Stairs: six risers down from the upper level, yellow nosing on every step
+  const { x0: sx0, x1: sx1, steps, tread } = STAIRS;
+  const sw = sx1 - sx0;
+  for (let i = 1; i < steps; i++) {
+    const top = (LOWER.y * i) / steps;
+    const z0 = STAIRS.z0 + (i - 1) * tread;
+    addStatic(game, [sw / 2, (top - FLOOR_BOTTOM) / 2, tread / 2], [(sx0 + sx1) / 2, (top + FLOOR_BOTTOM) / 2, z0 + tread / 2], 0, { mesh: false });
+    const step = boxMesh(sw, top - LOWER.y, tread, 0x8a8f96);
+    step.position.set((sx0 + sx1) / 2, (top + LOWER.y) / 2, z0 + tread / 2);
+    game.scene.add(step);
+    const nose = new THREE.Mesh(new THREE.PlaneGeometry(sw, 0.06), new THREE.MeshBasicMaterial({ color: 0xf5c518 }));
+    nose.rotation.x = -Math.PI / 2;
+    nose.position.set((sx0 + sx1) / 2, top + 0.004, z0 + 0.03);
+    game.scene.add(nose);
+  }
+  // Handrails down both sides of the stairs (sloped rail on posts)
+  const run = (steps - 1) * tread;
+  for (const x of [sx0 + 0.04, sx1 - 0.04]) {
+    for (const [z, y] of [[STAIRS.z0 + 0.05, 0], [STAIRS.z0 + run + 0.25, LOWER.y]]) {
+      const post = boxMesh(0.06, 1.0, 0.06, 0xf5c518, { edges: false });
+      post.position.set(x, y + 0.5, z);
+      game.scene.add(post);
+    }
+    const slope = Math.hypot(run + 0.2, -LOWER.y);
+    const rail = boxMesh(0.05, 0.05, slope, 0xf5c518, { edges: false });
+    rail.position.set(x, 1.0 + LOWER.y / 2, STAIRS.z0 + 0.05 + (run + 0.2) / 2);
+    rail.rotation.x = Math.atan2(-LOWER.y, run + 0.2);
+    game.scene.add(rail);
+  }
+
+  // Forklift ramp: a sloped slab from the upper floor (east) down to the lower level (west)
+  const rl = RAMP.x1 - RAMP.x0;
+  const rw = RAMP.z1 - RAMP.z0;
+  const angle = Math.atan2(-LOWER.y, rl);
+  const thick = 0.3;
+  const len = Math.hypot(rl, LOWER.y);
+  const cx = (RAMP.x0 + RAMP.x1) / 2 + (Math.sin(angle) * thick) / 2;
+  const cy = LOWER.y / 2 - (Math.cos(angle) * thick) / 2;
+  const cz = (RAMP.z0 + RAMP.z1) / 2;
+  game.world.createCollider(
+    RAPIER.ColliderDesc.cuboid(len / 2, thick / 2, rw / 2)
+      .setTranslation(cx, cy, cz)
+      .setRotation({ x: 0, y: 0, z: Math.sin(angle / 2), w: Math.cos(angle / 2) })
+      .setFriction(0.8)
+      .setCollisionGroups(COL.static),
+    game.staticBody,
+  );
+  const ramp = new THREE.Mesh(new THREE.BoxGeometry(len, thick, rw), [
+    flatMat(0x8a8f96),
+    flatMat(0x8a8f96),
+    floorMaterial(len, rw),
+    flatMat(0x8a8f96),
+    flatMat(0x8a8f96),
+    flatMat(0x8a8f96),
+  ]);
+  ramp.position.set(cx, cy, cz);
+  ramp.rotation.z = angle;
+  ramp.receiveShadow = true;
+  game.scene.add(ramp);
+  // Hazard edging down both sides of the ramp, and arrows pointing down it
+  for (const z of [RAMP.z0 + 0.12, RAMP.z1 - 0.12]) {
+    const edge = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.2), hazardMaterial(len, 0.6));
+    edge.rotation.set(-Math.PI / 2, 0, angle, 'ZXY'); // lie flat, then tilt with the ramp
+    edge.position.set((RAMP.x0 + RAMP.x1) / 2, LOWER.y / 2 + 0.006, z);
+    game.scene.add(edge);
+  }
+  floorText(game, 'RAMP', RAMP.x1 + 1.2, cz, 2.4, 0.8, Math.PI / 2);
+  floorText(game, 'LOWER LEVEL', 2.2, LOWER.z0 + 1.6, 3.6, 0.6, Math.PI, '#f5c518', LOWER.y); // reads coming down the stairs
+
+  // Railings round the pit edges (gap at the top of the stairs) and along the ramp cutting
+  const e = 0.06; // just on the upper side of each edge
+  guardrail(game, LOWER.x0, LOWER.z0 - e, sx0, LOWER.z0 - e);
+  guardrail(game, sx1, LOWER.z0 - e, LOWER.x1 + e, LOWER.z0 - e);
+  guardrail(game, LOWER.x1 + e, LOWER.z0 - e, LOWER.x1 + e, RAMP.z0 - e);
+  guardrail(game, LOWER.x1 + e, RAMP.z0 - e, RAMP.x1, RAMP.z0 - e);
+}
+
 // Human-readable spot for incident reports: a rack, an aisle and bay, or a floor zone.
 export function describeLocation(p) {
   const x1 = RACK_X0 + BAYS * BAY_W;
   if (Math.abs(p.x - 12) < 1.4 && Math.abs(p.z - 9) < 1.4) return 'The WRAP square';
   if (p.x > ROOM.halfX - 4 && Math.abs(p.z - 2) < 2.2) return 'Dock 1';
-  if (p.x < RACK_X0 - 0.5) return 'West wall, behind the racking';
-  const rows = [...RACKS].sort((a, b) => a.z0 - b.z0);
+  if (p.x >= RAMP.x0 && p.x <= RAMP.x1 && p.z >= RAMP.z0) return 'The forklift ramp';
+  if (p.x >= STAIRS.x0 - 0.3 && p.x <= STAIRS.x1 + 0.3 && Math.abs(p.z - (STAIRS.z0 + 0.6)) < 1.2) return 'The stairs to the lower level';
+  const lower = inLowerLevel(p.x, p.z);
+  const where = lower ? 'Lower level' : 'Upper level';
+  if (p.x < RACK_X0 - 0.5) return `${where}, west wall behind the racking`;
+  const rows = RACKS.filter((r) => !!r.base === lower).sort((a, b) => a.z0 - b.z0);
   if (p.x > x1 + 0.5) {
     // Just past the rack ends: name the aisle we're at the end of
     if (p.x < x1 + 4) {
@@ -315,15 +605,17 @@ export function describeLocation(p) {
         if (p.z > rows[i].z1 && p.z < rows[i + 1].z0) return `End of aisle ${rows[i].name}/${rows[i + 1].name}`;
       }
     }
-    return 'Open floor, east side';
+    return lower ? 'Lower level, open floor' : 'Open floor, east side';
   }
   const bay = Math.min(BAYS, Math.max(1, Math.floor((p.x - RACK_X0) / BAY_W) + 1));
-  const up = p.y > 0.5 ? `, ${p.y.toFixed(1)} m up` : '';
+  const h = p.y - floorHeightAt(p.x, p.z);
+  const up = h > 0.5 ? `, ${h.toFixed(1)} m up` : '';
   for (const r of rows) if (p.z >= r.z0 - 0.2 && p.z <= r.z1 + 0.2) return `Rack ${r.name}, bay ${bay}${up}`;
   for (let i = 0; i < rows.length - 1; i++) {
     if (p.z > rows[i].z1 && p.z < rows[i + 1].z0) return `Aisle ${rows[i].name}/${rows[i + 1].name}, by bay ${bay}${up}`;
   }
-  return p.z < rows[0].z0 ? 'Behind Rack A' : `South of Rack ${rows[rows.length - 1].name}`;
+  if (p.z < rows[0].z0) return lower ? `Aisle by Rack ${rows[0].name}, bay ${bay}${up}` : 'Behind Rack A';
+  return `Aisle south of Rack ${rows[rows.length - 1].name}, by bay ${bay}${up}`;
 }
 
 export function buildLevel(game) {
@@ -349,51 +641,52 @@ export function buildLevel(game) {
   sun.shadow.normalBias = 0.02;
   scene.add(sun, sun.target);
 
-  // Floor
-  game.world.createCollider(
-    RAPIER.ColliderDesc.cuboid(halfX, 0.5, halfZ).setTranslation(0, -0.5, 0).setFriction(0.8).setCollisionGroups(COL.static),
-    game.staticBody,
-  );
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(halfX * 2, halfZ * 2), flatMat(0x7d8187));
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  scene.add(floor);
-  const grid = new THREE.GridHelper(40, 40, 0x5f636a, 0x6c7077);
-  grid.position.y = 0.003;
-  grid.scale.set((halfX * 2) / 40, 1, (halfZ * 2) / 40); // 1 m squares
-  scene.add(grid);
+  // Floor: upper level slabs, the sunken lower level, its stairs and the forklift ramp
+  buildFloors(game);
 
-  // Walls (inside faces at the room bounds)
+  // Walls (inside faces at the room bounds), down to the bottom of the lower level
   const wallC = 0xc9ced6;
   const t = 0.2;
-  addStatic(game, [halfX + t * 2, wallH / 2, t], [0, wallH / 2, -halfZ - t], wallC, { edges: false });
-  addStatic(game, [halfX + t * 2, wallH / 2, t], [0, wallH / 2, halfZ + t], wallC, { edges: false });
-  addStatic(game, [t, wallH / 2, halfZ], [-halfX - t, wallH / 2, 0], wallC, { edges: false });
-  addStatic(game, [t, wallH / 2, halfZ], [halfX + t, wallH / 2, 0], wallC, { edges: false });
-  // Wainscot stripe for depth cues
-  for (const [w, x, z, ry] of [
-    [halfX * 2, 0, -halfZ + 0.01, 0],
-    [halfX * 2, 0, halfZ - 0.01, Math.PI],
-    [halfZ * 2, -halfX + 0.01, 0, Math.PI / 2],
-    [halfZ * 2, halfX - 0.01, 0, -Math.PI / 2],
+  const wallHalfY = (wallH - FLOOR_BOTTOM) / 2;
+  const wallY = (wallH + FLOOR_BOTTOM) / 2;
+  addStatic(game, [halfX + t * 2, wallHalfY, t], [0, wallY, -halfZ - t], wallC, { edges: false });
+  addStatic(game, [halfX + t * 2, wallHalfY, t], [0, wallY, halfZ + t], wallC, { edges: false });
+  addStatic(game, [t, wallHalfY, halfZ], [-halfX - t, wallY, 0], wallC, { edges: false });
+  addStatic(game, [t, wallHalfY, halfZ], [halfX + t, wallY, 0], wallC, { edges: false });
+  // Wainscot stripe for depth cues, 1 m tall at floor level ([length, centre x, centre z, rotation, floor y])
+  for (const [w, x, z, ry, y] of [
+    [halfX * 2, 0, -halfZ + 0.01, 0, 0],
+    [halfX - RAMP.x1, (halfX + RAMP.x1) / 2, halfZ - 0.01, Math.PI, 0],
+    [LOWER.x1 + halfX, (LOWER.x1 - halfX) / 2, halfZ - 0.01, Math.PI, LOWER.y],
+    [LOWER.z0 + halfZ, -halfX + 0.01, (LOWER.z0 - halfZ) / 2, Math.PI / 2, 0],
+    [halfZ - LOWER.z0, -halfX + 0.01, (halfZ + LOWER.z0) / 2, Math.PI / 2, LOWER.y],
+    [halfZ * 2, halfX - 0.01, 0, -Math.PI / 2, 0],
   ]) {
     const s = new THREE.Mesh(new THREE.PlaneGeometry(w, 1.0), new THREE.MeshBasicMaterial({ color: 0xf5c518 }));
-    s.position.set(x, 0.5, z);
+    s.position.set(x, y + 0.5, z);
     s.rotation.y = ry;
     scene.add(s);
   }
+  // ...and along the ramp it slopes down with the floor
+  const rampStripe = new THREE.PlaneGeometry(RAMP.x1 - RAMP.x0, 1.0);
+  const pos = rampStripe.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + (LOWER.y * (0.5 - pos.getX(i) / (RAMP.x1 - RAMP.x0))));
+  const rs = new THREE.Mesh(rampStripe, new THREE.MeshBasicMaterial({ color: 0xf5c518, side: THREE.DoubleSide }));
+  rs.position.set((RAMP.x0 + RAMP.x1) / 2, 0.5, halfZ - 0.01);
+  scene.add(rs);
 
   // Racks
   const racks = RACKS.map((r) => buildRack(game, r));
   // Back-to-back pairs (B/C, D/E) share a 0.2 m flue
-  for (const r of racks) r.partner = racks.find((o) => o !== r && (Math.abs(o.z0 - r.z1) < 0.5 || Math.abs(r.z0 - o.z1) < 0.5));
+  const tied = (a, b) => a !== b && a.base === b.base && (Math.abs(b.z0 - a.z1) < 0.5 || Math.abs(a.z0 - b.z1) < 0.5);
+  for (const r of racks) r.partner = racks.find((o) => tied(r, o));
   // Aisle lines along every open rack face
   const yellow = 0xf5c518;
-  const faceLines = RACKS.map((r) => (r.face === 'south' ? r.z1 + 0.2 : r.z0 - 0.2));
-  for (const z of faceLines) {
+  for (const r of RACKS) {
+    const z = r.face === 'south' ? r.z1 + 0.2 : r.z0 - 0.2;
     const line = new THREE.Mesh(new THREE.PlaneGeometry(BAYS * BAY_W, 0.1), new THREE.MeshBasicMaterial({ color: yellow }));
     line.rotation.x = -Math.PI / 2;
-    line.position.set(RACK_X0 + (BAYS * BAY_W) / 2, 0.005, z);
+    line.position.set(RACK_X0 + (BAYS * BAY_W) / 2, (r.base || 0) + 0.005, z);
     scene.add(line);
   }
   // Wrapper zone (open east half of the floor)
@@ -426,7 +719,7 @@ export function buildLevel(game) {
   game.incidentSign = makeIncidentSign(scene);
 
   // Stock every shelf and pick this shift's order
-  const { order, orderBoxes } = stockShelves(game);
+  const { order, orderBoxes } = stockShelves(game, racks);
 
   // Loose boxes on the open floor for stacking
   const loose = [
@@ -435,25 +728,28 @@ export function buildLevel(game) {
     ['small', 2.0, 0, 2.6],
     ['large', 3.0, 0, -5.0],
     ['medium', 1.6, 0, -12.0],
-    ['medium', 4.5, 0, 6.0],
-    ['small', 5.2, 0, 6.4],
+    ['medium', 16.0, 0, 5.5],
+    ['small', 16.7, 0, 5.9],
+    ['medium', 0.5, LOWER.y, 13.5],
   ];
   for (const [type, x, y, z] of loose) createBox(game, { type, sku: game.skus.next(), pos: [x, y, z], yaw: (Math.random() - 0.5) * 0.3 });
 
   // Rolling ladders parked in the aisles, steps running along the aisle
   createLadder(game, { pos: [-8, 0, -12.2], yaw: Math.PI / 2 });
   createLadder(game, { pos: [-14, 0, -5.2], yaw: -Math.PI / 2 });
+  createLadder(game, { pos: [-10, LOWER.y, 12.6], yaw: Math.PI / 2 });
 
   // Empty pallets (fork pockets open toward ±local Z)
   createPallet(game, { pos: [2.6, 0, -12.2], yaw: Math.PI / 2 });
   createPallet(game, { pos: [2.6, 0, -4.8], yaw: Math.PI / 2 });
-  createPallet(game, { pos: [1.5, 0, 9.5], yaw: 0 });
-  createPallet(game, { pos: [3.3, 0, 9.5], yaw: 0 });
+  createPallet(game, { pos: [8.0, 0, 6.5], yaw: 0 });
+  createPallet(game, { pos: [9.8, 0, 6.5], yaw: 0 });
+  createPallet(game, { pos: [2.0, LOWER.y, 8.6], yaw: Math.PI / 2 });
 
   return {
     wrapZone,
     dockZone,
-    items: orderBoxes, // { A, B }: the box each order line wants (for debugging/tests)
+    items: orderBoxes, // { A: [...], B: [...] }: the boxes each order line wants (for debugging/tests)
     order, // [{ line, sku, location }]
     racks,
     climberSpawn: { pos: new THREE.Vector3(-2, 0, -5.2), yaw: Math.PI / 2 }, // aisle C/D, looking down it
@@ -461,10 +757,12 @@ export function buildLevel(game) {
       new THREE.Vector3(-2, 0, -5.2),
       new THREE.Vector3(-2, 0, -12.2),
       new THREE.Vector3(-2, 0, 1.5),
-      new THREE.Vector3(-10, 0, 3),
-      new THREE.Vector3(-10, 0, 10),
+      new THREE.Vector3(-10, 0, 2.2),
+      new THREE.Vector3(-10, LOWER.y, 5.9),
+      new THREE.Vector3(-10, LOWER.y, 12.6),
+      new THREE.Vector3(2, LOWER.y, 12.6),
       new THREE.Vector3(-22, 0, -6),
-      new THREE.Vector3(-22, 0, 5),
+      new THREE.Vector3(-22, LOWER.y, 8),
       new THREE.Vector3(6, 0, 0),
       new THREE.Vector3(10, 0, -10),
       new THREE.Vector3(16, 0, 13),

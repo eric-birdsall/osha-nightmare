@@ -92,10 +92,11 @@ export const CONFIG = {
     friction: 3.0, // feet grip the floor hard, so hits rock a rack instead of skating it along
     // Wobbly racking: a new hit also rocks the top of the rack along the direction of travel
     tipImpactSpeed: 1.4, // forklift hits slower than this (m/s) just bump it
-    tipKick: 0.6, // top impulse = loaded rack mass (rack + boxes on it) x tipKick x hit speed, scaled up for deeper racks
+    tipKick: 1.3, // top impulse = loaded rack mass (rack + boxes on it) x tipKick x hit speed: ~1.8 m/s and up tips it
     ladderImpactSpeed: 0.6, // a ladder's top moving faster than this when it hits a rack
-    ladderKick: 1.8, // top impulse = ladder mass x ladderKick x speed (scaled up for deeper racks)
-    rackKick: 0.3, // a falling rack hitting its neighbour: falling rack mass x rackKick x top speed
+    ladderKick: 4, // top impulse = ladder mass x ladderKick x speed, scaled by the rack's load
+    rackKick: 2.5, // a falling rack hitting its neighbour: falling rack mass x rackKick x top speed, scaled by load
+    maxKickSpeed: 3.5, // m/s: cap on how fast any one kick can push a rack's top (no launching racks)
     crushSpeed: 1.5, // a rack part moving at the climber faster than this (m/s) = incident
   },
 
@@ -116,6 +117,7 @@ export const CONFIG = {
 
   order: {
     decoyChance: 0.6, // chance an order slot also holds a near-miss SKU next to the right box
+    backstockChance: 0.5, // chance a 2-box line 2 is also one short at its pick face (line 1 always is)
   },
 
   wrap: {

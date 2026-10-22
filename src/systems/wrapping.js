@@ -228,7 +228,7 @@ function buildWrapped(game, pallet, set) {
   const group = new THREE.Group();
   group.position.copy(pPos);
   group.quaternion.copy(pRot);
-  const items = new Set();
+  const items = {}; // order line -> boxes of it wrapped into this load
   const shapes = [];
   const min = new THREE.Vector3(Infinity, Infinity, Infinity);
   const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
@@ -262,8 +262,8 @@ function buildWrapped(game, pallet, set) {
             max.max(c);
           }
     }
-    if (ent.item) items.add(ent.item);
-    if (ent.items) for (const i of ent.items) items.add(i);
+    if (ent.item) items[ent.item] = (items[ent.item] || 0) + 1;
+    if (ent.items) for (const [line, n] of Object.entries(ent.items)) items[line] = (items[line] || 0) + n;
     // Re-wrapping: the old film comes off, a new one goes round everything
     const oldFilm = ent.mesh.children.find((c) => c.userData.film);
     if (oldFilm) ent.mesh.remove(oldFilm);

@@ -260,6 +260,26 @@ h2.big {
   stroke: #dbe9f7;
   stroke-width: 0.35;
 }
+.fp-lower {
+  fill: rgba(0, 0, 0, 0.28);
+  stroke: var(--hazard-y);
+  stroke-width: 0.2;
+}
+.fp-ramp {
+  fill: rgba(219, 233, 247, 0.15);
+  stroke: #dbe9f7;
+  stroke-width: 0.15;
+}
+.fp-arrow {
+  fill: none;
+  stroke: #dbe9f7;
+  stroke-width: 0.3;
+}
+.fp-stairs {
+  fill: rgba(245, 197, 24, 0.5);
+  stroke: var(--hazard-y);
+  stroke-width: 0.12;
+}
 .fp-racks rect {
   fill: rgba(219, 233, 247, 0.8);
   stroke: #dbe9f7;
@@ -524,7 +544,14 @@ td + td {
   font-weight: 800;
   letter-spacing: 0.5px;
 }
+.otable .qty {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-weight: 800;
+  color: #b3261e;
+  text-align: center;
+}
 .oitem.done td:first-child,
+.oitem.done .qty,
 .oitem.done .loc {
   text-decoration: line-through;
   text-decoration-thickness: 2px;
@@ -594,31 +621,6 @@ td + td {
   font-size: 22px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-}
-.days {
-  background: #fff;
-  color: #1a7f37;
-  border: 3px solid #1a7f37;
-  text-align: center;
-  padding: 4px 10px;
-}
-.days .dl {
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-}
-.days .dn {
-  font-size: 30px;
-  font-weight: 900;
-  color: #111;
-  line-height: 1.05;
-}
-.days.zero {
-  border-color: #c62828;
-  color: #c62828;
-}
-.days.zero .dn {
-  color: #c62828;
 }
 .roles {
   position: absolute;

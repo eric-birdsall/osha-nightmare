@@ -116,7 +116,7 @@ export class Game {
     this.incidentCounts = {};
     this.days = CONFIG.hud.startDays;
     this.dayTimer = 0;
-    this.itemStatus = { A: false, B: false };
+    this.itemStatus = { A: 0, B: 0 }; // boxes of each order line on the best-stocked pallet
     this.statusTimer = 0;
     this.dockRest = new Map();
     this.hintCooldown = 0;
@@ -220,17 +220,16 @@ export class Game {
     this.statusTimer -= dt;
     if (this.statusTimer <= 0) {
       this.statusTimer = 0.2;
-      const onPallet = { A: false, B: false };
+      // Order boxes per line on the best-stocked load (they all have to end up on one pallet)
+      const best = { A: 0, B: 0 };
       for (const ent of this.entities) {
-        if (ent.kind === 'wrapped') {
-          for (const i of ent.items) onPallet[i] = true;
-          for (const e of collectStack(this, ent)) if (e.item) onPallet[e.item] = true; // added on top since
-        }
-        if (ent.kind === 'pallet') for (const e of collectStack(this, ent)) if (e.item) onPallet[e.item] = true;
+        if (ent.kind !== 'wrapped' && ent.kind !== 'pallet') continue;
+        const n = this.lineCounts(ent);
+        for (const k of ['A', 'B']) best[k] = Math.max(best[k], n[k]);
       }
       for (const k of ['A', 'B']) {
-        if (onPallet[k] && !this.itemStatus[k]) sfx.check();
-        this.itemStatus[k] = onPallet[k];
+        if (best[k] > this.itemStatus[k]) sfx.check();
+        this.itemStatus[k] = best[k];
       }
     }
     if (this.complete) return;
@@ -248,22 +247,32 @@ export class Game {
       this.dockRest.set(ent, r);
       if (r < cfg.restTime) continue;
       if (ent.kind === 'wrapped') {
-        if (ent.items.has('A') && ent.items.has('B')) {
+        const wrapped = ent.items;
+        const total = this.lineCounts(ent);
+        if (this.level.order.every((o) => (wrapped[o.line] || 0) >= o.qty)) {
           this.finishOrder();
           return;
         }
-        const loose = new Set([...collectStack(this, ent)].map((e) => e.item).filter(Boolean));
-        const unwrapped = this.level.order.filter((o) => !ent.items.has(o.line) && loose.has(o.line));
+        const unwrapped = this.level.order.filter((o) => (wrapped[o.line] || 0) < o.qty && total[o.line] >= o.qty);
         if (unwrapped.length) {
-          this.hint(`SKU ${unwrapped.map((o) => o.sku).join(' & ')} isn't wrapped. Take it back to the wrapper.`);
+          this.hint(`SKU ${unwrapped.map((o) => o.sku).join(' & ')} isn't all wrapped. Take it back to the wrapper.`);
           continue;
         }
-        const missing = this.level.order.filter((o) => !ent.items.has(o.line)).map((o) => `SKU ${o.sku}`);
+        const missing = this.level.order
+          .filter((o) => total[o.line] < o.qty)
+          .map((o) => `${o.qty - total[o.line]} × SKU ${o.sku}`);
         this.hint(`Order incomplete: missing ${missing.join(' and ')}`);
       } else if (collectStack(this, ent).size > 1) {
         this.hint('Wrap it first.');
       }
     }
+  }
+
+  // Order boxes of each line on a pallet or wrapped load: wrapped in, plus loose on top.
+  lineCounts(ent) {
+    const n = { A: ent.items?.A || 0, B: ent.items?.B || 0 };
+    for (const e of collectStack(this, ent)) if (e.item) n[e.item]++;
+    return n;
   }
 
   hint(text) {
@@ -325,6 +334,8 @@ export class Game {
     const cfg = CONFIG.racks;
     const now = new Set();
     const hit = (key, rack, velocity, mass, kick, minSpeed) => {
+      // One kick per new contact: bodies touch through several collider pairs at once
+      if (now.has(key)) return;
       now.add(key);
       if (this.rackContacts?.has(key) || rack.fallen) return;
       const speed = Math.hypot(velocity.x, velocity.z);
@@ -332,11 +343,15 @@ export class Game {
       const dir = new THREE.Vector3(velocity.x, 0, velocity.z).normalize();
       // Back-to-back racks are tied together, so the hit rocks both
       for (const r of [rack, rack.partner]) {
-        if (!r || r.fallen) continue;
-        // Size the kick for the rack plus the stock sitting on it (relative to an empty rack)
-        const loaded = this.loadedMass(r) / rack.mass;
+        // Only rock racks that are still standing: one that's already going over needs no help,
+        // and kicking it again would feed back into the next hit
+        if (!r || r.fallen || this.rackTilted(r)) continue;
+        // Size the kick for the rack plus the stock sitting on it (relative to an empty rack),
+        // capped so no hit can launch a rack
+        const loadedMass = this.loadedMass(r);
+        const impulse = Math.min((mass * loadedMass * kick * speed) / rack.mass, loadedMass * cfg.maxKickSpeed);
         const top = new THREE.Vector3(0, 5.0, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
-        r.body.applyImpulseAtPoint(dir.clone().multiplyScalar(mass * loaded * kick * speed), top, true);
+        r.body.applyImpulseAtPoint(dir.clone().multiplyScalar(impulse), top, true);
       }
     };
     // The forklift (chassis or forks), using its velocity from before this step's collision
@@ -369,8 +384,7 @@ export class Game {
     }
     // A falling rack hitting its neighbour (dominoes): use the speed of the falling rack's top
     for (const r of this.level.racks) {
-      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(r.body.rotation()));
-      if (up.y > Math.cos((8 * Math.PI) / 180)) continue; // still standing
+      if (!this.rackTilted(r)) continue; // still standing
       const top = new THREE.Vector3(0, 5.0, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
       const tv = r.body.velocityAtPoint(top);
       for (let i = 0; i < r.body.numColliders(); i++) {
@@ -383,10 +397,18 @@ export class Game {
     this.rackContacts = now;
   }
 
-  // A rack's own mass plus every box resting on its shelves.
+  // Leaning more than 8 degrees: on its way over.
+  rackTilted(rack) {
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(rack.body.rotation()));
+    return up.y < Math.cos((8 * Math.PI) / 180);
+  }
+
+  // A rack's own mass plus the stock resting on its shelves (not other racks or ladders leaning on it).
   loadedMass(rack) {
-    let m = 0;
-    for (const e of collectStack(this, rack)) m += e === rack ? rack.mass : e.mass || 0;
+    let m = rack.mass;
+    for (const e of collectStack(this, rack)) {
+      if (e.kind === 'box' || e.kind === 'pallet' || e.kind === 'wrapped') m += e.mass || 0;
+    }
     return m;
   }
 
