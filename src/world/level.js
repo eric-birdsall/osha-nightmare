@@ -190,7 +190,8 @@ function buildRack(game, rack) {
   }
   labelRack(group, rack, cx, cz);
   game.scene.add(group);
-  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass, z0, z1, base };
+  // home: where it stands (for resetting the racking); x0/x1: its ends; face: its open side
+  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass, z0, z1, base, x0, x1, face: rack.face, home: { x: cx, y: base, z: cz }, stock: [] };
   game.addEntity(ent);
   return ent;
 }
@@ -368,6 +369,11 @@ function stockShelves(game, racks) {
             pos: [bayX(b) + dx + (Math.random() - 0.5) * 0.12, base + SHELF_LEVELS[shelf] + 0.005, z],
           });
           if (isOrder) orderBoxes[slot.line].push(box);
+          // Where it was stocked, so resetting the racking can put it back
+          const t = box.body.translation();
+          const r = box.body.rotation();
+          box.home = { rack: name, pos: { x: t.x, y: t.y, z: t.z }, rot: { x: r.x, y: r.y, z: r.z, w: r.w } };
+          ent.stock.push(box);
         });
         if (slot?.backstock) {
           // Hung under this shelf's beam, beside the location tag, so it moves with the rack

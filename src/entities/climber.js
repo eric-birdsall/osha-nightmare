@@ -79,6 +79,8 @@ export class Climber {
     this.ladderCarry = null; // folded ladder on the shoulder
     this.onLadder = null; // { ent, h: metres up the steps, heading }
     this.foldTimer = 0;
+    this.resetTimer = 0; // holding E/X near knocked-over racking
+    this.nearKnockedRack = null;
     this.holdLocal = new THREE.Vector3();
     this.ragdoll = null;
     this.ragdollTimer = 0;
@@ -233,6 +235,7 @@ export class Climber {
     if (this.carried) this.holdCarried();
     if (this.ladderCarry) this.holdLadder();
     this.foldStep(a, dt, active);
+    this.resetStep(a, dt, active);
     if (active && a.interact) {
       if (this.holdingOn) this.letGo();
       else if (this.ladderCarry) this.setUpLadder();
@@ -473,6 +476,39 @@ export class Climber {
         this.pickUpLadder(lad);
       }
     } else this.foldTimer = 0;
+  }
+
+  // Holding E/X for a few seconds near knocked-over racking sets it all back up. (A tap still
+  // picks up or puts down a box as usual; keep holding and the reset happens anyway.)
+  resetStep(a, dt, active) {
+    const can = this.nearKnockedRack && !this.ladderCarry && !this.onLadder && !(this.target?.kind === 'ladder' && this.target.standing);
+    if (!(active && a.interactHeld && can)) {
+      this.resetTimer = 0;
+      return;
+    }
+    this.resetTimer += dt;
+    if (this.resetTimer < CONFIG.racks.resetHoldTime) return;
+    this.resetTimer = 0;
+    const why = this.game.resetRacks();
+    if (!why) {
+      this.game.toast('Racking reset. Stock is back on the shelves.', 2.5);
+      sfx.putdown();
+    } else if (why === 'forklift') this.game.toast('Move the forklift out of the way first', 2.5);
+    else if (why === 'dave') this.game.toast("Step out of the way: you're standing where the rack goes", 2.5);
+  }
+
+  // A knocked-over (or shoved) rack, or one that's lost stock, within reach of a reset.
+  findKnockedRack() {
+    const reach = CONFIG.racks.resetRange;
+    const p = this.feet.add(new THREE.Vector3(0, 1, 0));
+    for (const r of this.game.level.racks) {
+      if (!this.game.rackDisturbed(r)) continue;
+      for (let i = 0; i < r.body.numColliders(); i++) {
+        const q = r.body.collider(i).projectPoint(p, true)?.point;
+        if (q && Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z) < reach) return r;
+      }
+    }
+    return null;
   }
 
   updateLadderGhost() {
@@ -818,6 +854,7 @@ export class Climber {
 
   updateTarget() {
     this.target = null;
+    this.nearKnockedRack = this.state === 'walk' && !this.onLadder ? this.findKnockedRack() : null;
     if (this.state !== 'walk' || this.carried || this.ladderCarry) return;
     const cfg = CONFIG.climber;
     const eye = this.eye;
@@ -886,6 +923,7 @@ export class Climber {
     this.carried = ent;
     this.target = null;
     ent.carried = true;
+    ent.handled = true; // Dave moved it: resetting the racking leaves it wherever he puts it
     this.makeGhost(ent);
     this.makeHeldView(ent);
     sfx.pickup();

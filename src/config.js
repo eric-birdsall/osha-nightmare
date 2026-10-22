@@ -95,6 +95,8 @@ export const CONFIG = {
     tipKick: 1.3, // top impulse = loaded rack mass (rack + boxes on it) x tipKick x hit speed: ~1.8 m/s and up tips it
     fallImpactSpeed: 0.6, // a falling rack's top moving faster than this when it hits its neighbour
     rackKick: 2.5, // a falling rack hitting its neighbour: falling rack mass x rackKick x top speed, scaled by load
+    resetHoldTime: 3, // s of holding E/X near knocked-over racking to set it all back up
+    resetRange: 3, // m from Dave to a knocked rack for the reset to be offered
     maxKickSpeed: 3.5, // m/s: cap on how fast any one kick can push a rack's top (no launching racks)
     crushSpeed: 1.5, // a rack part moving at the climber faster than this (m/s) = incident
   },

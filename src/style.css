@@ -694,6 +694,15 @@ td + td {
   font-weight: 700;
   white-space: nowrap;
 }
+.prompt {
+  text-align: center;
+}
+.prompt small {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  color: #f5c518;
+}
 kbd {
   background: #f5c518;
   color: #111;

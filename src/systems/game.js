@@ -390,10 +390,98 @@ export class Game {
     this.rackContacts = now;
   }
 
+  // Knocked over, leaning, or shoved off its spot.
+  rackKnocked(rack) {
+    const t = rack.body.translation();
+    const h = rack.home;
+    return rack.fallen || this.rackTilted(rack, 3) || Math.hypot(t.x - h.x, t.z - h.z) > 0.2;
+  }
+
+  // A stocked box that fell off its shelf (not one Dave picked up and moved).
+  boxFell(b) {
+    if (b.handled || b.carried || b.removed) return false;
+    const t = b.body.translation();
+    const h = b.home.pos;
+    return Math.hypot(t.x - h.x, t.y - h.y, t.z - h.z) > 0.4;
+  }
+
+  // Knocked over or shoved, or some of its stock has fallen off.
+  rackDisturbed(rack) {
+    return this.rackKnocked(rack) || rack.stock.some((b) => this.boxFell(b));
+  }
+
+  // Stand every disturbed rack back up where it belongs and put the stock that fell off back on
+  // its shelves. Boxes Dave has handled (holding, or moved somewhere), and anything on a pallet
+  // or wrapped load, stay where they are.
+  // Returns null when done, or a reason it can't be done yet.
+  resetRacks() {
+    const racks = this.level.racks.filter((r) => this.rackDisturbed(r));
+    if (!racks.length) return 'nothing';
+    const knocked = racks.filter((r) => this.rackKnocked(r));
+    const world = this.world;
+    const footprint = (r) => ({
+      center: { x: r.home.x, y: r.home.y + 2.6, z: r.home.z },
+      shape: new RAPIER.Cuboid((r.x1 - r.x0) / 2 + 0.1, 2.6, (r.z1 - r.z0) / 2 + 0.05),
+    });
+    const inside = (r, test) => {
+      const { center, shape } = footprint(r);
+      let hit = false;
+      world.intersectionsWithShape(center, { x: 0, y: 0, z: 0, w: 1 }, shape, (c) => {
+        if (test(c)) hit = true;
+        return !hit;
+      });
+      return hit;
+    };
+    const fl = this.forklift;
+    if (knocked.some((r) => inside(r, (c) => fl.ownsCollider(c)))) return 'forklift';
+    if (knocked.some((r) => inside(r, (c) => c.handle === this.climber.collider.handle))) return 'dave';
+
+    const names = new Set(knocked.map((r) => r.name));
+    // Stock that's been picked onto a pallet stays picked
+    const onLoads = new Set();
+    for (const e of this.entities) if (e.kind === 'pallet' || e.kind === 'wrapped') for (const s of collectStack(this, e)) onLoads.add(s);
+    const zero = { x: 0, y: 0, z: 0 };
+    for (const r of knocked) {
+      r.body.setTranslation(r.home, true);
+      r.body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+      r.body.setLinvel(zero, true);
+      r.body.setAngvel(zero, true);
+      r.fallen = false;
+      r.ralphTouched = -Infinity;
+    }
+    for (const r of racks) {
+      for (const e of r.stock) {
+        if (onLoads.has(e) || !(this.boxFell(e) || this.rackKnocked(r))) continue;
+        if (e.handled || e.carried || e.removed) continue;
+        e.body.setTranslation(e.home.pos, true);
+        e.body.setRotation(e.home.rot, true);
+        e.body.setLinvel(zero, true);
+        e.body.setAngvel(zero, true);
+      }
+    }
+    // Anything else lying where a rack now stands goes out into its aisle
+    for (const e of this.entities) {
+      if (!['box', 'pallet', 'ladder'].includes(e.kind) || e.carried || e.removed || onLoads.has(e)) continue;
+      if (e.kind === 'box' && e.home && names.has(e.home.rack) && !e.handled) continue;
+      if (e.kind === 'ladder' && e.state !== 'open' && e.state !== 'dropped') continue;
+      const t = e.body.translation();
+      const r = knocked.find((k) => t.x > k.x0 - 0.3 && t.x < k.x1 + 0.3 && t.z > k.z0 - 0.3 && t.z < k.z1 + 0.3 && Math.abs(t.y - k.base) < 5.5);
+      if (!r) continue;
+      const z = r.face === 'south' ? r.z1 + 1.2 : r.z0 - 1.2;
+      e.body.setTranslation({ x: Math.min(Math.max(t.x, r.x0 + 0.5), r.x1 - 0.5), y: r.base + 0.6, z }, true);
+      e.body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+      e.body.setLinvel(zero, true);
+      e.body.setAngvel(zero, true);
+    }
+    this.rackRun = null;
+    this.rackContacts = new Set();
+    return null;
+  }
+
   // Leaning more than 8 degrees: on its way over.
-  rackTilted(rack) {
+  rackTilted(rack, degrees = 8) {
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(rack.body.rotation()));
-    return up.y < Math.cos((8 * Math.PI) / 180);
+    return up.y < Math.cos((degrees * Math.PI) / 180);
   }
 
   // A rack's own mass plus the stock resting on its shelves (not other racks or ladders leaning on it).

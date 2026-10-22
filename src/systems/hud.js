@@ -139,6 +139,13 @@ export class Hud {
         else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
         else if (c.carried) p = `Put down SKU ${c.carried.sku} <kbd>${key}</kbd>`;
         else if (c.target) p = `Pick up SKU ${c.target.sku} <kbd>${key}</kbd>`;
+        // Knocked-over racking nearby: offer the reset (alongside any box prompt)
+        if (c.nearKnockedRack && !c.onLadder && !c.ladderCarry && c.state === 'walk') {
+          const r = c.resetTimer > 0
+            ? `Resetting the racking… ${Math.ceil(3 - c.resetTimer)}`
+            : `Hold <kbd>${key}</kbd> 3 s to reset the racking`;
+          p = p ? `${p}<br><small>${r}</small>` : r;
+        }
         v.prompt.innerHTML = p;
         v.prompt.style.display = p ? '' : 'none';
         v.crosshair.classList.toggle('hot', !!c.target);
