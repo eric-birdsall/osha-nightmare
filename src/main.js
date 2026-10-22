@@ -133,6 +133,7 @@ function startGame(mode) {
   state = 'playing';
   overlay = null;
   acc = 0;
+  clearLatched();
   hud.show(true);
   refreshScreens();
   if (wantsPointer()) input.lockPointer();
@@ -148,6 +149,7 @@ function pause() {
 
 function resume() {
   state = 'playing';
+  clearLatched();
   overlay = null;
   refreshScreens();
   if (wantsPointer()) input.lockPointer();
@@ -193,9 +195,35 @@ resize();
 
 const noEdges = (a) => ({ ...a, lookX: 0, lookY: 0, jump: false, interact: false, swap: false, pause: false });
 
+// One-shot presses and look deltas collected since the last physics step.
+const latched = { climber: null, driver: null };
+function clearLatched() {
+  latched.climber = { jump: false, interact: false, lookX: 0, lookY: 0 };
+  latched.driver = { lookX: 0, lookY: 0 };
+}
+clearLatched();
+function latch(actions) {
+  const c = latched.climber;
+  c.jump ||= actions.climber.jump;
+  c.interact ||= actions.climber.interact;
+  c.lookX += actions.climber.lookX;
+  c.lookY += actions.climber.lookY;
+  latched.driver.lookX += actions.driver.lookX;
+  latched.driver.lookY += actions.driver.lookY;
+}
+const withLatched = (actions) => ({
+  climber: { ...actions.climber, ...latched.climber },
+  driver: { ...actions.driver, ...latched.driver },
+});
+
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.1, (now - last) / 1000);
+  if (!window.osha.manual) tick(now);
+}
+
+// One rendered frame of game logic (split out so playtest tools can drive it directly).
+function tick(now) {
+  const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
   last = now;
   input.poll(dt);
 
@@ -225,6 +253,7 @@ function frame(now) {
         actions.climber.swap || actions.driver.swap || kbPause || m.confirm || m.back || input.pressed.size > 0;
       game.updateReplay(dt, skip);
       acc = 0;
+      clearLatched(); // the skip press shouldn't also make the climber jump
     } else if (actions.climber.pause || actions.driver.pause || kbPause) {
       pause();
     } else {
@@ -232,14 +261,18 @@ function frame(now) {
         game.swapCharacter();
         game.assignDevices(input);
       }
+      // Physics runs at a fixed 60 Hz, but the display may run faster: on frames with no
+      // physics step, hold on to button presses and look movement until a step uses them.
+      latch(actions);
       const step = CONFIG.physics.dt;
       acc += dt;
       let n = 0;
       while (acc >= step && n < CONFIG.physics.maxStepsPerFrame) {
-        game.step(step, n === 0 ? actions : { climber: noEdges(actions.climber), driver: noEdges(actions.driver) });
+        game.step(step, n === 0 ? withLatched(actions) : { climber: noEdges(actions.climber), driver: noEdges(actions.driver) });
         acc -= step;
         n++;
       }
+      if (n > 0) clearLatched();
       if (n === CONFIG.physics.maxStepsPerFrame) acc = 0;
       game.frame(dt);
     }
@@ -273,6 +306,8 @@ window.osha = {
   CONFIG,
   override: null,
   start: startGame,
+  tick: (now) => tick(now), // run one frame at time `now` (ms), e.g. to emulate a 144 Hz display
+  manual: false, // true pauses the real frame loop so osha.tick() drives the game alone
   // Advance the simulation headlessly: osha.sim(seconds, climberActions, driverActions)
   sim(secs, c = {}, d = {}) {
     const blank = input.climberActions([]);

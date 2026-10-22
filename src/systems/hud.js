@@ -129,6 +129,8 @@ export class Hud {
         let p = '';
         const key = game.keyHint(role, 'interact');
         if (c.state === 'wrapped') p = 'You are wrapped. Wait for it…';
+        else if (c.holdingOn) p = `Holding on · Let go <kbd>${key}</kbd>`;
+        else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
         else if (c.carried) p = `Put down <kbd>${key}</kbd>`;
         else if (c.target) p = `Pick up${c.target.item ? ' Item ' + c.target.item : ''} <kbd>${key}</kbd>`;
         v.prompt.innerHTML = p;

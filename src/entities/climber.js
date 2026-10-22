@@ -71,6 +71,9 @@ export class Climber {
     this.carried = null;
     this.target = null;
     this.mantle = null;
+    this.onBlades = false;
+    this.holdingOn = false;
+    this.holdLocal = new THREE.Vector3();
     this.ragdoll = null;
     this.ragdollTimer = 0;
     this.fade = 0;
@@ -148,8 +151,10 @@ export class Climber {
     // Turn with a rotating platform (e.g. riding the forks through a turn)
     if (this.grounded && this.support && !this.support.body.isFixed()) this.yaw += this.support.body.angvel().y * dt;
 
-    const mx = active ? a.moveX : 0;
-    const my = active ? a.moveY : 0;
+    // Holding on to the forklift: no walking or jumping, only looking around
+    const free = active && !this.holdingOn;
+    const mx = free ? a.moveX : 0;
+    const my = free ? a.moveY : 0;
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const wish = fwd.multiplyScalar(my * cfg.walkSpeed).addScaledVector(right, mx * cfg.walkSpeed);
@@ -158,7 +163,7 @@ export class Climber {
     let liftY = 0; // a rising platform carries us up directly (the controller can't push out of a surface)
     if (this.grounded) {
       approach(this.relVel, wish, cfg.groundAccel * dt);
-      if (active && a.jump) {
+      if (free && a.jump) {
         this.grounded = false;
         this.jumpedThisStep = true;
         this.vy = Math.sqrt(2 * cfg.gravity * cfg.jumpHeight) + Math.max(0, this.supportVel.y);
@@ -167,7 +172,15 @@ export class Climber {
         sfx.jump();
       }
     }
-    if (this.grounded) {
+    if (this.grounded && this.holdingOn) {
+      // Holding on to the carriage: ride it rigidly. Aim for where our grip point on the
+      // carriage will be after this step, so hard turns can't slowly walk us off the blades.
+      const carry = this.carriageCarry(dt);
+      disp.copy(this.relVel).multiplyScalar(dt).add(carry);
+      disp.y = Math.min(0, carry.y) - 0.5 * dt;
+      liftY = Math.max(0, carry.y);
+      this.vy = 0;
+    } else if (this.grounded) {
       disp.copy(this.relVel).add(this.supportVel).multiplyScalar(dt);
       disp.y = (Math.min(0, this.supportVel.y) - 0.5) * dt;
       liftY = Math.max(0, this.supportVel.y) * dt;
@@ -204,9 +217,48 @@ export class Climber {
 
     if (this.carried) this.holdCarried();
     if (active && a.interact) {
-      if (this.carried) this.putDown();
+      if (this.holdingOn) this.letGo();
+      else if (this.carried) this.putDown();
       else if (this.target) this.pickUp(this.target);
+      else if (this.onBlades) this.grab();
     }
+  }
+
+  // Feet position in the fork carriage's frame.
+  carriageLocal(feet) {
+    const car = this.game.forklift.carriage;
+    const ct = car.translation();
+    return feet
+      .clone()
+      .sub(new THREE.Vector3(ct.x, ct.y, ct.z))
+      .applyQuaternion(quatToThree(car.rotation()).invert());
+  }
+
+  // Grab the carriage: from now on we ride it rigidly and can't be thrown off.
+  grab() {
+    this.holdingOn = true;
+    this.holdLocal.copy(this.carriageLocal(this.feet));
+    this.relVel.set(0, 0, 0);
+    sfx.pickup();
+  }
+
+  letGo() {
+    this.holdingOn = false;
+    sfx.putdown();
+  }
+
+  // Displacement that keeps our grip point fixed on the fork carriage through this step,
+  // predicting the carriage pose one step ahead from its current velocity.
+  carriageCarry(dt) {
+    const car = this.game.forklift.carriage;
+    const t = car.translation();
+    const v = car.linvel();
+    const w = car.angvel();
+    const q = quatToThree(car.rotation());
+    const wl = Math.hypot(w.x, w.y, w.z);
+    if (wl > 1e-6) q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(w.x / wl, w.y / wl, w.z / wl), wl * dt));
+    const target = this.holdLocal.clone().applyQuaternion(q).add(new THREE.Vector3(t.x + v.x * dt, t.y + v.y * dt, t.z + v.z * dt));
+    return target.sub(this.feet);
   }
 
   // In the air and pushing into a ledge just above our feet: climb onto it.
@@ -307,17 +359,34 @@ export class Climber {
       this.supportAccel.set(0, 0, 0);
     }
     this.prevSupportBody = sb;
+    // On the fork blades? (E/X there grabs the carriage.) While holding on, stay holding as
+    // long as our feet are over the blades: the ground rays can slip between them mid-turn.
+    const fl0 = this.game.forklift;
+    const car = fl0.carriage;
+    const local = this.carriageLocal(feet);
+    const overBlades = Math.abs(local.x) < 0.38 && local.z > 0 && local.z < 1.2 && Math.abs(local.y) < 0.12;
+    this.onBlades = !!(sb && sb.handle === car.handle) || (this.holdingOn && overBlades);
+    if (this.holdingOn && (!this.onBlades || this.carried || this.state !== 'walk')) this.holdingOn = false;
+    if (this.holdingOn) {
+      if (!sb || sb.handle !== car.handle) {
+        this.support = { body: car, collider: car.collider(0), point: feet.clone() };
+        this.grounded = true;
+      }
+      this.supportAccel.set(0, 0, 0);
+      this.lastMovingSupportTime = 0;
+      this.lostSupportTimer = -1;
+    }
     const supportSpeed = Math.max(this.supportVel.length(), this.prevSupportVel.length());
     if (sb && supportSpeed > 0.5) this.lastMovingSupportTime = 0.4;
     else this.lastMovingSupportTime = Math.max(0, this.lastMovingSupportTime - dt);
 
-    if (sameSupport && this.supportTime > 0.2 && supportSpeed > cfg.throwMinSupportSpeed) {
+    if (!this.holdingOn && sameSupport && this.supportTime > 0.2 && supportSpeed > cfg.throwMinSupportSpeed) {
       const horiz = Math.hypot(this.supportAccel.x, this.supportAccel.z);
       if (horiz > cfg.throwAccel) {
         return this.goRagdoll('thrown', this.supportAccel.clone().setY(0).multiplyScalar(0.12).add(new THREE.Vector3(0, 2, 0)));
       }
     }
-    if (sb && this.supportVel.y < -cfg.dropSpeed) return this.goRagdoll('dropped');
+    if (sb && !this.holdingOn && this.supportVel.y < -cfg.dropSpeed) return this.goRagdoll('dropped');
     // Lifted into something overhead (rack beam, mast crossbar): crushed
     if (sb && this.supportVel.y > 0.05) {
       const head = { x: center.x, y: center.y + this.centerOff - 0.15, z: center.z };
@@ -369,7 +438,7 @@ export class Climber {
       undefined,
       groups(G.CLIMBER, G.FORK),
     );
-    const onForklift = this.support && fl.ownsCollider(this.support.collider);
+    const onForklift = this.holdingOn || (this.support && fl.ownsCollider(this.support.collider));
     if (this.graceTimer > 0) this.graceTimer -= dt;
     if (hitCol && !onForklift) {
       // Only the forklift's own motion toward us counts: walking into a parked truck is no incident.
@@ -552,6 +621,7 @@ export class Climber {
     this.state = 'ragdoll';
     this.wrapped = null;
     this.mantle = null;
+    this.holdingOn = this.onBlades = false;
     this.ragdoll = spawnRagdoll(this.game, { feet: this.feet, yaw: this.yaw, velocity: vel });
     this.ragdollYaw = this.yaw;
     this.ragdollTimer = 0;
@@ -679,6 +749,7 @@ export class Climber {
       speed: walkSpeed,
       grounded: this.grounded || !!this.mantle || this.state === 'wrapped',
       carrying: !!this.carried,
+      holding: this.holdingOn,
       holdPitch: this.holdPitch(),
     });
 
@@ -710,6 +781,14 @@ export class Climber {
         arm.position.set(side * (sx / 2 + 0.035), HOLD_Y + 0.02 + bob, -(HOLD_Z + 0.05) + 0.375); // gloves wrap the front corners
         arm.rotation.set(0.1, side * 0.22, 0);
         arm.userData.glove.rotation.set(0, 0, -side * 1.25);
+      });
+    } else if (this.holdingOn) {
+      // Both hands up, gripping the carriage backrest in front of us
+      this.hands.forEach((arm, i) => {
+        const side = i === 0 ? -1 : 1;
+        arm.position.set(side * 0.22, -0.3, -0.2);
+        arm.rotation.set(0.7, side * 0.12, 0);
+        arm.userData.glove.rotation.set(0, 0, -side * 0.15);
       });
     } else {
       this.hands.forEach((arm, i) => {
