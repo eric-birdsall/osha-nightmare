@@ -78,7 +78,6 @@ export class Climber {
     this.lastOnLadder = -Infinity;
     this.ladderCarry = null; // folded ladder on the shoulder
     this.onLadder = null; // { ent, h: metres up the steps, heading }
-    this.foldTimer = 0;
     this.resetTimer = 0; // holding E/X near knocked-over racking
     this.nearKnockedRack = null;
     this.holdLocal = new THREE.Vector3();
@@ -234,15 +233,13 @@ export class Climber {
 
     if (this.carried) this.holdCarried();
     if (this.ladderCarry) this.holdLadder();
-    this.foldStep(a, dt, active);
     this.resetStep(a, dt, active);
     if (active && a.interact) {
       if (this.holdingOn) this.letGo();
       else if (this.ladderCarry) this.setUpLadder();
       else if (this.carried) this.putDown();
-      else if (this.target?.kind === 'ladder') {
-        if (!this.target.standing) this.pickUpLadder(this.target); // a set-up one folds on a hold
-      } else if (this.target) this.pickUp(this.target);
+      else if (this.target?.kind === 'ladder') this.pickUpLadder(this.target); // a set-up one folds onto the shoulder
+      else if (this.target) this.pickUp(this.target);
       else if (this.onBlades) this.grab();
     }
   }
@@ -298,9 +295,11 @@ export class Climber {
     const heading = lad.heading;
     this.yaw += Math.atan2(Math.sin(heading - L.heading), Math.cos(heading - L.heading)); // turn with it
     L.heading = heading;
-    const my = active ? a.moveY : 0;
-    if (L.h <= 0 && my < -0.3) return this.stepOffLadder();
-    L.h = THREE.MathUtils.clamp(L.h + my * cfg.climbSpeed * dt, 0, cfg.topStep);
+    // Forward climbs the way you're looking: looking down at the floor, it takes you down
+    const lookingDown = this.pitch < -cfg.lookDownPitch;
+    const climb = (active ? a.moveY : 0) * (lookingDown ? -1 : 1);
+    if (L.h <= 0 && climb < -0.3) return this.stepOffLadder();
+    L.h = THREE.MathUtils.clamp(L.h + climb * cfg.climbSpeed * dt, 0, cfg.topStep);
     const p = lad.footPoint(L.h);
     const t = this.body.translation();
     const next = { x: p.x, y: p.y + this.centerOff, z: p.z };
@@ -463,19 +462,6 @@ export class Climber {
     lad.body.setRotation(quat, true);
     lad.body.setLinvel({ x: this.velocity.x, y: this.velocity.y, z: this.velocity.z }, true);
     if (this.ladderGhost) this.ladderGhost.visible = false;
-  }
-
-  // Holding E/X on a set-up ladder folds it onto the shoulder (a tap does nothing, so picking
-  // boxes nearby can't fold it by accident).
-  foldStep(a, dt, active) {
-    const lad = this.target?.kind === 'ladder' && this.target.standing ? this.target : null;
-    if (active && a.interactHeld && lad && !this.carried && !this.ladderCarry) {
-      this.foldTimer += dt;
-      if (this.foldTimer >= CONFIG.ladder.foldHoldTime) {
-        this.foldTimer = 0;
-        this.pickUpLadder(lad);
-      }
-    } else this.foldTimer = 0;
   }
 
   // Holding E/X for a few seconds near knocked-over racking sets it all back up. (A tap still

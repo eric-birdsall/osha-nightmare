@@ -115,8 +115,8 @@ export const CONFIG = {
     mass: 18,
     friction: 0.8,
     climbSpeed: 0.9, // m/s up or down the steps
+    lookDownPitch: 0.5, // rad (~30°): looking further down than this, forward climbs down
     carrySpeedFactor: 0.7, // Dave walks this much slower with a ladder on his shoulder
-    foldHoldTime: 0.5, // s of holding E/X to fold a set-up ladder
     climbableUp: 0.95, // upright enough to climb (cos of lean)
     fallUp: 0.85, // leaning further than this with Dave on it = it's going over
     setupDistance: 1.05, // ladder centre this far in front of Dave when set up

@@ -191,11 +191,13 @@ export class Input {
       } else {
         const p = this.pad(d);
         if (!p) continue;
-        const [sx] = deadzone2(p.axes[0] || 0, 0);
+        // Left stick drives: up = forward, down = brake then reverse, sideways = steer.
+        // (The triggers still work as accelerator and brake.)
+        const [sx, sy] = deadzone2(p.axes[0] || 0, p.axes[1] || 0);
         const [lx, ly] = deadzone2(p.axes[2] || 0, p.axes[3] || 0);
         a.steer += sx;
-        a.throttle = Math.max(a.throttle, p.buttons[BTN.RT]?.value || 0);
-        a.brake = Math.max(a.brake, p.buttons[BTN.LT]?.value || 0);
+        a.throttle = Math.max(a.throttle, -sy, p.buttons[BTN.RT]?.value || 0);
+        a.brake = Math.max(a.brake, sy, p.buttons[BTN.LT]?.value || 0);
         a.liftUp = Math.max(a.liftUp, p.buttons[BTN.RB]?.pressed ? 1 : 0);
         a.liftDown = Math.max(a.liftDown, p.buttons[BTN.LB]?.pressed ? 1 : 0);
         a.lookX += lx * cfg.stickLookSpeed * this.dt;
