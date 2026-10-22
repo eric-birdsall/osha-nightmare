@@ -45,6 +45,7 @@ export const JOINTS = [
 ];
 
 const part = (name) => PARTS.find((p) => p.name === name);
+const HAND_REACH = 0.265; // elbow to the middle of the glove
 
 function box(w, h, d, color, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), flatMat(color));
@@ -102,10 +103,10 @@ export function partMesh(name) {
   return g;
 }
 
-// Jointed, animated worker for when the climber is on their feet. Facing follows yaw
-// (camera convention: yaw 0 faces -Z).
+// Jointed, animated worker. Facing follows yaw (camera convention: yaw 0 faces -Z).
+// heavy: a stockier build with a belly (used for the forklift driver).
 export class WorkerModel {
-  constructor() {
+  constructor({ heavy = false } = {}) {
     this.root = new THREE.Group();
     this.body = new THREE.Group(); // template space (faces +Z)
     this.root.add(this.body);
@@ -118,6 +119,20 @@ export class WorkerModel {
     torso.position.copy(pos('torso'));
     this.body.add(torso);
     this.torso = torso;
+    const wide = heavy ? 1.3 : 1; // girth multipliers for the heavy build
+    const deep = heavy ? 1.5 : 1;
+    if (heavy) {
+      // Widen the trunk itself (not the joint pivots, so limbs don't shear) and add a belly
+      for (const c of torso.children) {
+        c.scale.x *= wide;
+        c.scale.z *= deep;
+        c.position.z *= deep;
+      }
+      const hz = part('torso').half[2] * deep;
+      torso.add(box(0.36, 0.28, 0.14, C.vest, 0, -0.04, hz + 0.02)); // belly under the vest
+      torso.add(box(0.37, 0.03, 0.15, C.stripe, 0, 0.0, hz + 0.025));
+      torso.add(box(0.3, 0.07, 0.12, C.shirt, 0, -0.17, hz + 0.0)); // shirt riding up over the belt
+    }
 
     const neck = new THREE.Group();
     neck.position.copy(joint('head')).sub(pos('torso'));
@@ -131,13 +146,17 @@ export class WorkerModel {
     const limb = (upper, lower, parent, parentPos) => {
       const top = new THREE.Group();
       top.position.copy(joint(upper)).sub(parentPos);
+      // Heavy build: shoulders and hips sit wider, limbs are thicker
+      if (heavy) top.position.x *= upper.startsWith('uArm') ? 1.22 : 1.2;
       const um = partMesh(upper);
       um.position.copy(pos(upper)).sub(joint(upper));
+      if (heavy) um.scale.set(1.3, 1, 1.3);
       top.add(um);
       const mid = new THREE.Group();
       mid.position.copy(joint(lower)).sub(joint(upper));
       const lm = partMesh(lower);
       lm.position.copy(pos(lower)).sub(joint(lower));
+      if (heavy) lm.scale.set(1.15, 1, 1.15);
       mid.add(lm);
       top.add(mid);
       parent.add(top);
@@ -147,6 +166,41 @@ export class WorkerModel {
     [this.pivots.shoulderR, this.pivots.elbowR] = limb('uArmR', 'lArmR', torso, pos('torso'));
     [this.pivots.hipL, this.pivots.kneeL] = limb('uLegL', 'lLegL', torso, pos('torso'));
     [this.pivots.hipR, this.pivots.kneeR] = limb('uLegR', 'lLegR', torso, pos('torso'));
+  }
+
+  // Seated (legs and lean only; arms are placed with reach()).
+  sit() {
+    const P = this.pivots;
+    this.body.rotation.y = 0; // faces the forklift's forward (+Z)
+    this.body.position.set(0, 0, 0);
+    this.torso.rotation.x = 0.25; // leaning over the wheel
+    P.hipL.rotation.set(-1.5 - 0.25, 0, 0.08);
+    P.hipR.rotation.set(-1.5 - 0.25, 0, -0.08);
+    P.kneeL.rotation.x = P.kneeR.rotation.x = 1.45;
+    P.neck.rotation.x = -0.2;
+  }
+
+  // Two-bone IK: put the glove of arm `side` ('L' | 'R') on a world-space point,
+  // elbows bending down and outward. Call with up-to-date world matrices.
+  reach(side, target) {
+    const sh = side === 'L' ? this.pivots.shoulderL : this.pivots.shoulderR;
+    const el = side === 'L' ? this.pivots.elbowL : this.pivots.elbowR;
+    this.torso.updateWorldMatrix(true, false);
+    const P = this.torso.worldToLocal(target.clone());
+    const S = sh.position;
+    const a = el.position.length(); // shoulder -> elbow
+    const b = HAND_REACH; // elbow -> middle of the glove
+    const dir = P.clone().sub(S);
+    const L = THREE.MathUtils.clamp(dir.length(), Math.abs(a - b) + 1e-3, a + b - 1e-3);
+    dir.normalize();
+    const alpha = Math.acos(THREE.MathUtils.clamp((a * a + L * L - b * b) / (2 * a * L), -1, 1));
+    const pole = new THREE.Vector3(side === 'L' ? 1 : -1, -1, -0.3).normalize();
+    const n = pole.sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
+    const upper = dir.clone().multiplyScalar(Math.cos(alpha)).addScaledVector(n, Math.sin(alpha));
+    sh.quaternion.setFromUnitVectors(el.position.clone().normalize(), upper);
+    const elbow = S.clone().addScaledVector(upper, a);
+    const fore = P.clone().sub(elbow).normalize().applyQuaternion(sh.quaternion.clone().invert());
+    el.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), fore);
   }
 
   // speed: walking speed over the ground (m/s). Rotations about X: negative swings a limb forward.

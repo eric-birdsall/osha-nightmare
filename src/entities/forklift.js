@@ -4,6 +4,7 @@ import { CONFIG } from '../config.js';
 import { COL, castRay, yawQuat, quatToThree } from '../physics.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
 import { sfx } from '../systems/audio.js';
+import { WorkerModel } from './worker.js';
 
 // Body-local frame: forward = +Z, up = +Y, origin on the floor between the wheels.
 const WHEEL_R = 0.28;
@@ -19,14 +20,18 @@ const PLATE_Z = 0.95;
 const FORK_X = 0.225;
 const FORK_LEN = 1.1;
 const FORK_W = 0.15;
+const STEER_R = 0.17;
 const FORK_T = 0.035;
 const FORK_Z = PLATE_Z + 0.03 + FORK_LEN / 2;
 
 // Static parts on the chassis body: [half extents, position, color, drawn?]
 const PARTS = [
-  [[0.55, 0.3, 0.95], [0, 0.55, -0.2], 0xf2b705], // lower chassis
+  [[0.55, 0.3, 0.525], [0, 0.55, -0.625], 0xf2b705], // rear chassis (under the seat)
+  [[0.55, 0.15, 0.425], [0, 0.4, 0.325], 0xf2b705], // front chassis, lowered into a footwell
+  [[0.06, 0.15, 0.32], [0.49, 0.7, 0.22], 0xf2b705], // footwell side walls
+  [[0.06, 0.15, 0.32], [-0.49, 0.7, 0.22], 0xf2b705],
   [[0.55, 0.26, 0.17], [0, 1.1, -0.98], 0x3a3f47], // counterweight hump
-  [[0.5, 0.1, 0.1], [0, 0.95, 0.64], 0xf2b705], // cowl / dash (kept low so the forks show)
+  [[0.5, 0.25, 0.1], [0, 0.8, 0.64], 0xf2b705], // cowl / dash, down to the footwell floor (top kept low so the forks show)
   [[0.03, 0.66, 0.03], [0.53, 1.51, 0.66], 0x1d1f23], // guard posts
   [[0.03, 0.66, 0.03], [-0.53, 1.51, 0.66], 0x1d1f23],
   [[0.03, 0.66, 0.03], [0.53, 1.51, -0.78], 0x1d1f23],
@@ -185,11 +190,32 @@ export class Forklift {
     const back = boxMesh(0.5, 0.5, 0.1, 0x1d1f23);
     back.position.set(0, 1.2, -0.55);
     root.add(back);
-    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 8, 20), flatMat(0x111111));
-    wheel.position.set(0, 1.3, 0.38);
-    wheel.rotation.x = -0.9;
-    root.add(wheel);
-    this.steeringWheel = wheel;
+    // Steering wheel on a column from the dash, top tilted toward the dash, within the driver's reach.
+    // Local frame: the wheel lies in XY, +Z runs down the column to the dash.
+    const wheelMount = new THREE.Group();
+    wheelMount.position.set(0, 1.25, 0.12);
+    wheelMount.rotation.x = 0.65;
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.42, 10), flatMat(0x1d1f23));
+    column.rotation.x = Math.PI / 2;
+    column.position.z = 0.21;
+    const spinner = new THREE.Group(); // turns with the steering
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(STEER_R, 0.022, 8, 24), flatMat(0x111111));
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 12), flatMat(0x2b2f35));
+    hub.rotation.x = Math.PI / 2;
+    spinner.add(rim, hub);
+    for (const a of [Math.PI / 2, Math.PI * 1.17, -Math.PI * 0.17]) {
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(STEER_R, 0.018, 0.012), flatMat(0x2b2f35));
+      spoke.position.set(Math.cos(a) * STEER_R * 0.5, Math.sin(a) * STEER_R * 0.5, 0);
+      spoke.rotation.z = a;
+      spinner.add(spoke);
+    }
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), flatMat(0xd02020)); // spinner knob
+    knob.position.set(STEER_R * 0.71, -STEER_R * 0.71, -0.04);
+    spinner.add(knob);
+    wheelMount.add(column, spinner);
+    root.add(wheelMount);
+    this.wheelMount = wheelMount;
+    this.steeringWheel = spinner;
     // Beacon
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff8800 }));
     beacon.position.set(0, 2.28, -0.7);
@@ -243,17 +269,16 @@ export class Forklift {
     }
     root.add(carriage);
     this.carriageMesh = carriage;
-    // Driver dummy, seen only by the climber's camera (layer 2)
-    const driver = new THREE.Group();
-    const torso = boxMesh(0.4, 0.55, 0.25, 0xff7a00);
-    torso.position.set(0, 1.28, -0.35);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), flatMat(0xe0b48a));
-    head.position.set(0, 1.72, -0.3);
-    const hat = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), flatMat(0xffd400));
-    hat.position.set(0, 1.76, -0.3);
-    driver.add(torso, head, hat);
-    driver.traverse((o) => o.layers.set(2));
-    root.add(driver);
+    // The driver: same worker as the climber, a bit heavier, seated at the wheel.
+    // Layer 2 = seen by the climber's camera and the CCTV replays, not from the driver's own seat.
+    this.driver = new WorkerModel({ heavy: true });
+    this.driver.root.position.set(0, 0.2, -0.3); // hips just above the seat cushion
+    this.driver.sit(0);
+    this.driver.root.traverse((o) => {
+      o.layers.set(2);
+      if (o.isMesh) o.castShadow = true;
+    });
+    root.add(this.driver.root);
 
     root.traverse((o) => {
       if (o.isMesh) {
@@ -400,6 +425,15 @@ export class Forklift {
       w.tire.rotation.x = this.wheelSpin;
     }
     this.steeringWheel.rotation.z = -this.steer * 3;
+    // Driver's gloves on the rim at ten and two, following the wheel as it turns
+    this.driver.sit();
+    this.mesh.updateMatrixWorld(true);
+    const spin = THREE.MathUtils.clamp(this.steeringWheel.rotation.z, -0.9, 0.9);
+    for (const [side, base] of [['L', Math.PI / 6], ['R', (5 * Math.PI) / 6]]) {
+      const a = base + spin;
+      const grip = new THREE.Vector3(Math.cos(a) * STEER_R, Math.sin(a) * STEER_R, -0.02);
+      this.driver.reach(side, this.wheelMount.localToWorld(grip));
+    }
     this.beacon.visible = Math.floor(performance.now() / 400) % 2 === 0;
   }
 
