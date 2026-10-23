@@ -15,7 +15,8 @@ const VIEW_HTML = (role) => `
     role === 'climber'
       ? `<div class="crosshair"></div><div class="prompt"></div>
          <div class="holdring"><svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="18"/><circle class="fil" cx="22" cy="22" r="18"/></svg></div>`
-      : '' /* speed, gear and fork height are on the forklift's dashboard */
+      : /* speed, gear and fork height are on the forklift's dashboard */
+        `<div class="driftmeter"><div class="bar"><div class="fill"></div></div><div class="label"></div></div>`
   }
   <div class="rolelabel">${role === 'climber' ? 'DAVE · CLIMBER' : 'RALPH · DRIVER'}</div>
   <div class="toast"></div>
@@ -52,6 +53,9 @@ export class Hud {
         banner: q('.banner'),
         deviceHint: q('.devicehint'),
         fade: q('.fade'),
+        driftMeter: q('.driftmeter'),
+        driftFill: q('.driftmeter .fill'),
+        driftLabel: q('.driftmeter .label'),
       };
     }
     this.toastUntil = 0;
@@ -143,6 +147,17 @@ export class Hud {
         v.fade.style.opacity = Math.max(c.fade, c.fadeIn / 0.5);
       } else {
         v.fade.style.opacity = 0;
+        // Drift meter: fills orange while a drift charges, blue once the boost is earned,
+        // then BOOST! while it fires (Ralph can't see the sparks from the seat)
+        const f = game.forklift;
+        const need = CONFIG.forklift.drift.boostCharge;
+        const charge = f.driftCharge || 0;
+        const state = f.boostTime > 0 ? 'boost' : charge >= need ? 'ready' : (f.drift || 0) > 0.5 ? 'charging' : '';
+        v.driftMeter.className = `driftmeter ${state}`;
+        if (state) {
+          v.driftFill.style.width = `${state === 'charging' ? Math.min(1, charge / need) * 100 : 100}%`;
+          v.driftLabel.textContent = state === 'boost' ? 'BOOST!' : state === 'ready' ? 'BOOST READY · let go!' : 'DRIFT';
+        }
       }
     }
     if (this.toastUntil && now > this.toastUntil) {

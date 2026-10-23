@@ -55,17 +55,35 @@ export const CONFIG = {
     centerOfMass: [0, 0.8, -0.35], // toward the counterweight; with rollDamping, a hard turn at full speed (~4 m/s) tips it
     gripHeight: 0, // where the sideways tire grip acts (0 = the floor)
     inertia: [1700, 1800, 650],
-    topSpeed: 4.0,
+    topSpeed: 6.0,
     reverseSpeed: 2.5,
-    accel: 2.2,
+    accel: 2.8,
     reverseAccel: 1.6,
-    brakeDecel: 5.33, // 4 m/s to 0 in ~1.5 m
+    brakeDecel: 6.0, // 6 m/s to 0 in ~3 m
     coastDecel: 0.7,
     parkDecel: 0.7, // m/s²: unattended (you swapped to Dave), it coasts like Ralph taking his foot off
     traction: 1.0, // tire friction coefficient (caps drive/lateral impulses)
     steerMax: deg(60),
     steerRate: deg(140), // how fast the rear wheels turn
     maxYawRate: 1.7,
+    // Drifting: hold Space / B while turning at speed and the rear tyres let go
+    drift: {
+      minSpeed: 2.0, // m/s before a drift can start
+      gripLatAccel: 6.5, // m/s²: how hard a normal (grip) turn can corner, so fast turns run wide
+      grip: 0.3, // sideways grip while drifting (of normal): the truck slides at a steady angle
+      yawRate: 1.5, // rad/s the tail swings round at full lock, whatever the speed
+      yawAccel: 7, // rad/s² to get there
+      drag: 0.4, // m/s² of speed scrubbed off while sliding
+      inTime: 0.15, // s for the rear to let go
+      outTime: 0.45, // s for grip to come back after letting go of the button
+      minSlip: 0.2, // rad: sliding this sideways (or more) charges the boost
+      boostCharge: 0.8, // s of good drifting for a boost on release
+      boostSpeed: 2.0, // m/s over top speed while boosting
+      boostAccel: 6, // m/s² push while boosting
+      boostTime: 0.8, // s
+      hop: 1.5, // m/s up when the drift button goes down at speed (a Mario Kart hop)
+      boostFov: 14, // degrees the cab view widens during a boost
+    },
     rollDamping: 6, // 1/s: higher = harder to tip; at 6 only a sharp turn at full throttle tips it
     yawAccel: 4.0,
     wheelbase: 1.4,

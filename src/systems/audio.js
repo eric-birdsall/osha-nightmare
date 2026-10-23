@@ -45,6 +45,11 @@ export const sfx = {
     tone(523, 0.1, { type: 'triangle', vol: 0.12 });
     tone(784, 0.18, { type: 'triangle', vol: 0.12, at: 0.1 });
   },
+  driftHop: () => tone(220, 0.1, { type: 'square', vol: 0.05, slideTo: 330 }),
+  driftBoost: () => {
+    tone(330, 0.25, { type: 'sawtooth', vol: 0.06, slideTo: 880 });
+    tone(660, 0.2, { type: 'triangle', vol: 0.08, slideTo: 1320, at: 0.05 });
+  },
   hint: () => tone(330, 0.12, { type: 'triangle', vol: 0.08 }),
   check: () => tone(880, 0.12, { type: 'triangle', vol: 0.12, slideTo: 1320 }),
   complete: () => {

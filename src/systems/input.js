@@ -14,7 +14,7 @@ function deadzone2(x, y) {
 const blank = () => ({
   moveX: 0, moveY: 0, lookX: 0, lookY: 0,
   jump: false, interact: false, interactHeld: false, toss: false,
-  steer: 0, throttle: 0, brake: 0, liftUp: 0, liftDown: 0,
+  steer: 0, throttle: 0, brake: 0, liftUp: 0, liftDown: 0, drift: false,
   swap: false, pause: false,
 });
 
@@ -187,6 +187,7 @@ export class Input {
         a.brake = Math.max(a.brake, this.key('KeyS'));
         a.liftUp = Math.max(a.liftUp, this.key('KeyR'));
         a.liftDown = Math.max(a.liftDown, this.key('KeyF'));
+        a.drift ||= this.key('Space') > 0;
         a.lookX += this.mouseDX * cfg.lookSensitivity + this.keyLookX() * cfg.stickLookSpeed * this.dt;
         a.lookY += this.mouseDY * cfg.lookSensitivity + this.keyLookY() * cfg.stickLookSpeed * this.dt;
         a.swap ||= this.pressed.has('Tab');
@@ -202,6 +203,7 @@ export class Input {
         a.brake = Math.max(a.brake, sy, p.buttons[BTN.LT]?.value || 0);
         a.liftUp = Math.max(a.liftUp, p.buttons[BTN.RB]?.pressed ? 1 : 0);
         a.liftDown = Math.max(a.liftDown, p.buttons[BTN.LB]?.pressed ? 1 : 0);
+        a.drift ||= !!p.buttons[BTN.B]?.pressed;
         a.lookX += lx * cfg.stickLookSpeed * this.dt;
         a.lookY += ly * cfg.stickLookSpeed * this.dt;
         a.swap ||= this.padPressed(p, BTN.BACK);

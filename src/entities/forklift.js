@@ -5,11 +5,13 @@ import { COL, castRay, yawQuat, quatToThree } from '../physics.js';
 import { floorHeightAt } from '../world/level.js';
 import { onSpill } from '../world/spills.js';
 import { boxLook } from './box.js';
+import { DriftFx } from './driftfx.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
 import { sfx } from '../systems/audio.js';
 import { WorkerModel } from './worker.js';
 
 // Body-local frame: forward = +Z, up = +Y, origin on the floor between the wheels.
+const FOV = 72; // the cab camera's normal field of view
 const WHEEL_R = 0.28;
 const WHEELS = [
   { pos: [0.48, WHEEL_R, 0.55], front: true },
@@ -134,7 +136,7 @@ export class Forklift {
     this.liftJoint.configureMotor(this.height, 0, cfg.liftStiffness, cfg.liftDamping);
 
     this.buildMesh();
-    this.camera = new THREE.PerspectiveCamera(72, 1, 0.05, 200);
+    this.camera = new THREE.PerspectiveCamera(FOV, 1, 0.05, 200);
     this.camera.layers.enable(1);
   }
 
@@ -328,6 +330,7 @@ export class Forklift {
       }
     });
     this.mesh = root;
+    this.driftFx = new DriftFx(this.game.scene);
     this.game.scene.add(root);
   }
 
@@ -378,6 +381,14 @@ export class Forklift {
     const ds = steerIn * cfg.steerMax - this.steer;
     this.steer += Math.sign(ds) * Math.min(Math.abs(ds), cfg.steerRate * dt);
 
+    // Drift: holding the button while turning at speed lets the rear end go
+    const dc = cfg.drift;
+    // Starting one needs some steering; once sliding, it lasts as long as the button and the speed do
+    const lv0 = this.body.linvel();
+    const groundSpeed = Math.hypot(lv0.x, lv0.z);
+    const wantDrift = active && a.drift && groundSpeed > dc.minSpeed && (Math.abs(this.steer) > 0.15 || this.drift > 0.5);
+    this.drift = THREE.MathUtils.clamp((this.drift || 0) + (wantDrift ? dt / dc.inTime : -dt / dc.outTime), 0, 1);
+
     // Ground contact per wheel
     const t = body.translation();
     let grounded = 0;
@@ -386,6 +397,14 @@ export class Forklift {
       if (castRay(this.game.world, p, { x: 0, y: -1, z: 0 }, WHEEL_R + 0.08, COL.wheelQuery)) grounded++;
     }
     this.groundFrac = grounded / 4;
+
+    // Mario Kart hop: a little jump the moment the drift button goes down at speed
+    const driftPress = active && a.drift && !this.driftHeld;
+    this.driftHeld = active && a.drift;
+    if (driftPress && this.groundFrac === 1 && groundSpeed > dc.minSpeed && !this.tippedTime) {
+      body.applyImpulse({ x: 0, y: body.mass() * dc.hop, z: 0 }, true);
+      sfx.driftHop();
+    }
     // Wet wheels (on a spill) lose most of their traction
     let wet = 0;
     for (const w of WHEELS) if (onSpill(this.game.level?.spills, new THREE.Vector3(...w.pos).applyQuaternion(q).add(t))) wet++;
@@ -438,13 +457,23 @@ export class Forklift {
       if (stop > 0.05) {
         dv = toward0(stop * cfg.brakeDecel);
       } else if (drive > 0.05) {
-        const maxS = this.gear === 1 ? cfg.topSpeed : cfg.reverseSpeed;
+        const boosting = this.gear === 1 && this.boostTime > 0;
+        const maxS = this.gear === 1 ? cfg.topSpeed + (boosting ? dc.boostSpeed : 0) : cfg.reverseSpeed;
         const acc = this.gear === 1 ? cfg.accel : cfg.reverseAccel;
         if (sp < maxS) dv = this.gear * Math.min(drive * acc * dt, maxS - sp);
+        // After a boost it settles back to top speed rather than holding the extra
+        else dv = -this.gear * Math.min(sp - maxS, 2 * cfg.coastDecel * dt);
       } else {
         dv = toward0(cfg.coastDecel);
       }
     }
+    // Drift boost: a push forward for a moment after a good drift
+    if (this.boostTime > 0) {
+      this.boostTime -= dt;
+      if (active && this.gear === 1 && vf < cfg.topSpeed + dc.boostSpeed) dv += dc.boostAccel * dt;
+    }
+    // Sliding scrubs off speed
+    dv -= Math.sign(vf) * Math.min(Math.abs(vf + dv), dc.drag * this.drift * dt);
     // On the ramp the drive holds the truck against the slope (hydrostatic drive, no freewheeling),
     // so it drives, brakes and coasts the same as on the flat
     const pitchY = new THREE.Vector3(0, 0, 1).applyQuaternion(q).y;
@@ -453,16 +482,25 @@ export class Forklift {
 
     // Rear-wheel steering, bicycle model around the front axle: the tail swings out.
     let yawTarget = (-vfNew * Math.tan(this.steer)) / cfg.wheelbase;
-    yawTarget = Math.max(-cfg.maxYawRate, Math.min(cfg.maxYawRate, yawTarget));
+    // Grip turns are limited by how hard the tyres can corner: fast means wide
+    const yawCap = Math.min(cfg.maxYawRate, dc.gripLatAccel / Math.max(0.5, Math.abs(vfNew)));
+    yawTarget = Math.max(-yawCap, Math.min(yawCap, yawTarget));
+    // Drifting: the tail swings round as fast as the steering asks, whatever the speed
+    if (this.drift > 0) {
+      const driftYaw = -Math.sign(vfNew || 1) * (this.steer / cfg.steerMax) * dc.yawRate;
+      yawTarget = THREE.MathUtils.lerp(yawTarget, driftYaw, this.drift);
+    }
     const comLocal = new THREE.Vector3(...cfg.centerOfMass);
     const rFront = new THREE.Vector3(0, 0, comLocal.z - FRONT_AXLE_Z).applyQuaternion(q); // front axle -> COM
     const swing = new THREE.Vector3(0, yawTarget, 0).cross(rFront);
     const vlTarget = swing.dot(right);
 
+    // Drifting, the tyres hardly hold sideways: the truck keeps sliding the way it was going
+    const latGrip = THREE.MathUtils.lerp(1, dc.grip, this.drift);
     const J = fwd
       .clone()
       .multiplyScalar(dv)
-      .addScaledVector(right, vlTarget - vl)
+      .addScaledVector(right, (vlTarget - vl) * latGrip)
       .multiplyScalar(cfg.mass);
     const maxJ = cfg.traction * cfg.mass * 9.81 * dt * this.groundFrac * this.grip;
     if (J.length() > maxJ) J.setLength(maxJ);
@@ -472,7 +510,10 @@ export class Forklift {
     const lon = J.clone().sub(lat);
     body.applyImpulse({ x: lon.x, y: 0, z: lon.z }, true);
     const com = body.worldCom();
-    body.applyImpulseAtPoint({ x: lat.x, y: 0, z: lat.z }, { x: com.x, y: t.y + cfg.gripHeight, z: com.z }, true);
+    // (While sliding the sideways force goes through the centre of mass instead: a drift can't
+    // roll the truck over; grip comes back gradually after one, so recovering doesn't either)
+    const gripY = THREE.MathUtils.lerp(t.y + cfg.gripHeight, com.y, this.drift);
+    body.applyImpulseAtPoint({ x: lat.x, y: 0, z: lat.z }, { x: com.x, y: gripY, z: com.z }, true);
 
     const av = body.angvel();
     // Roll damping (tires and mast soak up the lurch): a quick flick of the wheel rocks the
@@ -480,7 +521,18 @@ export class Forklift {
     const rollRate = av.x * fwd.x + av.y * fwd.y + av.z * fwd.z;
     const roll = fwd.clone().multiplyScalar(-cfg.rollDamping * cfg.inertia[2] * rollRate * dt * this.groundFrac);
     body.applyTorqueImpulse({ x: roll.x, y: roll.y, z: roll.z }, true);
-    const dw = Math.max(-cfg.yawAccel * dt, Math.min(cfg.yawAccel * dt, yawTarget - av.y));
+    const yawAcc = THREE.MathUtils.lerp(cfg.yawAccel, dc.yawAccel, this.drift);
+    const dw = Math.max(-yawAcc * dt, Math.min(yawAcc * dt, yawTarget - av.y));
+    // How far it's sliding sideways, and the boost charge from holding a good drift
+    this.slip = Math.atan2(Math.abs(vl), Math.max(0.1, Math.abs(vf)));
+    if (this.drift > 0.8 && this.slip > dc.minSlip && groundSpeed > dc.minSpeed) this.driftCharge = (this.driftCharge || 0) + dt;
+    if (!(active && a.drift) && this.driftCharge > 0) {
+      if (this.driftCharge >= dc.boostCharge) {
+        this.boostTime = dc.boostTime;
+        sfx.driftBoost();
+      }
+      this.driftCharge = 0;
+    }
     body.applyTorqueImpulse({ x: 0, y: cfg.inertia[1] * dw * this.groundFrac * this.grip, z: 0 }, true);
 
     // Reverse beeper
@@ -672,19 +724,19 @@ export class Forklift {
     const cx = 150;
     const cy = 150;
     const R = 128;
-    const max = 10;
+    const max = 15;
     const a0 = Math.PI * 0.833;
     const sweep = Math.PI * 1.333;
     const ang = (v) => a0 + (Math.min(v, max) / max) * sweep;
     g.strokeStyle = '#c62828';
     g.lineWidth = 12;
     g.beginPath();
-    g.arc(cx, cy, R - 22, ang(8), ang(10));
+    g.arc(cx, cy, R - 22, ang(12), ang(15));
     g.stroke();
     g.font = 'bold 24px system-ui, sans-serif';
     for (let v = 0; v <= max; v++) {
       const a = ang(v);
-      const major = v % 2 === 0;
+      const major = v % 3 === 0;
       g.strokeStyle = '#e8e8e8';
       g.lineWidth = major ? 5 : 3;
       g.beginPath();
@@ -783,6 +835,22 @@ export class Forklift {
     this.handOnLever += (handWant - this.handOnLever) * Math.min(1, dt * (handWant ? 10 : 4));
     this.drawDashboard();
     this.drawClipboard();
+    // Skid marks, tyre smoke and boost sparks from the rear wheels
+    const rear = [WHEELS[2], WHEELS[3]].map((w) => {
+      const p = this.mesh.localToWorld(new THREE.Vector3(w.pos[0], 0, w.pos[2]));
+      p.y = floorHeightAt(p.x, p.z);
+      return p;
+    });
+    const lv = this.body.linvel();
+    const speed = Math.hypot(lv.x, lv.z);
+    const sliding = this.groundFrac > 0 && speed > 1.2 ? Math.min(1, Math.max(this.drift || 0, ((this.slip || 0) - 0.12) * 4)) : 0;
+    const charging = (this.drift || 0) > 0.8 && this.driftCharge > 0;
+    this.driftFx.update(dt, {
+      wheels: rear,
+      heading: Math.atan2(lv.x, lv.z),
+      sliding,
+      charge: !charging ? 'none' : this.driftCharge >= CONFIG.forklift.drift.boostCharge ? 'charged' : 'charging',
+    });
     // Driver's gloves on the rim at ten and two, following the wheel as it turns
     this.driver.sit();
     this.mesh.updateMatrixWorld(true);
@@ -810,5 +878,13 @@ export class Forklift {
     this.camera.position.copy(eye);
     const look = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.lookPitch, Math.PI + this.lookYaw, 0, 'YXZ'));
     this.camera.quaternion.copy(q).multiply(look);
+    // Drift boost: the view widens quickly so the speed reads as faster, then eases back
+    const boosting = this.boostTime > 0;
+    this.fovKick = (this.fovKick || 0) + ((boosting ? 1 : 0) - (this.fovKick || 0)) * (boosting ? 0.2 : 0.05);
+    const fov = FOV + cfg.drift.boostFov * this.fovKick;
+    if (Math.abs(fov - this.camera.fov) > 0.01) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
   }
 }
