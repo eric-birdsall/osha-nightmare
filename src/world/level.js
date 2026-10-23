@@ -941,7 +941,13 @@ export function buildLevel(game) {
     ['small', 16.7, 0, 5.9],
     ['medium', 0.5, LOWER.y, 13.5],
   ];
-  for (const [type, x, y, z] of loose) createBox(game, { type, sku: game.skus.next(), pos: [x, y, z], yaw: (Math.random() - 0.5) * 0.3 });
+  for (const [type, x, y, z] of loose) {
+    const box = createBox(game, { type, sku: game.skus.next(), pos: [x, y, z], yaw: (Math.random() - 0.5) * 0.3 });
+    // Home is where it started (no rack): a FRAGILE one that goes off turns up here again
+    const t = box.body.translation();
+    const r = box.body.rotation();
+    box.home = { pos: { x: t.x, y: t.y, z: t.z }, rot: { x: r.x, y: r.y, z: r.z, w: r.w } };
+  }
 
   // A-frame ladders: two on each LADDERS stand, upstairs and down
   createLadderStand(game, { pos: [1.0, 0, -halfZ + 0.3] }); // upstairs, north wall east of Rack A

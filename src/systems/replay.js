@@ -47,6 +47,12 @@ export class Recorder {
   constructor(game) {
     this.game = game;
     this.frames = [];
+    this.blasts = []; // [{ time, at }]: explosions, so the replay can redraw their fireballs
+  }
+
+  noteBlast(time, at) {
+    this.blasts.push({ time, at: at.clone() });
+    this.blasts = this.blasts.filter((b) => b.time > time - CONFIG.replay.bufferSeconds - 2);
   }
 
   trackedObjects() {
@@ -156,6 +162,19 @@ export class ReplayDirector {
       return { cam, from: Math.max(t0, a), to: Math.min(t1, b) };
     });
     incident.cams = cams.map((c) => `CAM ${c.id}`);
+    // Fireballs of any explosions in the clip (the live ones are long gone by now)
+    this.blasts = game.recorder.blasts
+      .filter((b) => b.time >= t0 - 1 && b.time <= t1 + 1)
+      .map((b) => {
+        const mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(1, 20, 14),
+          new THREE.MeshBasicMaterial({ color: 0xffa020, transparent: true, opacity: 0.9, depthWrite: false }),
+        );
+        mesh.position.copy(b.at);
+        mesh.visible = false;
+        game.scene.add(mesh);
+        return { ...b, mesh };
+      });
     this.seg = 0;
     this.t = this.segments[0]?.from ?? T;
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
@@ -215,6 +234,15 @@ export class ReplayDirector {
     }
     for (const o of this.union) o.visible = false;
     const subject = Recorder.apply(this.frames, this.t, this.subjectKey) || this.subjectAt(this.t);
+    const { radius, fireball, duration } = CONFIG.blast;
+    for (const b of this.blasts) {
+      const k = (this.t - b.time) / duration;
+      b.mesh.visible = k >= 0 && k < 1;
+      if (!b.mesh.visible) continue;
+      b.mesh.scale.setScalar(0.2 + (1 - (1 - k) ** 3) * radius * fireball);
+      b.mesh.material.opacity = 0.9 * (1 - k);
+      b.mesh.material.color.setHSL(0.08 - k * 0.06, 1, 0.55 - k * 0.3);
+    }
     // PTZ camera: follow the subject, zoomed so they fill the frame
     const cam = this.segments[this.seg].cam;
     if (!this.look) this.look = subject.clone();
@@ -231,6 +259,12 @@ export class ReplayDirector {
   }
 
   finish() {
+    for (const b of this.blasts) {
+      this.game.scene.remove(b.mesh);
+      b.mesh.geometry.dispose();
+      b.mesh.material.dispose();
+    }
+    this.blasts = [];
     for (const o of this.union) o.visible = false;
     Recorder.apply([this.live], this.live.time);
     this.game.climber.armRig.visible = true;

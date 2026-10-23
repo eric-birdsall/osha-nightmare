@@ -521,8 +521,9 @@ export class Game {
     return true;
   }
 
-  // Flash and fireball for an explosion (cosmetic).
+  // Flash and fireball for an explosion (cosmetic). Also noted for the CCTV replay.
   spawnBlast(at) {
+    this.recorder?.noteBlast(this.clock, at);
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(1, 20, 14),
       new THREE.MeshBasicMaterial({ color: 0xffa020, transparent: true, opacity: 0.9, depthWrite: false }),
