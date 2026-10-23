@@ -28,6 +28,18 @@ const INCIDENT_LINES = {
     first: ['Ralph took that corner way too fast', 'Dave got yeeted off the load', 'Ralph floored it. Dave did not hold on.'],
     again: ['Ralph yeeted Dave... again', 'Dave forgot to hold on. Again.', 'Ralph drives like this on purpose'],
   },
+  propane: {
+    first: ['The propane cage joined in', 'Dave met the propane cage', 'Chain reaction. Dave was in the chain.'],
+    again: ['The propane cage joined in... again', 'Dave and the propane: a rematch'],
+  },
+  forkliftBlast: {
+    first: ["Ralph's forklift exploded. Dave was nearby.", 'Dave caught the forklift blast', 'Ralph tipped the forklift. Dave left orbit.'],
+    again: ['The forklift exploded again. Dave was nearby again.', 'Dave keeps standing near Ralph'],
+  },
+  fragile: {
+    first: ['It said FRAGILE, Dave', 'Dave dropped the FRAGILE box', 'Dave found out what was in the FRAGILE box', 'FRAGILE: handle with Dave'],
+    again: ['It said FRAGILE, Dave... again', 'Dave and the FRAGILE boxes: a rematch', 'Another FRAGILE box, another crater'],
+  },
   legs: {
     first: ["Ralph dropped the forks. Dave's legs disagreed.", "Ralph broke Dave's legs", "Dave's knees have filed a complaint", 'Ralph found the down button'],
     again: ["Ralph broke Dave's legs... again", "Dave's knees are considering a union", 'Ralph dropped the forks. Again. Ow.'],
@@ -80,6 +92,9 @@ const INCIDENT_LINES = {
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 const listRows = (rows) => (rows.length === 1 ? rows[0] : `${rows.slice(0, -1).join(', ')} and ${rows[rows.length - 1]}`);
+// Incidents that are Ralph's fault (for the Employee of the Month board).
+const RALPHS_FAULT = new Set(['hit', 'thrown', 'dropped', 'forks', 'crushed', 'legs', 'tipped', 'ladderKnocked', 'forkliftBlast']);
+
 // A rack (or a domino run of racks) fell over. byRalph: the forklift touched one of them recently.
 function rackDownLine(rows, byRalph, again) {
   const r = listRows(rows);
@@ -225,6 +240,8 @@ export class Game {
     this.world.step();
     this.climber.postStep(dt);
     this.watchRacks(dt);
+    this.watchFragile(dt);
+    this.propaneStep();
     this.wrap.step(dt);
     this.orderStep(dt);
     if (this.started && !this.complete) this.time += dt;
@@ -339,6 +356,9 @@ export class Game {
       where: describeLocation(at),
     };
     this.lastIncident = incident;
+    // Employee of the Month goes to whoever wasn't to blame this time
+    const ralphsFault = incident.culprit === 'Ralph' || RALPHS_FAULT.has(reason);
+    if (incident.culprit !== undefined || incident.victim === 'Dave') this.employeeBoard?.setEmployee(ralphsFault ? 'Dave' : 'Ralph');
     this.hud?.banner(`⚠ INCIDENT ⚠<small>${incident.line}</small>`);
     // Queue the CCTV replay once things have had a moment to fall over
     if (!this.replay && !this.pendingReplay && !this.report) {
@@ -400,6 +420,139 @@ export class Game {
       }
     }
     this.rackContacts = now;
+  }
+
+  // ---------------------------------------------------------------- FRAGILE boxes
+
+  // A FRAGILE box Dave tossed or dropped is armed: the first thing it hits sets it off.
+  watchFragile(dt) {
+    for (const box of this.entities) {
+      if (!box.armed || box.carried || box.removed) continue;
+      box.armedTime = (box.armedTime || 0) + dt;
+      if (box.armedTime < 0.08) continue; // clear of Dave's hands first
+      let hit = false;
+      for (let i = 0; i < box.body.numColliders() && !hit; i++) {
+        const c = box.body.collider(i);
+        this.world.contactPairsWith(c, (other) => {
+          if (hit || other.handle === this.climber.collider.handle) return;
+          this.world.contactPair(c, other, (m) => {
+            if (m.numContacts() > 0) hit = true;
+          });
+        });
+      }
+      if (hit) this.explode(box);
+    }
+  }
+
+  // A blast near the propane cage sets it off too, a moment later (then the cage is spent for a while)
+  propaneStep() {
+    const p = this.pendingPropane;
+    if (!p || this.clock < p.at) return;
+    this.pendingPropane = null;
+    this.propaneReadyAt = this.clock + CONFIG.blast.propaneCooldown;
+    this.toast('The propane cage went up too!', 3);
+    this.blast(this.propane.center.clone(), { daveReason: 'propane', fromPropane: true });
+  }
+
+  // A FRAGILE box went off: restock it on its shelf (or it's gone, if it was a loose one), so
+  // an order box can't be lost for good, then the blast. It's on Dave either way.
+  explode(box) {
+    const p = box.body.translation();
+    const at = new THREE.Vector3(p.x, p.y, p.z);
+    box.armed = false;
+    box.armedTime = 0;
+    if (box.home) {
+      box.body.setTranslation(box.home.pos, true);
+      box.body.setRotation(box.home.rot, true);
+      box.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      box.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      box.handled = false;
+    } else {
+      this.world.removeRigidBody(box.body);
+      this.scene.remove(box.mesh);
+      this.removeEntity(box);
+    }
+    if (!this.blast(at, { exclude: box, daveReason: 'fragile' })) this.onIncident('fragile', { victim: 'Nobody', culprit: 'Dave', at });
+  }
+
+  // Like a grenade: everything loose within the blast radius is flung outward and up (racks,
+  // pallets, boxes, ladders, the forklift a bit, and Dave). Returns true if Dave was caught in it
+  // (that's an incident with daveReason).
+  blast(at, { exclude = null, skipForklift = false, daveReason = 'fragile', fromPropane = false } = {}) {
+    const cfg = CONFIG.blast;
+    if (!fromPropane && this.propane && !this.pendingPropane && this.clock >= (this.propaneReadyAt ?? 0) && at.distanceTo(this.propane.center) < cfg.propaneTrigger) {
+      this.pendingPropane = { at: this.clock + cfg.propaneDelay };
+    }
+    const push = (body, mass, scale = 1, point = null) => {
+      const t = body.translation();
+      const d = new THREE.Vector3(t.x - at.x, 0, t.z - at.z);
+      const dist = Math.hypot(d.x, t.y - at.y, d.z);
+      if (dist > cfg.radius) return false;
+      const k = (1 - dist / cfg.radius) * scale;
+      if (d.lengthSq() < 1e-4) d.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+      d.normalize().setY(cfg.upward).normalize();
+      const j = d.multiplyScalar(mass * cfg.speed * k);
+      body.enableCcd(true); // flung this fast, things would tunnel through the walls
+      if (point) body.applyImpulseAtPoint(j, point, true);
+      else body.applyImpulse(j, true);
+      return true;
+    };
+    for (const e of this.entities) {
+      if (e === exclude || e.removed || e.carried || !e.body.isDynamic()) continue;
+      if (e.kind === 'rack') {
+        // Rocks the whole rack: push up near its top so it goes over
+        const top = new THREE.Vector3(0, 3.5, 0).applyQuaternion(quatToThree(e.body.rotation())).add(e.body.translation());
+        push(e.body, this.loadedMass(e), 0.45, top);
+      } else if (push(e.body, e.body.mass())) {
+        const s = cfg.spin;
+        e.body.setAngvel({ x: (Math.random() - 0.5) * s, y: (Math.random() - 0.5) * s, z: (Math.random() - 0.5) * s }, true);
+      }
+    }
+    if (!skipForklift) push(this.forklift.body, CONFIG.forklift.mass, cfg.forkliftScale);
+    this.spawnBlast(at);
+    // Dave inside the blast goes flying
+    const feet = this.climber.feet;
+    const dist = feet.distanceTo(at);
+    if (this.climber.state === 'ragdoll' || dist >= cfg.radius) return false;
+    const v = Math.min(cfg.daveSpeed, cfg.speed * (1 - dist / cfg.radius));
+    const away = new THREE.Vector3(feet.x - at.x, 0, feet.z - at.z).normalize().multiplyScalar(v).setY(v * 0.8);
+    this.climber.onLadder = null;
+    this.climber.goRagdoll(daveReason, away);
+    return true;
+  }
+
+  // Flash and fireball for an explosion (cosmetic).
+  spawnBlast(at) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 20, 14),
+      new THREE.MeshBasicMaterial({ color: 0xffa020, transparent: true, opacity: 0.9, depthWrite: false }),
+    );
+    mesh.position.copy(at);
+    mesh.scale.setScalar(0.2);
+    const light = new THREE.PointLight(0xffb040, 400, CONFIG.blast.radius * 2);
+    light.position.copy(at);
+    this.scene.add(mesh, light);
+    (this.blasts ||= []).push({ mesh, light, t: 0 });
+  }
+
+  updateBlasts(dt) {
+    if (!this.blasts?.length) return;
+    const { radius, fireball, duration } = CONFIG.blast;
+    for (const b of this.blasts) {
+      b.t += dt;
+      const k = Math.min(1, b.t / duration);
+      const grow = 1 - (1 - k) ** 3; // fast out, then hangs
+      b.mesh.scale.setScalar(0.2 + grow * radius * fireball);
+      b.mesh.material.opacity = 0.9 * (1 - k);
+      b.mesh.material.color.setHSL(0.08 - k * 0.06, 1, 0.55 - k * 0.3);
+      b.light.intensity = 400 * (1 - k);
+    }
+    for (const b of this.blasts.filter((x) => x.t >= duration)) {
+      this.scene.remove(b.mesh, b.light);
+      b.mesh.geometry.dispose();
+      b.mesh.material.dispose();
+    }
+    this.blasts = this.blasts.filter((x) => x.t < duration);
   }
 
   // Knocked over, leaning, or shoved off its spot.
@@ -586,6 +739,8 @@ export class Game {
       if (ent.carried) continue;
       syncMesh(ent.body, ent.mesh);
     }
+    this.updateBlasts(dt);
+    for (const fan of this.level.fans || []) fan.rotation.y += fan.userData.speed * dt;
     this.forklift.updateVisuals(dt);
     this.climber.updateTarget();
     this.climber.updateVisuals(dt);

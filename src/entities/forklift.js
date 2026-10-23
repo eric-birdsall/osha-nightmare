@@ -371,16 +371,24 @@ export class Forklift {
     // Tipped over: after a few seconds the night shift sets it back on its wheels
     const upY = new THREE.Vector3(0, 1, 0).applyQuaternion(q).y;
     this.tippedTime = upY < 0.5 ? (this.tippedTime || 0) + dt : 0;
-    if (this.tippedTime > 0.6 && !this.tipReported) {
+    // Tipped over (and it isn't just bouncing back from the last one): incident, and it explodes
+    if (this.tippedTime > 0.6 && !this.tipReported && this.game.clock - (this.lastTipAt ?? -99) > 5) {
       this.tipReported = true;
+      this.lastTipAt = this.game.clock;
       this.game.onIncident('tipped', { victim: 'Ralph', culprit: 'Ralph', subject: 'forklift' });
+      // ...and a tipped forklift goes up like a FRAGILE box (Ralph is fine, somehow)
+      const c = this.body.worldCom();
+      this.game.blast(new THREE.Vector3(c.x, c.y, c.z), { skipForklift: true, daveReason: 'forkliftBlast' });
     }
     if (upY > 0.9) this.tipReported = false;
     if (this.tippedTime > cfg.rightAfter) {
       this.tippedTime = 0;
-      const yaw = Math.atan2(fwd.x, fwd.z);
-      this.teleport({ x: t.x, z: t.z }, yaw);
-      this.game.toast('The night shift put the forklift back on its wheels', 3);
+      // The night shift drives it back to the parking bay
+      const spawn = this.game.level.forkliftSpawn;
+      this.height = CONFIG.forklift.liftMin;
+      this.liftVel = 0;
+      this.teleport(spawn.pos, spawn.yaw);
+      this.game.toast('The night shift put the forklift back in its parking bay', 3);
       return;
     }
     if (this.groundFrac === 0) return;

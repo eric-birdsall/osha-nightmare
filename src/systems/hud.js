@@ -118,12 +118,13 @@ export class Hud {
         else if (c.carried) {
           const n = c.carriedBoxes().length;
           const toss = `Toss${n > 1 ? ' top box' : ''} <kbd>${game.keyHint(role, 'toss')}</kbd>`;
-          p = n > 1 ? `Put down ${n} boxes <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku} <kbd>${key}</kbd> · ${toss}`;
+          const fragile = c.carriedBoxes().some((b) => b.fragile) ? ' <b class="fragile">FRAGILE</b>' : '';
+          p = (n > 1 ? `Put down ${n} boxes <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku} <kbd>${key}</kbd> · ${toss}`) + fragile;
         } else if (c.target) {
           const n = c.targetStack;
           p = n > 1 && n <= CONFIG.climber.maxCarry
             ? `Pick up ${n} boxes <kbd>${key}</kbd> · bottom SKU ${c.target.sku}`
-            : `Pick up SKU ${c.target.sku} <kbd>${key}</kbd>`;
+            : `Pick up SKU ${c.target.sku} <kbd>${key}</kbd>${c.target.fragile ? ' <b class="fragile">FRAGILE</b>' : ''}`;
         }
         // Knocked-over racking nearby: offer the reset (alongside any box prompt), and fill a
         // ring round the crosshair while E/X is held

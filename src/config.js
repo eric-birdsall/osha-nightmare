@@ -14,7 +14,7 @@ export const CONFIG = {
     height: 1.8,
     radius: 0.35,
     eyeHeight: 1.65,
-    walkSpeed: 3.5,
+    walkSpeed: 4.0, // m/s (was 3.5)
     groundAccel: 30, // m/s² toward target walk velocity
     airAccel: 4, // limited air control
     jumpHeight: 1.0,
@@ -88,6 +88,7 @@ export const CONFIG = {
   },
 
   objects: {
+    fragileChance: 0.15, // share of SKUs printed FRAGILE (they explode if dropped or thrown)
     pallet: { size: [1.0, 0.15, 1.2], mass: 25, friction: 0.7, color: 0xb08850 },
     small: { size: [0.4, 0.4, 0.4], mass: 5, friction: 0.6, color: 0xc9a66b },
     medium: { size: [0.6, 0.6, 0.6], mass: 12, friction: 0.6, color: 0xb8925a },
@@ -129,6 +130,21 @@ export const CONFIG = {
     setupDistance: 1.05, // ladder centre this far in front of Dave when set up
     jumpKick: 2.5, // m/s at the top cap when Dave jumps off: always enough to send it over
     maxRideSpeed: 1.5, // m/s: a ladder moving faster than this with Dave on it throws him off
+  },
+
+  // A FRAGILE box going off (dropped or thrown by Dave)
+  blast: {
+    radius: 30, // m: everything loose within this is flung (most of the warehouse)
+    speed: 20, // m/s at the centre, falling off to 0 at the edge
+    daveSpeed: 14, // m/s cap on how hard Dave himself is flung
+    fireball: 0.5, // fireball grows to this fraction of the radius
+    duration: 0.8, // s the fireball lasts
+    upward: 0.6, // lift in the push direction (0 = flat out)
+    spin: 8, // rad/s of tumble on flung things
+    forkliftScale: 0.25, // the forklift only gets shoved, not launched
+    propaneTrigger: 12, // m: a blast this close to the propane cage sets it off too...
+    propaneDelay: 0.5, // ...this long after
+    propaneCooldown: 60, // s before the cage (restocked) can go up again
   },
 
   order: {

@@ -970,6 +970,7 @@ export class Climber {
       b.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
       for (let i = 0; i < b.body.numColliders(); i++) b.body.collider(i).setCollisionGroups(COL.carried);
       b.carried = true;
+      b.armed = false;
       b.handled = true; // Dave moved it: resetting the racking leaves it wherever he puts it
       this.makeHeldView(b, i ? 0.18 : 0.35); // boxes up the stack are fainter so he can see ahead
     }
@@ -995,12 +996,22 @@ export class Climber {
     this.dropHeldView(ent);
   }
 
+  // A FRAGILE box let go of carelessly (thrown, or dropped with nothing under it) goes off on
+  // whatever it hits next.
+  arm(box) {
+    if (!box.fragile) return;
+    box.armed = true;
+    box.armedTime = 0;
+  }
+
   // Put the whole carried stack down as a column centred on `center` (the middle of the block).
-  releaseStack(center, rot, vel) {
+  // dropped: there was nowhere to set it, so it's just let go.
+  releaseStack(center, rot, vel, dropped = false) {
     const boxes = this.carriedBoxes();
     let y = center.y - this.carrySize()[1] / 2;
     for (const b of boxes) {
       this.releaseBox(b, { x: center.x, y: y + b.size[1] / 2, z: center.z }, rot, vel);
+      if (dropped) this.arm(b);
       y += b.size[1];
     }
     this.carried = null;
@@ -1010,7 +1021,10 @@ export class Climber {
 
   // Let go of everything where it is (Dave went flying, got wrapped...).
   dropAll(vel) {
-    this.carriedBoxes().forEach((b, i) => this.releaseBox(b, this.holdPose(i).pos, yawQuat(this.yaw), vel));
+    this.carriedBoxes().forEach((b, i) => {
+      this.releaseBox(b, this.holdPose(i).pos, yawQuat(this.yaw), vel);
+      this.arm(b);
+    });
     this.carried = null;
     this.stackAbove = [];
     if (this.ghost) this.ghost.visible = false;
@@ -1028,6 +1042,7 @@ export class Climber {
     v.add(this.velocity);
     this.releaseBox(top, pos, yawQuat(this.yaw), { x: v.x, y: v.y, z: v.z });
     top.body.setAngvel({ x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3, z: (Math.random() - 0.5) * 3 }, true);
+    this.arm(top);
     if (this.stackAbove.length) this.stackAbove.pop();
     else this.carried = null;
     if (this.carried) this.makeGhost();
@@ -1173,8 +1188,8 @@ export class Climber {
   }
 
   putDown() {
-    const { pos, rot, vel } = this.computePlacement();
-    this.releaseStack(pos, rot, vel);
+    const { pos, rot, vel, onSurface } = this.computePlacement();
+    this.releaseStack(pos, rot, vel, !onSurface);
     sfx.putdown();
   }
 

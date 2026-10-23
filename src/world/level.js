@@ -6,8 +6,9 @@ import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { createBox } from '../entities/box.js';
 import { createPallet } from '../entities/pallet.js';
 import { createLadderStand } from '../entities/ladder.js';
+import { buildCorner } from './corner.js';
 
-export const ROOM = { halfX: 24, halfZ: 16, wallH: 6 };
+export const ROOM = { halfX: 24, halfZ: 16, wallH: 12 }; // wallH: up to the roof
 // Lower level: the south-west of the floor sits 1 m down. Dave takes six steps down by the rack
 // ends; the forklift has a fixed ramp along the south wall that runs down westward.
 export const LOWER = { y: -1.0, x0: -ROOM.halfX, x1: 6, z0: 3.8, z1: ROOM.halfZ };
@@ -237,34 +238,41 @@ function makeZone(game, name, cx, cz, w, d) {
   };
 }
 
-// Unique random 4-digit SKUs for every box in the warehouse.
+// Unique random 3-digit SKUs for every box in the warehouse. Each SKU also has a "look" (box
+// colour, brand logo, FRAGILE or not): its own, except a near-miss decoy copies the look of the
+// SKU it imitates, so only the number tells them apart.
 class SkuPool {
   constructor() {
     this.used = new Set();
+    this.looks = new Map();
   }
-  take(n) {
-    if (n < 1000 || n > 9999 || this.used.has(n)) return null;
+  take(n, look = n) {
+    if (n < 100 || n > 999 || this.used.has(n)) return null;
     this.used.add(n);
+    this.looks.set(n, look);
     return n;
+  }
+  look(sku) {
+    return this.looks.get(sku) ?? sku;
   }
   next() {
     for (;;) {
-      const n = this.take(1000 + Math.floor(Math.random() * 9000));
+      const n = this.take(100 + Math.floor(Math.random() * 900));
       if (n) return n;
     }
   }
   // A plausible misread of `sku`: two neighbouring digits swapped, or one digit off by one.
   nearMiss(sku) {
     const d = String(sku).split('');
-    for (let tries = 0; tries < 20; tries++) {
+    for (let tries = 0; tries < 30; tries++) {
       const t = [...d];
-      const i = Math.floor(Math.random() * 3);
+      const i = Math.floor(Math.random() * 2);
       if (Math.random() < 0.5 && t[i] !== t[i + 1]) [t[i], t[i + 1]] = [t[i + 1], t[i]];
       else {
-        const j = Math.floor(Math.random() * 4);
+        const j = Math.floor(Math.random() * 3);
         t[j] = String((Number(t[j]) + (Math.random() < 0.5 ? 1 : 9)) % 10);
       }
-      const n = this.take(Number(t.join('')));
+      const n = this.take(Number(t.join('')), this.look(sku));
       if (n) return n;
     }
     return this.next();
@@ -406,7 +414,165 @@ function stockShelves(game, racks) {
   return { order, orderBoxes };
 }
 
+// ---------------------------------------------------------------- ceiling
+
+// Corrugated steel for the roof deck, repeated across it.
+function roofMaterial(w, d) {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 16;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 64, 0);
+  grad.addColorStop(0, '#4a5058');
+  grad.addColorStop(0.5, '#6b727b');
+  grad.addColorStop(1, '#4a5058');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 16);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(w / 0.6, d / 4);
+  // Faint glow: the scene's light comes from above, which would leave the underside black
+  return new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, emissive: 0x2c3138 });
+}
+
+// Many copies of one box shape in a single draw call. items: [[x, y, z, rotY?]]
+function instancedBoxes(game, size, material, items) {
+  const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(...size), material, items.length);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  items.forEach(([x, y, z, ry = 0], i) => {
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry);
+    mesh.setMatrixAt(i, m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(1, 1, 1)));
+  });
+  game.scene.add(mesh);
+  return mesh;
+}
+
+// The underside of the building: corrugated roof deck on steel joists, rows of fluorescent
+// fixtures hanging on chains, exposed ductwork, and giant slow ceiling fans. Nothing up here
+// casts shadows (the sun is fake anyway). Returns the fan rotors.
+function buildCeiling(game) {
+  const { halfX, halfZ, wallH: H } = ROOM;
+  const scene = game.scene;
+  // Roof deck, seen from below
+  const roof = new THREE.Mesh(new THREE.PlaneGeometry(halfX * 2, halfZ * 2), roofMaterial(halfX * 2, halfZ * 2));
+  roof.rotation.x = Math.PI / 2;
+  roof.position.y = H - 0.01;
+  scene.add(roof);
+  // Steel joists across the width every 4 m, and a girder down the middle the long way
+  const steel = new THREE.MeshLambertMaterial({ color: 0x3c4249, emissive: 0x23272c });
+  const joists = [];
+  for (let z = -halfZ + 2; z <= halfZ - 2; z += 4) joists.push([0, H - 0.35, z]);
+  instancedBoxes(game, [halfX * 2, 0.5, 0.18], steel, joists);
+  const girders = [];
+  for (const z of [-6, 6]) girders.push([0, H - 0.75, z]);
+  instancedBoxes(game, [halfX * 2, 0.3, 0.25], steel, girders);
+  // Diagonal web bracing under the joists (simple Xs between joists, along the middle)
+  const web = [];
+  for (let z = -halfZ + 2; z < halfZ - 2; z += 4) {
+    for (let x = -halfX + 3; x < halfX - 2; x += 6) web.push([x, H - 0.55, z + 2, Math.PI / 4], [x, H - 0.55, z + 2, -Math.PI / 4]);
+  }
+  instancedBoxes(game, [0.06, 0.06, 2.8], steel, web);
+
+  // Giant fans' spots: lights and duct drops stay out of the blades' sweep
+  const FANS = [[-12, -5], [10, -6], [10, 8]];
+  const clearOfFans = (x, z) => FANS.every(([fx, fz]) => Math.hypot(x - fx, z - fz) > 4.3);
+
+  // Fluorescent fixtures: two-tube strips hanging 3.5 m below the roof, in rows along the aisles
+  const lightY = H - 3.5;
+  const fixtures = [];
+  for (let x = -21; x <= 21; x += 3.5) {
+    for (let z = -14; z <= 14; z += 4) if (clearOfFans(x, z)) fixtures.push([x, lightY, z]);
+  }
+  instancedBoxes(game, [1.25, 0.08, 0.32], flatMat(0xdfe3e8), fixtures);
+  const tubes = fixtures.map(([x, y, z]) => [x, y - 0.045, z]);
+  instancedBoxes(game, [1.18, 0.02, 0.22], new THREE.MeshBasicMaterial({ color: 0xf2f8ff }), tubes);
+  const chains = [];
+  for (const [x, , z] of fixtures) chains.push([x - 0.5, (lightY + H) / 2, z], [x + 0.5, (lightY + H) / 2, z]);
+  instancedBoxes(game, [0.015, H - lightY, 0.015], flatMat(0x8a9099), chains);
+
+  // Exposed round ducts the long way, hung under the joists, with drops down to diffusers
+  const ductMat = new THREE.MeshLambertMaterial({ color: 0xb4bcc6 });
+  const duct = (x0, x1, y, z, r) => {
+    const len = x1 - x0;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 20, 1, true), ductMat);
+    m.rotation.z = Math.PI / 2;
+    m.position.set((x0 + x1) / 2, y, z);
+    scene.add(m);
+    // Seams every 1.5 m
+    const seams = [];
+    for (let x = x0 + 0.75; x < x1; x += 1.5) seams.push([x, y, z]);
+    const seam = new THREE.InstancedMesh(new THREE.CylinderGeometry(r + 0.02, r + 0.02, 0.05, 20), flatMat(0x8f97a1), seams.length);
+    const mm = new THREE.Matrix4();
+    const qq = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+    seams.forEach(([sx, sy, sz], i) => seam.setMatrixAt(i, mm.compose(new THREE.Vector3(sx, sy, sz), qq, new THREE.Vector3(1, 1, 1))));
+    scene.add(seam);
+    // Drops to square diffusers
+    for (let x = x0 + 3; x < x1 - 1; x += 7) {
+      if (!clearOfFans(x, z)) continue;
+      const drop = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, 1.2, 14), ductMat);
+      drop.position.set(x, y - r - 0.5, z);
+      const diff = boxMesh(0.8, 0.15, 0.8, 0xc9d0d8, { edges: true, shadows: false });
+      diff.position.set(x, y - r - 1.15, z);
+      scene.add(drop, diff);
+    }
+  };
+  duct(-halfX, halfX, H - 1.6, -10.5, 0.55);
+  duct(-halfX, halfX, H - 1.6, 9.5, 0.55);
+  duct(-halfX, 4, H - 1.3, 0.5, 0.35);
+
+  // Giant HVLS fans: a motor hanging on a drop rod and eight long, slow blades
+  const fans = [];
+  for (const [x, z] of FANS) {
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.8, 8), flatMat(0x1d1f23));
+    rod.position.set(x, H - 0.9, z);
+    const motor = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.35, 0.5, 16), flatMat(0xf5c518));
+    motor.position.set(x, H - 2.0, z);
+    scene.add(rod, motor);
+    const rotor = new THREE.Group();
+    rotor.position.set(x, H - 2.3, z);
+    for (let i = 0; i < 8; i++) {
+      const blade = boxMesh(3.6, 0.04, 0.32, 0x2a2e33, { edges: false, shadows: false });
+      blade.position.x = 2.0;
+      blade.rotation.x = 0.12; // pitched
+      const arm = new THREE.Group();
+      arm.rotation.y = (i / 8) * Math.PI * 2;
+      arm.add(blade);
+      rotor.add(arm);
+    }
+    rotor.userData.speed = 1.2; // rad/s
+    scene.add(rotor);
+    fans.push(rotor);
+  }
+  // Nothing in the roof space casts or catches shadows
+  return fans;
+}
+
 // ---------------------------------------------------------------- floors
+
+// Ribbed metal wall panels: warm off-white with a seam every 1 m and lighter ribs between.
+let wallCanvas = null;
+function wallMaterial(w, h) {
+  if (!wallCanvas) {
+    wallCanvas = document.createElement('canvas');
+    wallCanvas.width = 128;
+    wallCanvas.height = 16;
+    const g = wallCanvas.getContext('2d');
+    g.fillStyle = '#e6dfcf';
+    g.fillRect(0, 0, 128, 16);
+    g.fillStyle = '#f4efe3';
+    for (const x of [24, 56, 88]) g.fillRect(x, 0, 12, 16);
+    g.fillStyle = '#b9b09c';
+    g.fillRect(0, 0, 4, 16);
+  }
+  const tex = new THREE.CanvasTexture(wallCanvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(w, 1);
+  tex.anisotropy = 8;
+  return new THREE.MeshLambertMaterial({ map: tex });
+}
 
 // Concrete with a 1 m grid scored into it, repeated across each slab.
 let floorCanvas = null;
@@ -613,6 +779,10 @@ function buildFloors(game) {
 // Human-readable spot for incident reports: a rack, an aisle and bay, or a floor zone.
 export function describeLocation(p) {
   const x1 = RACK_X0 + BAYS * BAY_W;
+  if (p.z < -12.3 && p.x > 6 && p.x < 11) return "The supervisor's office";
+  if (p.z < -14.2 && p.x >= 11 && p.x < 17.1) return 'The safety station';
+  if (p.z < -13.8 && p.x >= 17.1 && p.x < 19) return 'The propane cage';
+  if (p.z < -10.2 && p.x > 19.4) return 'Forklift parking';
   if (Math.abs(p.x - 12) < 1.4 && Math.abs(p.z - 9) < 1.4) return 'The WRAP square';
   if (p.x > ROOM.halfX - 4 && Math.abs(p.z - 2) < 2.2) return 'Dock 1';
   if (p.x >= RAMP.x0 && p.x <= RAMP.x1 && p.z >= RAMP.z0) return 'The forklift ramp';
@@ -668,14 +838,25 @@ export function buildLevel(game) {
   buildFloors(game);
 
   // Walls (inside faces at the room bounds), down to the bottom of the lower level
-  const wallC = 0xc9ced6;
+  const wallC = 0xece6d8; // warm off-white metal panels, against the grey concrete floor
   const t = 0.2;
   const wallHalfY = (wallH - FLOOR_BOTTOM) / 2;
   const wallY = (wallH + FLOOR_BOTTOM) / 2;
-  addStatic(game, [halfX + t * 2, wallHalfY, t], [0, wallY, -halfZ - t], wallC, { edges: false });
-  addStatic(game, [halfX + t * 2, wallHalfY, t], [0, wallY, halfZ + t], wallC, { edges: false });
-  addStatic(game, [t, wallHalfY, halfZ], [-halfX - t, wallY, 0], wallC, { edges: false });
-  addStatic(game, [t, wallHalfY, halfZ], [halfX + t, wallY, 0], wallC, { edges: false });
+  for (const [half, pos] of [
+    [[halfX + t * 2, wallHalfY, t], [0, wallY, -halfZ - t]],
+    [[halfX + t * 2, wallHalfY, t], [0, wallY, halfZ + t]],
+    [[t, wallHalfY, halfZ], [-halfX - t, wallY, 0]],
+    [[t, wallHalfY, halfZ], [halfX + t, wallY, 0]],
+  ]) {
+    // Tall walls would throw the (fake) sun's shadow across half the floor
+    const wall = addStatic(game, half, pos, wallC, { edges: false });
+    wall.castShadow = false;
+    wall.material = wallMaterial(Math.max(half[0], half[2]) * 2, half[1] * 2);
+  }
+  // Roof: solid (a FRAGILE blast can't throw things out of the building), with the lights,
+  // ducts and fans hanging under it
+  addStatic(game, [halfX + t * 2, t, halfZ + t * 2], [0, wallH + t, 0], 0, { mesh: false });
+  const fans = buildCeiling(game);
   // Wainscot stripe for depth cues, 1 m tall at floor level ([length, centre x, centre z, rotation, floor y])
   for (const [w, x, z, ry, y] of [
     [halfX * 2, 0, -halfZ + 0.01, 0, 0],
@@ -741,6 +922,11 @@ export function buildLevel(game) {
   // Wall-mounted incident sign (updated by the game)
   game.incidentSign = makeIncidentSign(scene);
 
+  // North-east corner: supervisor's office, safety station, propane cage, forklift parking
+  const corner = buildCorner(game);
+  game.employeeBoard = corner.safety;
+  game.propane = corner.propane;
+
   // Stock every shelf and pick this shift's order
   const { order, orderBoxes } = stockShelves(game, racks);
 
@@ -774,6 +960,7 @@ export function buildLevel(game) {
     items: orderBoxes, // { A: [...], B: [...] }: the boxes each order line wants (for debugging/tests)
     order, // [{ line, sku, location }]
     racks,
+    fans, // giant ceiling fans (the game turns them)
     climberSpawn: { pos: new THREE.Vector3(-2, 0, -5.2), yaw: Math.PI / 2 }, // aisle C/D, looking down it
     spawnPoints: [
       new THREE.Vector3(-2, 0, -5.2),
@@ -789,7 +976,7 @@ export function buildLevel(game) {
       new THREE.Vector3(10, 0, -10),
       new THREE.Vector3(16, 0, 13),
     ],
-    forkliftSpawn: { pos: new THREE.Vector3(18, 0, 10), yaw: -Math.PI / 2 },
+    forkliftSpawn: corner.parking, // the parking bay in the north-east corner
   };
 }
 

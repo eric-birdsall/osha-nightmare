@@ -286,6 +286,23 @@ h2.big {
   stroke: var(--hazard-y);
   stroke-width: 0.12;
 }
+.fp-room {
+  fill: rgba(219, 233, 247, 0.25);
+  stroke: #dbe9f7;
+  stroke-width: 0.15;
+}
+.fp-safety {
+  fill: rgba(49, 208, 122, 0.5);
+}
+.fp-propane {
+  fill: #d0141b;
+}
+.fp-park {
+  fill: none;
+  stroke: var(--hazard-y);
+  stroke-width: 0.15;
+  stroke-dasharray: 0.4 0.25;
+}
 .fp-ladders {
   fill: var(--hazard-y);
   stroke: #111;
@@ -557,6 +574,13 @@ td + td {
 }
 .prompt {
   text-align: center;
+}
+.prompt .fragile {
+  color: #fff;
+  background: #d0141b;
+  padding: 0 6px;
+  margin-left: 6px;
+  letter-spacing: 1px;
 }
 /* Hold-to-reset progress ring round the crosshair */
 .holdring {
