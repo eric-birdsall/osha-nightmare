@@ -7,6 +7,7 @@ import { createBox } from '../entities/box.js';
 import { createPallet } from '../entities/pallet.js';
 import { createLadderStand } from '../entities/ladder.js';
 import { buildCorner } from './corner.js';
+import { buildSpills } from './spills.js';
 
 export const ROOM = { halfX: 24, halfZ: 16, wallH: 12 }; // wallH: up to the roof
 // Lower level: the south-west of the floor sits 1 m down. Dave takes six steps down by the rack
@@ -1103,6 +1104,19 @@ export function buildLevel(game) {
   createLadderStand(game, { pos: [1.0, 0, -halfZ + 0.3] }); // upstairs, north wall east of Rack A
   createLadderStand(game, { pos: [1.2, LOWER.y, LOWER.z0 + 0.3] }); // downstairs, by the foot of the stairs
 
+  // Spills (2-3, random) with their CAUTION WET FLOOR signs
+  const climberStart = new THREE.Vector3(-2, 0, -5.2);
+  const spills = buildSpills(game, {
+    racks: RACKS,
+    room: ROOM,
+    rackX0: RACK_X0,
+    rackX1: RACK_X0 + BAYS * BAY_W,
+    docks: DOCKS,
+    wrapZone,
+    spawns: [climberStart, corner.parking.pos],
+    floorHeightAt,
+  });
+
   // Empty pallets (fork pockets open toward ±local Z)
   createPallet(game, { pos: [2.6, 0, -12.2], yaw: Math.PI / 2 });
   createPallet(game, { pos: [2.6, 0, -4.8], yaw: Math.PI / 2 });
@@ -1118,7 +1132,8 @@ export function buildLevel(game) {
     order, // [{ line, sku, location }]
     racks,
     fans, // giant ceiling fans (the game turns them)
-    climberSpawn: { pos: new THREE.Vector3(-2, 0, -5.2), yaw: Math.PI / 2 }, // aisle C/D, looking down it
+    spills, // [{ x, y, z, r, liquid }]
+    climberSpawn: { pos: climberStart, yaw: Math.PI / 2 }, // aisle C/D, looking down it
     spawnPoints: [
       new THREE.Vector3(-2, 0, -5.2),
       new THREE.Vector3(-2, 0, -12.2),

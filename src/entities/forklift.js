@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL, castRay, yawQuat, quatToThree } from '../physics.js';
 import { floorHeightAt } from '../world/level.js';
+import { onSpill } from '../world/spills.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
 import { sfx } from '../systems/audio.js';
 import { WorkerModel } from './worker.js';
@@ -384,6 +385,10 @@ export class Forklift {
       if (castRay(this.game.world, p, { x: 0, y: -1, z: 0 }, WHEEL_R + 0.08, COL.wheelQuery)) grounded++;
     }
     this.groundFrac = grounded / 4;
+    // Wet wheels (on a spill) lose most of their traction
+    let wet = 0;
+    for (const w of WHEELS) if (onSpill(this.game.level?.spills, new THREE.Vector3(...w.pos).applyQuaternion(q).add(t))) wet++;
+    this.grip = 1 - (wet / 4) * (1 - CONFIG.spill.forkliftGrip);
 
     const lv = body.linvel();
     const vel = new THREE.Vector3(lv.x, lv.y, lv.z);
@@ -458,7 +463,7 @@ export class Forklift {
       .multiplyScalar(dv)
       .addScaledVector(right, vlTarget - vl)
       .multiplyScalar(cfg.mass);
-    const maxJ = cfg.traction * cfg.mass * 9.81 * dt * this.groundFrac;
+    const maxJ = cfg.traction * cfg.mass * 9.81 * dt * this.groundFrac * this.grip;
     if (J.length() > maxJ) J.setLength(maxJ);
     // Drive/brake acts through the centre of mass; the sideways tire grip acts at the floor,
     // so hard cornering rolls the truck toward the outside of the turn (and can tip it).
@@ -475,7 +480,7 @@ export class Forklift {
     const roll = fwd.clone().multiplyScalar(-cfg.rollDamping * cfg.inertia[2] * rollRate * dt * this.groundFrac);
     body.applyTorqueImpulse({ x: roll.x, y: roll.y, z: roll.z }, true);
     const dw = Math.max(-cfg.yawAccel * dt, Math.min(cfg.yawAccel * dt, yawTarget - av.y));
-    body.applyTorqueImpulse({ x: 0, y: cfg.inertia[1] * dw * this.groundFrac, z: 0 }, true);
+    body.applyTorqueImpulse({ x: 0, y: cfg.inertia[1] * dw * this.groundFrac * this.grip, z: 0 }, true);
 
     // Reverse beeper
     if (this.gear === -1 && vf < -0.1) {

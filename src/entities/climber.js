@@ -5,6 +5,7 @@ import { COL, G, groups, castRay, yawQuat, quatToThree } from '../physics.js';
 import { floorHeightAt, ROOM } from '../world/level.js';
 import { buildLadderGhost, ladderFootprint } from './ladder.js';
 import { collectStack } from '../systems/wrapping.js';
+import { onSpill } from '../world/spills.js';
 import { flatMat } from '../util/meshes.js';
 import { spawnRagdoll } from '../systems/ragdoll.js';
 import { WorkerModel, firstPersonArm } from './worker.js';
@@ -184,7 +185,9 @@ export class Climber {
     const disp = new THREE.Vector3();
     let liftY = 0; // a rising platform carries us up directly (the controller can't push out of a surface)
     if (this.grounded) {
-      approach(this.relVel, wish, cfg.groundAccel * dt);
+      // On a spill there's next to no grip: he keeps sliding the way he was going
+      const grip = onSpill(this.game.level.spills, this.feet) ? CONFIG.spill.daveGrip : 1;
+      approach(this.relVel, wish, cfg.groundAccel * grip * dt);
       if (free && a.jump) {
         this.grounded = false;
         this.jumpedThisStep = true;
@@ -553,7 +556,7 @@ export class Climber {
       const hit = this.kcc.computedCollision(i);
       const ent = hit?.collider && this.game.entityForCollider(hit.collider);
       if (!ent || ent.carried) continue;
-      if (ent.kind !== 'box' && ent.kind !== 'pallet') continue;
+      if (ent.kind !== 'box' && ent.kind !== 'pallet' && ent.kind !== 'sign') continue;
       // Only shove things we walk into from the side: never the one we're standing on or
       // landing on top of (that kicked boxes out from under Dave's feet)
       if (this.support?.body.handle === ent.body.handle || hit.normal1.y > 0.5) continue;
