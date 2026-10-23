@@ -118,7 +118,7 @@ the forklift can bump or tip.
 ## 4. Replace the office and safety station in the north-east corner
 
 **Done:** the office, safety station, propane cage (and its chain reactions) and the Employee of
-the Month board are gone; only the forklift parking bay is left, and the dock wall moved 14 m in.
+the Month board are gone; only the forklift parking bay is left, and the dock wall moved 23 m in altogether.
 Packing stations went in between the ramp and the parking bay as set dressing. The options below
 are still open for that area.
 
