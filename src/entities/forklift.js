@@ -217,6 +217,24 @@ export class Forklift {
     wheelMount.add(column, spinner);
     root.add(wheelMount);
     this.wheelMount = wheelMount;
+    // Lift lever (for show) on a pedestal beside the steering wheel, at the driver's right hand:
+    // pull back to raise, push forward to lower. A black stick with the classic red ball knob.
+    const leverBase = boxMesh(0.12, 0.36, 0.16, 0x1d1f23);
+    leverBase.position.set(-0.42, 0.82, 0.12);
+    const lever = new THREE.Group();
+    lever.position.set(-0.42, 1.0, 0.12);
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 0.3, 8), flatMat(0x16171a));
+    stick.position.y = 0.15;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 10), flatMat(0xd02020));
+    ball.position.y = 0.31;
+    const boot = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.05, 10), flatMat(0x111111));
+    boot.position.y = 0.02;
+    lever.add(stick, ball, boot);
+    root.add(leverBase, lever);
+    this.lever = lever;
+    this.leverKnob = ball;
+    this.leverTilt = 0;
+    this.handOnLever = 0; // 0 = right hand on the wheel, 1 = on the lever knob
     this.buildDashboard(root);
     this.buildClipboard(root);
     this.steeringWheel = spinner;
@@ -307,10 +325,10 @@ export class Forklift {
 
     // Lift (always simulated; parked = no input)
     const liftDir = active ? a.liftUp - a.liftDown : 0;
+    this.liftInput = liftDir; // drives the (cosmetic) lift lever
     let target = liftDir * (liftDir < 0 ? cfg.lowerSpeed : cfg.liftSpeed);
     const maxUp = Math.sqrt(2 * cfg.liftAccel * Math.max(0, cfg.liftMax - this.height));
-    const maxDown = Math.sqrt(2 * cfg.lowerStop * Math.max(0, this.height - cfg.liftMin));
-    target = Math.max(-maxDown, Math.min(maxUp, target));
+    target = Math.min(maxUp, target); // no easing at the bottom: held down, the forks hit the ground at speed
     const dl = target - this.liftVel;
     // Going down: speed up gradually (tap to feather), stop hard; going up: ease in and out
     let rate = cfg.liftAccel;
@@ -318,8 +336,12 @@ export class Forklift {
     else if (this.liftVel < 0 && dl > 0) rate = cfg.lowerStop;
     this.liftVel += Math.sign(dl) * Math.min(Math.abs(dl), rate * dt);
     const prevH = this.height;
+    const impact = this.liftVel; // speed as they reach the end of travel
     this.height = Math.max(cfg.liftMin, Math.min(cfg.liftMax, this.height + this.liftVel * dt));
     if (this.height === cfg.liftMin || this.height === cfg.liftMax) this.liftVel = (this.height - prevH) / dt;
+    // Slam: the forks hit the ground at (nearly) full speed
+    if (this.height === cfg.liftMin && prevH > cfg.liftMin && impact < -CONFIG.climber.legBreakSpeed) this.slammedAt = this.game.clock;
+    this.lastImpact = this.height === cfg.liftMin && prevH > cfg.liftMin ? -impact : this.lastImpact;
     this.liftJoint.configureMotor(this.height, this.liftVel, cfg.liftStiffness, cfg.liftDamping);
     if (this.height !== prevH) {
       body.wakeUp();
@@ -701,6 +723,12 @@ export class Forklift {
       w.tire.rotation.x = this.wheelSpin;
     }
     this.steeringWheel.rotation.z = -this.steer * 3;
+    // Lift lever: back to raise, forward to lower; Ralph's right hand moves over to work it
+    const leverWant = -(this.liftInput || 0) * 0.45;
+    this.leverTilt += (leverWant - this.leverTilt) * Math.min(1, dt * 12);
+    this.lever.rotation.x = this.leverTilt;
+    const handWant = this.liftInput ? 1 : 0;
+    this.handOnLever += (handWant - this.handOnLever) * Math.min(1, dt * (handWant ? 10 : 4));
     this.drawDashboard();
     this.drawClipboard();
     // Driver's gloves on the rim at ten and two, following the wheel as it turns
@@ -709,8 +737,9 @@ export class Forklift {
     const spin = THREE.MathUtils.clamp(this.steeringWheel.rotation.z, -0.9, 0.9);
     for (const [side, base] of [['L', Math.PI / 6], ['R', (5 * Math.PI) / 6]]) {
       const a = base + spin;
-      const grip = new THREE.Vector3(Math.cos(a) * STEER_R, Math.sin(a) * STEER_R, -0.02);
-      this.driver.reach(side, this.wheelMount.localToWorld(grip));
+      const grip = this.wheelMount.localToWorld(new THREE.Vector3(Math.cos(a) * STEER_R, Math.sin(a) * STEER_R, -0.02));
+      if (side === 'R' && this.handOnLever > 0.01) grip.lerp(this.leverKnob.getWorldPosition(new THREE.Vector3()), this.handOnLever);
+      this.driver.reach(side, grip);
     }
     this.beacon.visible = Math.floor(performance.now() / 400) % 2 === 0;
   }

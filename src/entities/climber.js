@@ -371,8 +371,9 @@ export class Climber {
       const hit = castRay(this.game.world, head, { x: 0, y: 1, z: 0 }, 0.2, COL.climberQuery, (c) => c.handle !== this.collider.handle && c.parent()?.handle !== lad.body.handle);
       if (hit) return this.goRagdoll('crushed', new THREE.Vector3(0, -1, 0));
     }
-    // Riding a ladder on the forks while Ralph drops them
-    if (lad.body.linvel().y < -cfg.legBreakSpeed) return this.goRagdoll('legs', new THREE.Vector3(0, -2, 0));
+    // Riding a ladder on the forks when Ralph slams them down
+    const lt = lad.body.translation();
+    if (this.forksSlammed(new THREE.Vector3(lt.x, lt.y, lt.z), 0.5)) return this.goRagdoll('legs', new THREE.Vector3(0, -2, 0));
     const headHit = this.overheadHit(feet);
     if (headHit) return this.goRagdoll(headHit, new THREE.Vector3(0, -1.5, 0));
     const probeHalf = this.halfH - 0.05;
@@ -571,12 +572,15 @@ export class Climber {
     }
   }
 
-  // The fork carriage is coming down faster than legs can take, and we're standing over the forks.
-  forksDropping(feet) {
-    const fl = this.game.forklift;
-    if (fl.liftVel > -CONFIG.climber.legBreakSpeed) return false;
-    const local = this.carriageLocal(feet);
-    return Math.abs(local.x) < 0.65 && local.z > -0.1 && local.z < 1.4 && local.y > -0.15 && local.y < 2.5;
+  // The forks just slammed into the bottom (full-speed drop) and this point is riding on them.
+  forksSlammed(p, below = 0.15) {
+    return this.game.forklift.slammedAt === this.game.clock && this.overForks(p, below);
+  }
+
+  // This point is above the fork blades (standing on them, or on a load on them).
+  overForks(p, below = 0.15) {
+    const local = this.carriageLocal(p);
+    return Math.abs(local.x) < 0.65 && local.z > -0.1 && local.z < 1.4 && local.y > -below && local.y < 2.5;
   }
 
   // Height above the warehouse floor (upper or lower level, stairs or ramp). Boxes, pallets,
@@ -726,9 +730,11 @@ export class Climber {
         return this.goRagdoll('thrown', this.supportAccel.clone().setY(0).multiplyScalar(0.12).add(new THREE.Vector3(0, 2, 0)));
       }
     }
-    // Forks dropped fast with Dave on them, or on a pallet on them: the landing breaks his legs
-    if ((sb || this.holdingOn) && this.forksDropping(feet)) return this.goRagdoll('legs', new THREE.Vector3(0, -2, 0));
-    if (sb && highUp && !this.holdingOn && this.supportVel.y < -cfg.dropSpeed) return this.goRagdoll('dropped');
+    // Forks dropped at full speed and slammed into the ground with Dave riding them (on the
+    // blades or on a load on them): the impact breaks his legs
+    if ((sb || this.holdingOn) && this.forksSlammed(feet)) return this.goRagdoll('legs', new THREE.Vector3(0, -2, 0));
+    // (Riding the forks down, however fast, is fine until they hit bottom: see the slam above)
+    if (sb && highUp && !this.holdingOn && this.supportVel.y < -cfg.dropSpeed && !this.overForks(feet)) return this.goRagdoll('dropped');
     // Lifted into something overhead (rack beam, mast crossbar): crushed
     if (sb && this.supportVel.y > 0.05) {
       const head = { x: center.x, y: center.y + this.centerOff - 0.15, z: center.z };
