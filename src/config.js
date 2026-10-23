@@ -176,7 +176,7 @@ export const CONFIG = {
 
   order: {
     decoyChance: 0.6, // chance an order slot also holds a near-miss SKU next to the right box
-    extraBackstock: 8, // BACKSTOCK signs (with real backstock behind them) on stock that isn't on the order
+    extraBackstock: 6, // BACKSTOCK signs (with real backstock behind them) on stock that isn't on the order
     backstockChance: 0.5, // chance a 2-box line 2 is also one short at its pick face (line 1 always is)
   },
 

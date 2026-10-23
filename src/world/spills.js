@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL } from '../physics.js';
 import { LAYOUT, rackX1 } from './layout.js';
+import { packingSize } from './packing.js';
 
 // Spills: a few slick puddles on the floor each order, with no warning sign and only a slight
 // tint and sheen on the concrete, so they're easy to run over by accident. On a spill Dave has
@@ -57,22 +58,35 @@ function spotOk(level, x, z, r, spills, floorHeightAt, blocked) {
 }
 
 // Places the spills and returns them: [{ x, y, z, r, liquid }].
-export function buildSpills(game, { wrapZone, spawns, floorHeightAt }) {
+export function buildSpills(game, { wrapZone, stairs, keepClear = [], spawns, floorHeightAt }) {
   const cfg = CONFIG.spill;
-  const { room, lower, ramp, stairs, corner } = LAYOUT;
+  const { room, lower, ramp, corner } = LAYOUT;
   const level = { room };
+  const grow = (r, m) => [r.x0 - m, r.z0 - m, r.x1 + m, r.z1 + m];
   // Rectangles [x0, z0, x1, z1] nothing may overlap
   const blocked = [
     ...LAYOUT.racks.map((r) => [r.x0 - 0.6, r.z0 - 0.6, rackX1(r) + 0.6, r.z1 + 0.6]),
     ...LAYOUT.docks.map((d) => [room.halfX - 5, d.z - 3, room.halfX + 20, d.z + 3]),
-    [wrapZone.center.x - 2.5, wrapZone.center.z - 2.5, wrapZone.center.x + 2.5, wrapZone.center.z + 2.5],
+    // The stretch wrapper (its frame and control panel)
+    grow({ x0: wrapZone.center.x, x1: wrapZone.center.x, z0: wrapZone.center.z, z1: wrapZone.center.z }, LAYOUT.wrap.frame.half + 1.4),
+    // The packing stations and their pallet stack
+    (() => {
+      const [w, d] = packingSize();
+      const { x, z } = LAYOUT.packing;
+      return [x - w / 2 - 1.5, z - d / 2 - 1.5, x + w / 2 + 2.4, z + d / 2 + 1.5];
+    })(),
     // Office, safety station, propane cage, parking bay
     [corner.office.x0 - 0.5, -room.halfZ, room.halfX, -room.halfZ + corner.parking.depth + 1.1],
-    ...LAYOUT.ladderStands.map((st) => [st.x - 2, st.z - 0.8, st.x + 2, st.z + 2.2]), // LADDERS stands
-    [stairs.x0 - 0.9, stairs.z0 - 1, stairs.x1 + 1.1, stairs.z0 + 2.7],
-    [lower.x0, lower.z0 - 1.6, lower.x1 + 1.5, lower.z0 + 1.2], // the pit edge and its railing
-    [lower.x1 - 1.5, lower.z0, lower.x1 + 1.6, ramp.z0 + 1], // east pit edge
+    ...LAYOUT.ladderStands.map((st) => [st.x - 2, st.z - 2.2, st.x + 2, st.z + 2.2]), // LADDERS stands
+    grow(stairs, 1.2),
+    grow(ramp, 1.2),
+    // The pit edges and their railings
+    [lower.x0 - 1.5, lower.z0 - 1.5, lower.x1 + 1.5, lower.z0 + 1.5],
+    [lower.x0 - 1.5, lower.z1 - 1.5, lower.x1 + 1.5, lower.z1 + 1.5],
+    [lower.x0 - 1.5, lower.z0 - 1.5, lower.x0 + 1.5, lower.z1 + 1.5],
+    [lower.x1 - 1.5, lower.z0 - 1.5, lower.x1 + 1.5, lower.z1 + 1.5],
     ...spawns.map((p) => [p.x - 2.5, p.z - 2.5, p.x + 2.5, p.z + 2.5]),
+    ...keepClear.map((h) => [h.x - h.r - 1, h.z - h.r - 1, h.x + h.r + 1, h.z + h.r + 1]), // the hazards
   ];
   const count = cfg.count[0] + Math.floor(Math.random() * (cfg.count[1] - cfg.count[0] + 1));
   const spills = [];
@@ -83,26 +97,32 @@ export function buildSpills(game, { wrapZone, spawns, floorHeightAt }) {
     if (!spotOk(level, x, z, r, spills, floorHeightAt, blocked)) continue;
     const y = floorHeightAt(x, z);
     const liquid = LIQUIDS[Math.floor(Math.random() * LIQUIDS.length)];
-    // Slick patch: a thin disc on the floor that loose things slide on
-    game.world.createCollider(
-      RAPIER.ColliderDesc.cylinder(0.002, r * 0.95)
-        .setTranslation(x, y + 0.002, z)
-        .setFriction(cfg.friction)
-        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
-        .setCollisionGroups(COL.static),
-      game.staticBody,
-    );
-    const puddle = new THREE.Mesh(
-      new THREE.PlaneGeometry(r * 2.3, r * 2.3),
-      new THREE.MeshPhongMaterial({ map: puddleTexture(liquid), transparent: true, depthWrite: false, shininess: 60, specular: 0x333333 }),
-    );
-    puddle.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI * 2);
-    puddle.position.set(x, y + 0.009, z);
-    puddle.renderOrder = 1;
-    game.scene.add(puddle);
-    spills.push({ x, y, z, r, liquid: liquid.name });
+    spills.push(addPuddle(game, { x, y, z, r, liquid }));
   }
   return spills;
+}
+
+// A puddle on the floor at (x, y, z), radius r: slick for Dave and the forklift's tyres (see
+// onSpill), with a thin low-friction patch under it that loose things slide on. liquid: { name,
+// color, alpha }. Returns the spill record.
+export function addPuddle(game, { x, y, z, r, liquid }) {
+  game.world.createCollider(
+    RAPIER.ColliderDesc.cylinder(0.002, r * 0.95)
+      .setTranslation(x, y + 0.002, z)
+      .setFriction(CONFIG.spill.friction)
+      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
+      .setCollisionGroups(COL.static),
+    game.staticBody,
+  );
+  const puddle = new THREE.Mesh(
+    new THREE.PlaneGeometry(r * 2.3, r * 2.3),
+    new THREE.MeshPhongMaterial({ map: puddleTexture(liquid), transparent: true, depthWrite: false, shininess: 60, specular: 0x333333 }),
+  );
+  puddle.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI * 2);
+  puddle.position.set(x, y + 0.009, z);
+  puddle.renderOrder = 1;
+  game.scene.add(puddle);
+  return { x, y, z, r, liquid: liquid.name };
 }
 
 // Is this point (feet, a wheel) standing in a spill?

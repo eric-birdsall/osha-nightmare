@@ -42,10 +42,7 @@ export class WrapSystem {
     this.ring.rotation.x = Math.PI / 2;
     this.ringPivot = new THREE.Group();
     this.ringPivot.add(this.ring);
-    // A "film roll" riding the ring
-    const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.35, 10), new THREE.MeshLambertMaterial({ color: 0xe8f6ff }));
-    roll.position.set(0.95, 0, 0);
-    this.ringPivot.add(roll);
+    // The film itself is on the stretch wrapper's arm, which swings round with this ring
     this.ringPivot.visible = false;
     game.scene.add(this.ringPivot);
 
@@ -184,6 +181,11 @@ export class WrapSystem {
     const k = job.t / CONFIG.wrap.duration;
     this.ringPivot.position.set(t.x, t.y + 0.1 + (job.top - t.y) * (0.5 - 0.5 * Math.cos(k * Math.PI * 3)), t.z);
     this.ringPivot.rotation.y += dt * 9;
+    const wrapper = this.game.level.wrapper;
+    if (wrapper) {
+      wrapper.arm.rotation.y += dt * 9;
+      wrapper.setCarriage(this.ringPivot.position.y);
+    }
     if (job.t >= CONFIG.wrap.duration) this.finish();
   }
 
@@ -191,6 +193,7 @@ export class WrapSystem {
     if (this.job) this.rest.set(this.job.pallet, 0);
     this.job = null;
     this.ringPivot.visible = false;
+    this.game.level.wrapper?.park();
   }
 
   finish() {

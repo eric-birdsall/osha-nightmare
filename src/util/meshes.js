@@ -32,7 +32,7 @@ export function textTexture(text, { bg = '#ffffff', fg = '#111111', size = 256, 
   g.font = font || `bold ${Math.floor(h * 0.7)}px system-ui, sans-serif`;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.fillText(text, w / 2, h / 2 + h * 0.04);
+  g.fillText(text, w / 2, h / 2 + h * 0.04, w * 0.94); // squeezed to fit if it's too long
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;

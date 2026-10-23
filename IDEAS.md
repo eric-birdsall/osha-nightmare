@@ -5,6 +5,10 @@ questions; how they interact and a suggested order are at the end.
 
 ## 1. Faster forklift that can drift
 
+**Built:** 6 m/s top speed, drifting with a hop, boost, drift meter and boost zoom, and a new
+64 × 44 m layout with a 7 m loop round the racks and a highway to the docks. Kept below for the
+reasoning.
+
 Ralph's forklift is faster and can drift, like Mario Kart drifting.
 
 **How it could work:** raise the top speed (say 4 → 6 m/s). Holding a drift button while turning
@@ -114,7 +118,7 @@ the forklift can bump or tip.
 ## 4. Replace the office and safety station in the north-east corner
 
 The supervisor's office and safety station (the OSHA RULES board and friends) are pure set
-dressing on prime floor: about 13 × 4 m along the north wall, between the LADDERS stand and the
+dressing on prime floor: about 13 × 4 m along the north wall, between the ramp and the
 forklift parking bay, right by Ralph's start spot and on the way to the docks. Swap them for
 something that feeds the game.
 

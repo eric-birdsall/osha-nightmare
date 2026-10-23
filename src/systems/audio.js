@@ -45,6 +45,12 @@ export const sfx = {
     tone(523, 0.1, { type: 'triangle', vol: 0.12 });
     tone(784, 0.18, { type: 'triangle', vol: 0.12, at: 0.1 });
   },
+  // Crackle of an electrical short; v: 0..1 loudness (by distance)
+  zap: (v = 1) => {
+    for (let i = 0; i < 7; i++) tone(1200 + Math.random() * 3200, 0.03, { type: 'square', vol: 0.05 * v, at: i * 0.022 + Math.random() * 0.015 });
+    tone(110, 0.14, { type: 'sawtooth', vol: 0.06 * v });
+  },
+  drip: (v = 1) => tone(1500, 0.05, { type: 'sine', vol: 0.035 * v, slideTo: 800 }),
   driftHop: () => tone(220, 0.1, { type: 'square', vol: 0.05, slideTo: 330 }),
   driftBoost: () => {
     tone(330, 0.25, { type: 'sawtooth', vol: 0.06, slideTo: 880 });
