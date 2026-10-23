@@ -47,7 +47,9 @@ Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber an
 
 - `src/config.js`: every tuning value (speeds, masses, lift rate, friction, ragdoll thresholds)
 - `src/main.js`: renderer, fixed 1/60 s loop, menus, pointer lock
-- `src/world/level.js`: warehouse, racks, zones, initial boxes and pallets
+- `src/world/layout.js`: **the warehouse layout as data**: room size, lower level, ramp and stairs, racking (bays, bay width, shelf heights) and every rack row, docks, the WRAP square, the north-east corner, LADDERS stands, loose boxes, pallets, spawn points, ceiling fans and ducts, and the CCTV cameras. Everything below builds from it, so a new layout is mostly a matter of editing these numbers. Racks are `rack(name, z0, face, base)` or `pair(north, south, z0, base)` (back to back); each can have its own `x0` and `bays`.
+- `src/world/level.js`: builds the warehouse, racks, stock, zones, initial boxes and pallets from the layout
+- `src/world/corner.js`, `spills.js`, `floorplan.js`: the north-east corner, the hidden spills (their no-go zones come from the layout), and the pause screen's floor plan (drawn from the layout at startup)
 - `src/entities/`: `climber.js` (character controller, carry, ragdoll triggers), `forklift.js`, `box.js`, `pallet.js`
 - `src/systems/`: `input.js`, `ragdoll.js`, `wrapping.js`, `game.js` (order state, swap, win), `hud.js`, `audio.js`
 

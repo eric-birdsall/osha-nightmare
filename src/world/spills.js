@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL } from '../physics.js';
+import { LAYOUT, rackX1 } from './layout.js';
 
 // Spills: a few slick puddles on the floor each order, with no warning sign and only a slight
 // tint and sheen on the concrete, so they're easy to run over by accident. On a spill Dave has
@@ -56,20 +57,21 @@ function spotOk(level, x, z, r, spills, floorHeightAt, blocked) {
 }
 
 // Places the spills and returns them: [{ x, y, z, r, liquid }].
-export function buildSpills(game, { racks, room, rackX0, rackX1, docks, wrapZone, spawns, floorHeightAt }) {
+export function buildSpills(game, { wrapZone, spawns, floorHeightAt }) {
   const cfg = CONFIG.spill;
+  const { room, lower, ramp, stairs, corner } = LAYOUT;
   const level = { room };
   // Rectangles [x0, z0, x1, z1] nothing may overlap
   const blocked = [
-    ...racks.map((r) => [rackX0 - 0.6, r.z0 - 0.6, rackX1 + 0.6, r.z1 + 0.6]),
-    ...docks.map((d) => [room.halfX - 5, d.z - 3, room.halfX + 20, d.z + 3]),
+    ...LAYOUT.racks.map((r) => [r.x0 - 0.6, r.z0 - 0.6, rackX1(r) + 0.6, r.z1 + 0.6]),
+    ...LAYOUT.docks.map((d) => [room.halfX - 5, d.z - 3, room.halfX + 20, d.z + 3]),
     [wrapZone.center.x - 2.5, wrapZone.center.z - 2.5, wrapZone.center.x + 2.5, wrapZone.center.z + 2.5],
-    [5.5, -room.halfZ, room.halfX, -9.5], // office, safety station, propane cage, parking bay
-    [-1, -room.halfZ, 3, -13.5], // LADDERS stand upstairs
-    [-0.3, 3.3, 3, 5.6], // LADDERS stand downstairs
-    [-3.5, 2.8, 0.5, 6.5], // stairs
-    [-room.halfX, 2.2, 7.5, 5.0], // the pit edge and its railing
-    [4.5, 3.8, 7.6, 13], // east pit edge
+    // Office, safety station, propane cage, parking bay
+    [corner.office.x0 - 0.5, -room.halfZ, room.halfX, -room.halfZ + corner.parking.depth + 1.1],
+    ...LAYOUT.ladderStands.map((st) => [st.x - 2, st.z - 0.8, st.x + 2, st.z + 2.2]), // LADDERS stands
+    [stairs.x0 - 0.9, stairs.z0 - 1, stairs.x1 + 1.1, stairs.z0 + 2.7],
+    [lower.x0, lower.z0 - 1.6, lower.x1 + 1.5, lower.z0 + 1.2], // the pit edge and its railing
+    [lower.x1 - 1.5, lower.z0, lower.x1 + 1.6, ramp.z0 + 1], // east pit edge
     ...spawns.map((p) => [p.x - 2.5, p.z - 2.5, p.x + 2.5, p.z + 2.5]),
   ];
   const count = cfg.count[0] + Math.floor(Math.random() * (cfg.count[1] - cfg.count[0] + 1));

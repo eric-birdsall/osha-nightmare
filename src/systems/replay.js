@@ -2,23 +2,10 @@ import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { G, groups, castRay, quatToThree } from '../physics.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
-import { ROOM } from '../world/level.js';
+import { LAYOUT } from '../world/layout.js';
 
 // Security cameras mounted high on the warehouse walls: [id, label, position]
-const { halfX: HX, halfZ: HZ } = ROOM;
-export const CCTV = [
-  ['01', 'NORTH WEST', [-HX + 0.4, 5.4, -HZ + 0.4]],
-  ['02', 'AISLE A', [-8, 5.4, -HZ + 0.35]],
-  ['03', 'NORTH EAST', [HX - 0.4, 5.4, -HZ + 0.4]],
-  ['04', 'WEST WALL · N', [-HX + 0.35, 5.0, -5.5]],
-  ['05', 'LOWER LEVEL · W', [-HX + 0.35, 4.6, 9]],
-  ['06', 'RACK END', [0, 5.6, -HZ + 0.35]],
-  ['07', 'EAST WALL', [HX - 0.35, 5.0, -7]],
-  ['08', 'LOWER LEVEL · SW', [-HX + 0.4, 5.0, HZ - 0.4]],
-  ['09', 'LOWER LEVEL · S', [2, 5.0, HZ - 0.35]],
-  ['10', 'DOCKS', [HX - 0.4, 5.4, HZ - 0.4]],
-  ['11', 'RAMP', [16, 5.0, HZ - 0.35]],
-];
+export const CCTV = LAYOUT.cctv;
 
 // Camera housings on brackets, aimed at the middle of the floor.
 export function buildCctvFixtures(scene) {

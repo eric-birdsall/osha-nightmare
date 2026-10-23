@@ -2,13 +2,14 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { COL } from '../physics.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
+import { LAYOUT } from './layout.js';
 
 // The north-east corner of the upper floor, along the north wall from west to east: the
 // supervisor's office, the safety station, the propane cage and the forklift parking bay.
 // Everything here is static set dressing except the Employee of the Month board (updated by the
 // game) and the propane cage (which a nearby blast can set off).
 
-const NORTH = -16; // inside face of the north wall
+const NORTH = -LAYOUT.room.halfZ; // inside face of the north wall
 
 // A canvas-textured plane: draw(g, w, h) paints it.
 function canvasPlane(w, h, px, draw) {
@@ -74,10 +75,8 @@ function signText(g, w, h, { bg, fg, lines, border }) {
 // ---------------------------------------------------------------- supervisor's office
 
 function buildOffice(game) {
-  const x0 = 6;
-  const x1 = 11;
-  const z1 = NORTH + 3.6; // front of the booth
-  const H = 3.0;
+  const { x0, x1, depth, height: H } = LAYOUT.corner.office;
+  const z1 = NORTH + depth; // front of the booth
   const wall = 0xd9dde2;
   const trim = 0x2b2f35;
   const glass = new THREE.MeshLambertMaterial({ color: 0x9fd2ff, transparent: true, opacity: 0.3, depthWrite: false });
@@ -87,7 +86,6 @@ function buildOffice(game) {
     p.rotation.y = ry;
     game.scene.add(p);
   };
-  const depth = z1 - NORTH;
   // Side walls: solid below the windows, glass above, posts at the corners
   for (const x of [x0, x1]) {
     game.world.createCollider(
@@ -98,9 +96,9 @@ function buildOffice(game) {
     deco(game, [0.1, 0.5, depth], [x, H - 0.25, NORTH + depth / 2], wall);
     glassPane(depth, H - 1.5, x, 1.0 + (H - 1.5) / 2, NORTH + depth / 2, Math.PI / 2);
   }
-  // Front wall with a door gap (x 8.0 - 9.1) and a long window
-  const doorA = 8.0;
-  const doorB = 9.1;
+  // Front wall with a door gap and a long window
+  const doorA = x0 + 2.0;
+  const doorB = x0 + 3.1;
   for (const [a, b] of [[x0, doorA], [doorB, x1]]) {
     const w = b - a;
     game.world.createCollider(
@@ -128,17 +126,18 @@ function buildOffice(game) {
   game.scene.add(sign);
 
   // Inside: a desk with a monitor, a chair, and the overstuffed FORM 300s cabinet
-  solid(game, [1.6, 0.75, 0.75], [8.0, 0.375, NORTH + 1.0], 0x8a6a48);
-  deco(game, [0.55, 0.35, 0.05], [7.7, 0.98, NORTH + 0.85], 0x16171a); // monitor
-  deco(game, [0.06, 0.2, 0.06], [7.7, 0.82, NORTH + 0.85], 0x16171a);
-  deco(game, [0.45, 0.02, 0.15], [7.7, 0.76, NORTH + 1.15], 0x2b2f35); // keyboard
+  const desk = x0 + 2.0;
+  solid(game, [1.6, 0.75, 0.75], [desk, 0.375, NORTH + 1.0], 0x8a6a48);
+  deco(game, [0.55, 0.35, 0.05], [desk - 0.3, 0.98, NORTH + 0.85], 0x16171a); // monitor
+  deco(game, [0.06, 0.2, 0.06], [desk - 0.3, 0.82, NORTH + 0.85], 0x16171a);
+  deco(game, [0.45, 0.02, 0.15], [desk - 0.3, 0.76, NORTH + 1.15], 0x2b2f35); // keyboard
   const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.1, 12), flatMat(0xd02020));
-  mug.position.set(8.5, 0.8, NORTH + 1.1);
+  mug.position.set(desk + 0.5, 0.8, NORTH + 1.1);
   game.scene.add(mug);
-  solid(game, [0.5, 0.5, 0.5], [8.0, 0.25, NORTH + 1.75], 0x2b2f35); // chair seat
-  deco(game, [0.5, 0.6, 0.08], [8.0, 0.8, NORTH + 2.0], 0x2b2f35); // chair back
+  solid(game, [0.5, 0.5, 0.5], [desk, 0.25, NORTH + 1.75], 0x2b2f35); // chair seat
+  deco(game, [0.5, 0.6, 0.08], [desk, 0.8, NORTH + 2.0], 0x2b2f35); // chair back
   // Filing cabinet: four drawers, every one jammed open with paper
-  const cx = 10.35;
+  const cx = x1 - 0.65;
   solid(game, [0.6, 1.4, 0.65], [cx, 0.7, NORTH + 0.4], 0x8a9099);
   const paper = flatMat(0xf4f1e8);
   for (let i = 0; i < 4; i++) {
@@ -167,8 +166,7 @@ function buildOffice(game) {
 // ---------------------------------------------------------------- safety station
 
 function buildSafety(game) {
-  const x0 = 11.3;
-  const x1 = 17;
+  const { x0, x1 } = LAYOUT.corner.safety;
   // A strip you can't walk into, so nothing clips through the wall-mounted kit
   game.world.createCollider(
     RAPIER.ColliderDesc.cuboid((x1 - x0) / 2, 1.2, 0.2).setTranslation((x0 + x1) / 2, 1.2, NORTH + 0.2).setCollisionGroups(COL.static),
@@ -190,12 +188,12 @@ function buildSafety(game) {
         g.fillText(t, w * 0.07, h * (0.3 + i * 0.11)),
       );
     }),
-    13.45,
+    x0 + 2.15,
     1.9,
   );
   // Employee of the Month (the game changes the name after incidents)
   const eotm = canvasPlane(1.0, 1.0, 512, () => {});
-  onWall(game, eotm, 14.8, 1.9);
+  onWall(game, eotm, x0 + 3.5, 1.9);
   const drawEotm = (name) =>
     eotm.userData.redraw((g, w, h) => {
       g.fillStyle = '#7b5a2e';
@@ -236,10 +234,10 @@ function buildSafety(game) {
     g.fillStyle = '#d0141b';
     g.fillRect(w * 0.4, h * 0.15, w * 0.2, h * 0.55);
     g.fillRect(w * 0.22, h * 0.32, w * 0.56, h * 0.2);
-  }), 16.2, 1.6, NORTH + 0.13);
-  deco(game, [0.5, 0.5, 0.12], [16.2, 1.6, NORTH + 0.06], 0xe6e6e6);
+  }), x1 - 0.8, 1.6, NORTH + 0.13);
+  deco(game, [0.5, 0.5, 0.12], [x1 - 0.8, 1.6, NORTH + 0.06], 0xe6e6e6);
   // AED
-  deco(game, [0.38, 0.42, 0.14], [16.78, 1.5, NORTH + 0.07], 0x1a9a4a);
+  deco(game, [0.38, 0.42, 0.14], [x1 - 0.22, 1.5, NORTH + 0.07], 0x1a9a4a);
   onWall(game, canvasPlane(0.32, 0.34, 256, (g, w, h) => {
     signText(g, w, h, { bg: '#1a9a4a', fg: '#fff', lines: [['AED', 0.3, 0.75]] });
     g.fillStyle = '#fff';
@@ -250,20 +248,21 @@ function buildSafety(game) {
     g.lineTo(w * 0.5, h * 0.6);
     g.lineTo(w * 0.73, h * 0.38);
     g.fill();
-  }), 16.78, 1.5, NORTH + 0.145);
+  }), x1 - 0.22, 1.5, NORTH + 0.145);
   // Eyewash station: a yellow pipe up the wall to two green spray heads
-  deco(game, [0.06, 1.0, 0.06], [12.35, 0.5, NORTH + 0.2], 0xf5c518);
+  const eye = x0 + 1.05;
+  deco(game, [0.06, 1.0, 0.06], [eye, 0.5, NORTH + 0.2], 0xf5c518);
   const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.12, 0.12, 16), flatMat(0xf5c518));
-  bowl.position.set(12.35, 1.0, NORTH + 0.3);
+  bowl.position.set(eye, 1.0, NORTH + 0.3);
   game.scene.add(bowl);
   for (const dx of [-0.07, 0.07]) {
     const head = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 10), flatMat(0x1a9a4a));
-    head.position.set(12.35 + dx, 1.08, NORTH + 0.3);
+    head.position.set(eye + dx, 1.08, NORTH + 0.3);
     game.scene.add(head);
   }
-  onWall(game, canvasPlane(0.5, 0.25, 256, (g, w, h) => signText(g, w, h, { bg: '#1a9a4a', fg: '#fff', lines: [['EYE WASH', 0.45, 0.55]] })), 12.35, 1.55);
+  onWall(game, canvasPlane(0.5, 0.25, 256, (g, w, h) => signText(g, w, h, { bg: '#1a9a4a', fg: '#fff', lines: [['EYE WASH', 0.45, 0.55]] })), eye, 1.55);
   // Fire extinguishers on brackets, with their signs
-  for (const x of [11.6, 15.65]) {
+  for (const x of [x0 + 0.3, x0 + 4.35]) {
     const ext = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 14), flatMat(0xd0141b));
     ext.position.set(x, 1.0, NORTH + 0.15);
     const nozzle = boxMesh(0.12, 0.08, 0.06, 0x16171a, { edges: false, shadows: false });
@@ -272,10 +271,10 @@ function buildSafety(game) {
     onWall(game, canvasPlane(0.35, 0.35, 256, (g, w, h) => signText(g, w, h, { bg: '#d0141b', fg: '#fff', lines: [['FIRE', 0.26, 0.38], ['EXT.', 0.26, 0.66]] })), x, 1.75);
   }
   // Hard-hat rack: a bar with pegs and yellow hats
-  deco(game, [1.0, 0.06, 0.06], [13.45, 2.62, NORTH + 0.12], 0x2b2f35);
+  deco(game, [1.0, 0.06, 0.06], [x0 + 2.15, 2.62, NORTH + 0.12], 0x2b2f35);
   for (let i = 0; i < 4; i++) {
     const hat = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), flatMat(i === 2 ? 0xffffff : 0xf5c518));
-    hat.position.set(13.05 + i * 0.27, 2.59, NORTH + 0.2);
+    hat.position.set(x0 + 1.75 + i * 0.27, 2.59, NORTH + 0.2);
     game.scene.add(hat);
   }
   return { setEmployee: drawEotm };
@@ -284,11 +283,8 @@ function buildSafety(game) {
 // ---------------------------------------------------------------- propane cage and parking
 
 function buildPropane(game) {
-  const cx = 17.95;
-  const cz = NORTH + 0.85;
-  const w = 1.7;
-  const d = 1.4;
-  const h = 1.8;
+  const { x: cx, w, d, h } = LAYOUT.corner.propane;
+  const cz = NORTH + 0.15 + d / 2;
   solid(game, [w, h, d], [cx, h / 2, cz], 0, { mesh: false });
   // Yellow frame and wire-mesh panels
   for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) deco(game, [0.06, h, 0.06], [cx + (sx * w) / 2, h / 2, cz + (sz * d) / 2], 0xf5c518);
@@ -345,10 +341,9 @@ function buildPropane(game) {
 
 function buildParking(game) {
   // Bay in the corner: 4 m wide, 5.4 m deep, the truck parks nose-out (facing south)
-  const x0 = 19.6;
-  const x1 = 23.6;
+  const { x0, x1, depth } = LAYOUT.corner.parking;
   const z0 = NORTH + 0.2;
-  const z1 = z0 + 5.4;
+  const z1 = z0 + depth;
   const yellow = new THREE.MeshBasicMaterial({ color: 0xf5c518 });
   const line = (w, d, x, z) => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), yellow);

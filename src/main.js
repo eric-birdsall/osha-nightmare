@@ -6,6 +6,7 @@ import { Hud } from './systems/hud.js';
 import { Game } from './systems/game.js';
 import { unlockAudio, sfx } from './systems/audio.js';
 import { DOCKS } from './world/level.js';
+import { drawFloorPlan } from './world/floorplan.js';
 
 await RAPIER.init();
 
@@ -18,6 +19,7 @@ renderer.shadowMap.autoUpdate = false;
 
 const input = new Input(canvas);
 const hud = new Hud(document.getElementById('hud'));
+drawFloorPlan(document.querySelector('.map svg'));
 document.getElementById('loading').remove();
 
 let game = null;
