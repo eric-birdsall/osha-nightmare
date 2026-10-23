@@ -155,11 +155,6 @@ function pause() {
   pausedAt = performance.now();
   // Light up this order's dock on the floor plan
   game.level.dock && document.querySelectorAll('.fp-dock').forEach((r, i) => r.classList.toggle('open', DOCKS[i]?.name === game.level.dock.name));
-  // This order's spills, as blobs in their liquid's colour
-  const SPILL_COLOURS = { water: '#7cc8ff', oil: '#3a3a44', soda: '#ff8a1f', goo: '#62d45a' };
-  document.getElementById('fp-spills').innerHTML = (game.level.spills || [])
-    .map((s) => `<circle cx="${s.x.toFixed(2)}" cy="${s.z.toFixed(2)}" r="${s.r.toFixed(2)}" fill="${SPILL_COLOURS[s.liquid]}" opacity="0.85" />`)
-    .join('');
   // Mark Dave and Ralph on the pause screen's floor plan (SVG x/y = world x/z)
   for (const [id, body] of [['fp-dave', game.climber.body], ['fp-ralph', game.forklift.body]]) {
     const t = body.translation();

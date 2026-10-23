@@ -556,7 +556,7 @@ export class Climber {
       const hit = this.kcc.computedCollision(i);
       const ent = hit?.collider && this.game.entityForCollider(hit.collider);
       if (!ent || ent.carried) continue;
-      if (ent.kind !== 'box' && ent.kind !== 'pallet' && ent.kind !== 'sign') continue;
+      if (ent.kind !== 'box' && ent.kind !== 'pallet') continue;
       // Only shove things we walk into from the side: never the one we're standing on or
       // landing on top of (that kicked boxes out from under Dave's feet)
       if (this.support?.body.handle === ent.body.handle || hit.normal1.y > 0.5) continue;
