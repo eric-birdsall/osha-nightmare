@@ -291,12 +291,6 @@ h2.big {
   stroke: #dbe9f7;
   stroke-width: 0.15;
 }
-.fp-safety {
-  fill: rgba(49, 208, 122, 0.5);
-}
-.fp-propane {
-  fill: #d0141b;
-}
 .fp-park {
   fill: none;
   stroke: var(--hazard-y);
@@ -314,6 +308,12 @@ h2.big {
   stroke-width: 0.15;
 }
 .fp-labels text,
+.fp-compass {
+  fill: #f5c518;
+  font: 700 2.6px var(--ui);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
 .fp-zone {
   fill: #dbe9f7;
   font: 700 1.5px var(--ui);

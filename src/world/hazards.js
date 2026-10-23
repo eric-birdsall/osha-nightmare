@@ -80,7 +80,11 @@ export function hazardZones() {
   return [
     { name: 'The overloaded outlet', ...wallSpot(hz.outlet, 1.2), r: 1.8 },
     { name: 'The leaking electrical panel', ...wallSpot(hz.panel, 1.0), r: 2.0 },
-    { name: 'The missing railing', x: (gap.from + gap.to) / 2, z: gap.line, r: (gap.to - gap.from) / 2 + 0.8 },
+    {
+      name: 'The missing railing',
+      ...(gap.along === 'z' ? { x: gap.line, z: (gap.from + gap.to) / 2 } : { x: (gap.from + gap.to) / 2, z: gap.line }),
+      r: (gap.to - gap.from) / 2 + 0.8,
+    },
     { name: 'The mystery barrels', x: hz.barrels.x + 0.4, z: hz.barrels.z, r: 2.2 },
     ...hz.fireExits.map((e) => ({ name: 'The blocked fire exit', ...wallSpot(e, 0.9), r: 1.8 })),
   ];

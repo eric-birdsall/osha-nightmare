@@ -9,10 +9,9 @@ const rect = (x, y, w, h, cls, id) => `<rect${id ? ` id="${id}"` : ''} x="${n(x)
 const text = (x, y, t, cls) => `<text x="${n(x)}" y="${n(y)}"${cls ? ` class="${cls}"` : ''}>${t}</text>`;
 
 export function drawFloorPlan(svg) {
-  const { room, lower, ramp, racks, docks, wrap, corner, highway } = LAYOUT;
+  const { room, lower, ramp, racks, docks, wrap, parking, highway } = LAYOUT;
   const { halfX, halfZ } = room;
   const north = -halfZ;
-  const { office, safety, propane, parking } = corner;
   const lowerRacks = racks.filter((r) => r.base);
   const mid = (list) => (Math.min(...list.map((r) => r.x0)) + Math.max(...list.map(rackX1))) / 2;
   // Ramp arrow, pointing down the ramp: from near its top to near its bottom, with a head
@@ -47,11 +46,6 @@ export function drawFloorPlan(svg) {
     ...docks.map((d, i) => rect(halfX - 3.7, d.z - 2, 3.6, 4, 'fp-dock', `fp-dock-${i}`)),
     ...docks.map((d, i) => text(halfX - 5.6, d.z, `D${i + 1}`, 'fp-zone')),
     text(rcx, rcz + 0.5, 'RAMP', 'fp-zone'),
-    rect(office.x0, north, office.x1 - office.x0, office.depth, 'fp-room'),
-    text((office.x0 + office.x1) / 2, north + 1.8, 'OFFICE', 'fp-zone'),
-    rect(safety.x0, north, safety.x1 - safety.x0, 1, 'fp-safety'),
-    text((safety.x0 + safety.x1) / 2, north + 1.7, 'SAFETY', 'fp-zone'),
-    rect(propane.x - propane.w / 2, north + 0.15, propane.w, propane.d, 'fp-propane'),
     rect(parking.x0, north + 0.2, parking.x1 - parking.x0, parking.depth, 'fp-park'),
     text((parking.x0 + parking.x1) / 2, north + 0.2 + parking.depth / 2, 'PARK', 'fp-zone'),
     ...LAYOUT.ladderStands.map((st) => rect(st.x - 1.1, st.z - 0.2, 2.2, 0.6, 'fp-ladders')),
@@ -60,9 +54,14 @@ export function drawFloorPlan(svg) {
     ...hazardZones()
       .filter((h) => h.name === 'The blocked fire exit' || h.name === 'The mystery barrels')
       .map((h) => text(h.x, h.z, h.name === 'The mystery barrels' ? '???' : 'FIRE EXIT', 'fp-zone')),
+    // The walls' compass letters, just outside them
+    text(0, -halfZ - 1.5, 'N', 'fp-compass'),
+    text(0, halfZ + 1.5, 'S', 'fp-compass'),
+    text(-halfX - 1.5, 0, 'W', 'fp-compass'),
+    text(halfX + 1.5, 0, 'E', 'fp-compass'),
     '<circle id="fp-dave" r="0.9" class="fp-dave" />',
     '<circle id="fp-ralph" r="1.1" class="fp-ralph" />',
   ];
-  svg.setAttribute('viewBox', `${-halfX - 1} ${-halfZ - 1} ${halfX * 2 + 2} ${halfZ * 2 + 2}`);
+  svg.setAttribute('viewBox', `${-halfX - 3} ${-halfZ - 3} ${halfX * 2 + 6} ${halfZ * 2 + 6}`);
   svg.innerHTML = parts.join('');
 }

@@ -56,7 +56,7 @@ colours and labels, and maybe a hint on the clipboard or floor plan.
 - **It can soft-lock an order.** The box you need can land under a fallen rack, wedged between
   racks, on the lower level, or get shoved into a corner by the forklift. Needs a safety valve:
   forks can lift racks off boxes, a "pull a replacement from backstock" fallback, or the
-  supervisor's office reissuing the order.
+  supervisor reissuing the order.
 - **Undoes recent work:** the reset ring, sending the forklift home, and restoring fallen stock.
 - **Stacks with explosions:** one FRAGILE blast early in an order turns the rest of it into
   pile-sorting, every time.
@@ -116,6 +116,11 @@ the forklift can bump or tip.
    backstock fallback so an order can't soft-lock.
 
 ## 4. Replace the office and safety station in the north-east corner
+
+**Done:** the office, safety station, propane cage (and its chain reactions) and the Employee of
+the Month board are gone; only the forklift parking bay is left, and the dock wall moved 14 m in.
+Packing stations went in between the ramp and the parking bay as set dressing. The options below
+are still open for that area.
 
 The supervisor's office and safety station (the OSHA RULES board and friends) are pure set
 dressing on prime floor: about 13 × 4 m along the north wall, between the ramp and the

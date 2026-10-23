@@ -161,9 +161,6 @@ export const CONFIG = {
     upward: 0.6, // lift in the push direction (0 = flat out)
     spin: 8, // rad/s of tumble on flung things
     forkliftScale: 0.25, // the forklift only gets shoved, not launched
-    propaneTrigger: 12, // m: a blast this close to the propane cage sets it off too...
-    propaneDelay: 0.5, // ...this long after
-    propaneCooldown: 60, // s before the cage (restocked) can go up again
   },
 
   spill: {

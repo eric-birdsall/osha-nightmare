@@ -6,7 +6,7 @@ import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { createBox } from '../entities/box.js';
 import { createPallet } from '../entities/pallet.js';
 import { createLadderStand } from '../entities/ladder.js';
-import { buildCorner } from './corner.js';
+import { buildParking } from './parking.js';
 import { buildSpills } from './spills.js';
 import { LAYOUT, rackX1 } from './layout.js';
 import { buildWrapper } from './wrapper.js';
@@ -763,27 +763,34 @@ function dropEdges({ xs, zs, at }) {
   return joined.map((e) => (e.n[0] ? { ...e, p0: [e.line, e.a], p1: [e.line, e.b] } : { ...e, p0: [e.a, e.line], p1: [e.b, e.line] }));
 }
 
-// Where a section of railing should be (along x at z, from gap.from to gap.to): just a strip of
-// hazard tape sagging between the ends, with a tiny WATCH YOUR STEP sign hanging off it. The tape
-// stops nothing.
-function missingRailing(game, gap, z) {
+// Where a section of railing should be (from gap.from to gap.to along x or z, on the line `at`):
+// just a strip of hazard tape sagging between the ends, with a tiny WATCH YOUR STEP sign hanging
+// off it. The tape stops nothing.
+function missingRailing(game, gap, at) {
   const tape = hazardMaterial(gap.to - gap.from, 0.3).clone();
   tape.side = THREE.DoubleSide;
   const mid = (gap.from + gap.to) / 2;
   const sag = 0.18;
   const half = (gap.to - gap.from) / 2;
+  // Built running along local x, then turned to run along z if need be
+  const g = new THREE.Group();
+  if (gap.along === 'z') {
+    g.position.set(at, 0, mid);
+    g.rotation.y = -Math.PI / 2;
+  } else g.position.set(mid, 0, at);
   for (const s of [-1, 1]) {
     const len = Math.hypot(half, sag);
     const strip = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.07), tape);
-    strip.position.set(mid + (s * half) / 2, 0.98 - sag / 2, z);
+    strip.position.set((s * half) / 2, 0.98 - sag / 2, 0);
     strip.rotation.z = s * Math.atan2(sag, half);
-    game.scene.add(strip);
+    g.add(strip);
   }
   const sign = labelPlane('WATCH YOUR STEP', 0.46, 0.09, { bg: '#f5c518', fg: '#16171a' });
   sign.material.side = THREE.DoubleSide;
-  sign.position.set(mid, 0.98 - sag - 0.06, z);
+  sign.position.set(0, 0.98 - sag - 0.06, 0);
   sign.rotation.z = 0.12;
-  game.scene.add(sign);
+  g.add(sign);
+  game.scene.add(g);
 }
 
 function buildFloors(game) {
@@ -902,9 +909,11 @@ function buildFloors(game) {
     if ((d.n[0] === dx && dx) || (d.n[1] === dz && dz)) {
       if (Math.abs(d.line - edge) < 1e-6) pieces = cutOut(pieces, [from, to]);
     }
-    if (!d.n[0] && Math.abs(d.line - gap.line) < 1e-6 && gap.from < d.b && gap.to > d.a) {
+    // An edge along z sits on a line of constant x (its normal is along x), and the other way round
+    const gapHere = (gap.along === 'z') === !!d.n[0] && Math.abs(d.line - gap.line) < 1e-6 && gap.from < d.b && gap.to > d.a;
+    if (gapHere) {
       pieces = cutOut(pieces, [gap.from, gap.to]);
-      missingRailing(game, gap, d.line - d.n[1] * e);
+      missingRailing(game, gap, d.line - (d.n[0] || d.n[1]) * e);
     }
     for (const [a, b] of pieces) {
       const [p0, p1] = d.n[0] ? [[d.line, a], [d.line, b]] : [[a, d.line], [b, d.line]];
@@ -917,13 +926,8 @@ function buildFloors(game) {
 
 // Human-readable spot for incident reports: a rack, an aisle and bay, or a floor zone.
 export function describeLocation(p) {
-  const { office, propane, parking } = LAYOUT.corner;
-  const north = -ROOM.halfZ;
-  const cageW = propane.x - propane.w / 2; // the cage's west side
-  if (p.z < north + office.depth + 0.1 && p.x > office.x0 && p.x < office.x1) return "The supervisor's office";
-  if (p.z < north + 1.8 && p.x >= office.x1 && p.x < cageW) return 'The safety station';
-  if (p.z < north + propane.d + 0.8 && p.x >= cageW && p.x < cageW + propane.w + 0.2) return 'The propane cage';
-  if (p.z < north + parking.depth + 0.4 && p.x > parking.x0 - 0.2) return 'Forklift parking';
+  const { parking } = LAYOUT;
+  if (p.z < -ROOM.halfZ + parking.depth + 0.4 && p.x > parking.x0 - 0.2 && p.x < parking.x1 + 0.2) return 'Forklift parking';
   const wrap = LAYOUT.wrap;
   if (Math.abs(p.x - wrap.x) < wrap.size / 2 + 0.15 && Math.abs(p.z - wrap.z) < wrap.size / 2 + 0.15) return 'The WRAP square';
   if (Math.abs(p.x - wrap.x) < wrap.frame.half + 0.3 && Math.abs(p.z - wrap.z) < wrap.frame.half + 0.3) return 'The stretch wrapper';
@@ -945,10 +949,11 @@ export function describeLocation(p) {
   const alongside = (r, m = 0) => p.x >= r.x0 - m && p.x <= rackX1(r) + m;
   const rows = RACKS.filter((r) => !!r.base === lower).sort((a, b) => a.z0 - b.z0);
   for (const r of rows) if (alongside(r, 0.2) && p.z >= r.z0 - 0.2 && p.z <= r.z1 + 0.2) return `Rack ${r.name}, bay ${bayOf(r)}${up}`;
-  // Pick aisles: between a rack and the next one south of it in the same block
+  // Pick aisles: between a rack and the next one south of it in the same block (not its
+  // back-to-back partner across the flue)
   for (const a of rows) {
-    const b = rows.find((o) => o.z0 > a.z1 + 1 && o.x0 < rackX1(a) && a.x0 < rackX1(o));
-    if (!b || p.z <= a.z1 || p.z >= b.z0) continue;
+    const b = rows.find((o) => o !== a && o.z0 >= a.z1 - 0.01 && o.x0 < rackX1(a) && a.x0 < rackX1(o));
+    if (!b || b.z0 - a.z1 < 1 || p.z <= a.z1 || p.z >= b.z0) continue;
     if (alongside(a)) return `Aisle ${a.name}/${b.name}, by bay ${bayOf(a)}${up}`;
     if (alongside(a, 4)) return `End of aisle ${a.name}/${b.name}`;
   }
@@ -1242,10 +1247,21 @@ export function buildLevel(game) {
   // Wall-mounted incident sign (updated by the game)
   game.incidentSign = makeIncidentSign(scene);
 
-  // North-east corner: supervisor's office, safety station, propane cage, forklift parking
-  const corner = buildCorner(game);
-  game.employeeBoard = corner.safety;
-  game.propane = corner.propane;
+  // A big compass letter high up in the middle of each wall, so the walls are easy to name
+  for (const [letter, x, z, ry] of [
+    ['N', 0, -halfZ + 0.03, 0],
+    ['S', 0, halfZ - 0.03, Math.PI],
+    ['W', -halfX + 0.03, 0, Math.PI / 2],
+    ['E', halfX - 0.03, 0, -Math.PI / 2],
+  ]) {
+    const badge = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: compassTexture(letter), transparent: true }));
+    badge.position.set(x, 7.5, z);
+    badge.rotation.y = ry;
+    scene.add(badge);
+  }
+
+  // The forklift's parking bay and charger
+  const parking = buildParking(game);
 
   // Stock every shelf and pick this shift's order
   const { order, orderBoxes } = stockShelves(game, racks);
@@ -1267,7 +1283,7 @@ export function buildLevel(game) {
   // OSHA violations: sparking outlet, dripping electrical panel, mystery barrels, blocked fire exits
   const hazards = buildHazards(game, { floorHeightAt });
   const spills = [
-    ...buildSpills(game, { wrapZone, stairs: STAIRS, keepClear: hazardZones(), spawns: [climberStart, corner.parking.pos], floorHeightAt }),
+    ...buildSpills(game, { wrapZone, stairs: STAIRS, keepClear: hazardZones(), spawns: [climberStart, parking.pos], floorHeightAt }),
     ...hazards.spills, // the panel's puddle and the barrels' leaks are slippery too
   ];
 
@@ -1287,8 +1303,32 @@ export function buildLevel(game) {
     spills, // [{ x, y, z, r, liquid }]
     climberSpawn: { pos: climberStart, yaw: LAYOUT.climberSpawn.yaw },
     spawnPoints: LAYOUT.spawnPoints.map((p) => new THREE.Vector3(...p)),
-    forkliftSpawn: corner.parking, // the parking bay in the north-east corner
+    forkliftSpawn: parking, // the parking bay
   };
+}
+
+// A yellow disc with a black ring and a big black letter on it.
+function compassTexture(letter) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#16171a';
+  g.beginPath();
+  g.arc(128, 128, 126, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#f5c518';
+  g.beginPath();
+  g.arc(128, 128, 112, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#16171a';
+  g.font = 'bold 170px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(letter, 128, 140);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
 }
 
 function makeIncidentSign(scene) {

@@ -43,7 +43,7 @@ function puddleTexture(liquid) {
 }
 
 // Somewhere a spill can go: flat floor on one level, clear of racks, ramps, stairs, docks,
-// the wrap square, the parking bay, the north-east corner and the start spots.
+// the wrap square, the parking bay and the start spots.
 function spotOk(level, x, z, r, spills, floorHeightAt, blocked) {
   const { halfX, halfZ } = level.room;
   if (Math.abs(x) > halfX - r - 1 || Math.abs(z) > halfZ - r - 1) return false;
@@ -60,7 +60,7 @@ function spotOk(level, x, z, r, spills, floorHeightAt, blocked) {
 // Places the spills and returns them: [{ x, y, z, r, liquid }].
 export function buildSpills(game, { wrapZone, stairs, keepClear = [], spawns, floorHeightAt }) {
   const cfg = CONFIG.spill;
-  const { room, lower, ramp, corner } = LAYOUT;
+  const { room, lower, ramp, parking } = LAYOUT;
   const level = { room };
   const grow = (r, m) => [r.x0 - m, r.z0 - m, r.x1 + m, r.z1 + m];
   // Rectangles [x0, z0, x1, z1] nothing may overlap
@@ -75,8 +75,8 @@ export function buildSpills(game, { wrapZone, stairs, keepClear = [], spawns, fl
       const { x, z } = LAYOUT.packing;
       return [x - w / 2 - 1.5, z - d / 2 - 1.5, x + w / 2 + 2.4, z + d / 2 + 1.5];
     })(),
-    // Office, safety station, propane cage, parking bay
-    [corner.office.x0 - 0.5, -room.halfZ, room.halfX, -room.halfZ + corner.parking.depth + 1.1],
+    // The parking bay
+    [parking.x0 - 0.8, -room.halfZ, parking.x1 + 0.8, -room.halfZ + parking.depth + 1.1],
     ...LAYOUT.ladderStands.map((st) => [st.x - 2, st.z - 2.2, st.x + 2, st.z + 2.2]), // LADDERS stands
     grow(stairs, 1.2),
     grow(ramp, 1.2),

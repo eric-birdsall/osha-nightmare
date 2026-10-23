@@ -28,10 +28,6 @@ const INCIDENT_LINES = {
     first: ['Ralph took that corner way too fast', 'Dave got yeeted off the load', 'Ralph floored it. Dave did not hold on.'],
     again: ['Ralph yeeted Dave... again', 'Dave forgot to hold on. Again.', 'Ralph drives like this on purpose'],
   },
-  propane: {
-    first: ['The propane cage joined in', 'Dave met the propane cage', 'Chain reaction. Dave was in the chain.'],
-    again: ['The propane cage joined in... again', 'Dave and the propane: a rematch'],
-  },
   forkliftBlast: {
     first: ["Ralph's forklift exploded. Dave was nearby.", 'Dave caught the forklift blast', 'Ralph tipped the forklift. Dave left orbit.'],
     again: ['The forklift exploded again. Dave was nearby again.', 'Dave keeps standing near Ralph'],
@@ -92,8 +88,6 @@ const INCIDENT_LINES = {
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 const listRows = (rows) => (rows.length === 1 ? rows[0] : `${rows.slice(0, -1).join(', ')} and ${rows[rows.length - 1]}`);
-// Incidents that are Ralph's fault (for the Employee of the Month board).
-const RALPHS_FAULT = new Set(['hit', 'thrown', 'dropped', 'forks', 'crushed', 'legs', 'tipped', 'ladderKnocked', 'forkliftBlast']);
 
 // A rack (or a domino run of racks) fell over. byRalph: the forklift touched one of them recently.
 function rackDownLine(rows, byRalph, again) {
@@ -241,7 +235,6 @@ export class Game {
     this.climber.postStep(dt);
     this.watchRacks(dt);
     this.watchFragile(dt);
-    this.propaneStep();
     this.wrap.step(dt);
     this.orderStep(dt);
     if (this.started && !this.complete) this.time += dt;
@@ -356,9 +349,6 @@ export class Game {
       where: describeLocation(at),
     };
     this.lastIncident = incident;
-    // Employee of the Month goes to whoever wasn't to blame this time
-    const ralphsFault = incident.culprit === 'Ralph' || RALPHS_FAULT.has(reason);
-    if (incident.culprit !== undefined || incident.victim === 'Dave') this.employeeBoard?.setEmployee(ralphsFault ? 'Dave' : 'Ralph');
     this.hud?.banner(`⚠ INCIDENT ⚠<small>${incident.line}</small>`);
     // Queue the CCTV replay once things have had a moment to fall over
     if (!this.replay && !this.pendingReplay && !this.report) {
@@ -444,16 +434,6 @@ export class Game {
     }
   }
 
-  // A blast near the propane cage sets it off too, a moment later (then the cage is spent for a while)
-  propaneStep() {
-    const p = this.pendingPropane;
-    if (!p || this.clock < p.at) return;
-    this.pendingPropane = null;
-    this.propaneReadyAt = this.clock + CONFIG.blast.propaneCooldown;
-    this.toast('The propane cage went up too!', 3);
-    this.blast(this.propane.center.clone(), { daveReason: 'propane', fromPropane: true });
-  }
-
   // A FRAGILE box went off: restock it on its shelf (or it's gone, if it was a loose one), so
   // an order box can't be lost for good, then the blast. It's on Dave either way.
   explode(box) {
@@ -478,11 +458,8 @@ export class Game {
   // Like a grenade: everything loose within the blast radius is flung outward and up (racks,
   // pallets, boxes, ladders, the forklift a bit, and Dave). Returns true if Dave was caught in it
   // (that's an incident with daveReason).
-  blast(at, { exclude = null, skipForklift = false, daveReason = 'fragile', fromPropane = false } = {}) {
+  blast(at, { exclude = null, skipForklift = false, daveReason = 'fragile' } = {}) {
     const cfg = CONFIG.blast;
-    if (!fromPropane && this.propane && !this.pendingPropane && this.clock >= (this.propaneReadyAt ?? 0) && at.distanceTo(this.propane.center) < cfg.propaneTrigger) {
-      this.pendingPropane = { at: this.clock + cfg.propaneDelay };
-    }
     const push = (body, mass, scale = 1, point = null) => {
       const t = body.translation();
       const d = new THREE.Vector3(t.x - at.x, 0, t.z - at.z);

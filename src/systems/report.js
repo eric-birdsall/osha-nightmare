@@ -11,7 +11,6 @@ const CAUSES = {
   legs: ['Ralph', 'Gravity'],
   fragile: ['Dave'],
   forkliftBlast: ['Ralph', 'Gravity'],
-  propane: ['Gravity'],
   wrapped: ['Dave', 'The wrapper'],
   crushed: ['Ralph', 'The racking'],
   forks: ['Ralph'],
