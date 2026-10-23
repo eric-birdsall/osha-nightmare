@@ -4,6 +4,7 @@ import { CONFIG } from '../config.js';
 import { COL, castRay, yawQuat, quatToThree } from '../physics.js';
 import { floorHeightAt } from '../world/level.js';
 import { onSpill } from '../world/spills.js';
+import { boxLook } from './box.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
 import { sfx } from '../systems/audio.js';
 import { WorkerModel } from './worker.js';
@@ -601,7 +602,7 @@ export class Forklift {
     g.fillText('QTY', 196, 123);
     g.fillText('LOCATION', 296, 123);
     order.forEach((o, i) => {
-      const y = 188 + i * 84;
+      const y = 188 + i * 120;
       const have = Math.min(o.qty, status[o.line] || 0);
       const done = have >= o.qty;
       g.fillStyle = done ? '#8a8a8a' : '#111';
@@ -613,6 +614,21 @@ export class Forklift {
       g.fillStyle = done ? '#8a8a8a' : '#111';
       g.font = 'bold 46px ui-monospace, Menlo, Consolas, monospace';
       g.fillText(o.location, 296, y);
+      // The product's brand under it, with a swatch of its box colour (same on every box of it)
+      const look = boxLook(game.skus?.look(o.sku) ?? o.sku);
+      g.fillStyle = look.color;
+      g.fillRect(38, y + 30, 34, 34);
+      g.strokeStyle = '#333';
+      g.lineWidth = 2;
+      g.strokeRect(38, y + 30, 34, 34);
+      g.fillStyle = done ? '#8a8a8a' : '#333';
+      g.font = 'italic bold 34px system-ui, sans-serif';
+      g.fillText(look.name, 84, y + 48);
+      if (look.fragile) {
+        g.fillStyle = '#d0141b';
+        g.font = 'bold 24px system-ui, sans-serif';
+        g.fillText('FRAGILE', 330, y + 48);
+      }
       if (done) {
         g.strokeStyle = '#555';
         g.lineWidth = 5;
