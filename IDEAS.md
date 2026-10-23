@@ -110,3 +110,39 @@ the forklift can bump or tip.
    required for it to count. Make FRAGILE order lines a bit more common so stations get used.
 3. **Racks staying down last**, maybe as a "hard mode" option rather than the default, with a
    backstock fallback so an order can't soft-lock.
+
+## 4. Replace the office and safety station in the north-east corner
+
+The supervisor's office and safety station (the OSHA RULES board and friends) are pure set
+dressing on prime floor: about 13 × 4 m along the north wall, between the LADDERS stand and the
+forklift parking bay, right by Ralph's start spot and on the way to the docks. Swap them for
+something that feeds the game.
+
+**Keep:** the forklift parking bay (Ralph's start spot and the night-shift drop), probably the
+propane cage (its chain reactions are good chaos), and the Employee of the Month board, moved to
+another wall (a cheap joke that reacts to incidents).
+
+**Gameplay options**
+1. **Packing stations** (ties into idea 3): two packing tables with bubble-wrap rolls, tape and a
+   scale. The natural spot if FRAGILE boxes ever need wrapping: near the wrap square and docks,
+   on Ralph's route. Building the area first makes idea 3 an easy follow-up.
+2. **Conveyor line:** a powered roller conveyor along the wall into a shrink-wrap or label
+   machine. Boxes dropped on it ride along: a quick way to move boxes across the floor, with a
+   kill switch Dave can hit. A classic hazard too: it could carry Dave off if he stands on it.
+3. **Returns cage / damaged goods:** a wire cage piled with crushed, re-taped returns. Could get a
+   job: exploded or dropped boxes go to the returns cage instead of restocking straight to the
+   shelf, so a lost order box has to be fetched from there.
+4. **Outbound staging lanes:** painted lanes with half-built pallets for other orders. Filler that's
+   also physics chaos for drifting and blasts, and it fits the dock side.
+5. **A small mezzanine:** a steel platform about 3 m up with stairs, holding overflow stock or the
+   office. Gives Dave a vertical spot and Ralph something to clip with the mast raised.
+
+**Comedy / set dressing options**
+- **Break room:** vending machines (one with a box stuck in it), a microwave, a "WHO TOOK MY
+  LUNCH" sign, a sofa. Funny, but still decoration.
+- **Cardboard baler / compactor:** a big machine with bales stacked by it and a hazard-striped
+  crush zone. Looks great; later it could crush stray boxes, or be one more thing that explodes.
+
+**Suggested pick:** packing stations plus a conveyor along the wall feeding them. It fills the
+space, sets up idea 3, gives Dave a reason to visit the corner, and adds a new hazard. Runner-up:
+the returns cage, if lost boxes should matter.
