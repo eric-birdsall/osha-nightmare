@@ -16,6 +16,7 @@ const HOLD_Y = -0.4;
 const HOLD_Z = 0.58;
 const tmp = new THREE.Vector3();
 
+const airTarget = new THREE.Vector3();
 function approach(v, target, maxDelta) {
   tmp.subVectors(target, v);
   const d = tmp.length();
@@ -207,7 +208,7 @@ export class Climber {
       liftY = Math.max(0, this.supportVel.y) * dt;
       this.vy = 0;
     } else {
-      approach(this.airVel, tmp.copy(this.launchVel).add(wish), cfg.airAccel * dt);
+      approach(this.airVel, airTarget.copy(this.launchVel).add(wish), cfg.airAccel * dt); // not tmp: approach() uses tmp itself
       this.vy -= cfg.gravity * dt;
       disp.set(this.airVel.x * dt, this.vy * dt, this.airVel.z * dt);
     }
