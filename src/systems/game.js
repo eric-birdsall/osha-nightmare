@@ -119,7 +119,7 @@ export class Game {
     this.pendingReplay = null;
     this.replay = null;
 
-    this.active = 'climber'; // single player: who you control
+    this.active = 'driver'; // single player: who you control (start in Ralph's seat, by the pick list)
     this.rolesSwapped = false; // co-op: players traded characters
     this.devices = { climber: [], driver: [] };
     this.deviceHints = { climber: '', driver: '' };

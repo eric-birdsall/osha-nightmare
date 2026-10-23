@@ -3,19 +3,6 @@ import { CONFIG } from '../config.js';
 // Per-view HUD overlays (DOM). One view per character; single player shows only the active one.
 
 const VIEW_HTML = (role) => `
-  <div class="order clipboard">
-    <div class="clip"></div>
-    <div class="paper">
-      <div class="otitle"><span>PICK LIST</span><span>ORDER #1</span></div>
-      <table class="otable">
-        <tr><th>SKU</th><th>Qty</th><th>Location</th><th></th></tr>
-        <tr class="oitem" data-item="A"><td class="sku"></td><td class="qty"></td><td class="loc"></td><td><span class="chk"></span></td></tr>
-        <tr class="oitem" data-item="B"><td class="sku"></td><td class="qty"></td><td class="loc"></td><td><span class="chk"></span></td></tr>
-      </table>
-      <div class="odest">Wrap, then ship to <b>DOCK 1</b></div>
-      <div class="osign">Picked by</div>
-    </div>
-  </div>
   <div class="topright">
     <div class="timer card">00:00</div>
   </div>
@@ -54,7 +41,6 @@ export class Hud {
       const q = (s) => el.querySelector(s);
       this.views[role] = {
         el,
-        items: { A: q('[data-item="A"]'), B: q('[data-item="B"]') },
         timer: q('.timer'),
         roles: q('.roles'),
         prompt: q('.prompt'),
@@ -103,19 +89,7 @@ export class Hud {
       v.el.classList.toggle('top', !single && role === 'climber');
       v.el.classList.toggle('bottom', !single && role === 'driver');
       if (!visible) continue;
-      for (const k of ['A', 'B']) {
-        const line = game.level.order.find((o) => o.line === k);
-        const have = Math.min(line.qty, game.itemStatus[k]);
-        v.items[k].classList.toggle('done', have >= line.qty);
-        // Quantity, with a running tally once some are on the pallet: "2/3"
-        const qty = v.items[k].querySelector('.qty');
-        const qtyText = have > 0 && have < line.qty ? `${have}/${line.qty}` : String(line.qty);
-        if (qty.textContent !== qtyText) qty.textContent = qtyText;
-        const loc = v.items[k].querySelector('.loc');
-        const sku = v.items[k].querySelector('.sku');
-        if (loc.textContent !== line.location) loc.textContent = line.location;
-        if (sku.textContent !== String(line.sku)) sku.textContent = line.sku;
-      }
+      // The pick list isn't on the HUD: it's a clipboard in the forklift cab
       v.timer.textContent = fmt(game.time);
       v.roles.style.display = single ? '' : 'none';
       if (single) {

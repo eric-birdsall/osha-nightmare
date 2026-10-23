@@ -15,7 +15,7 @@ Open the printed URL in Chrome. Click the canvas to capture the mouse.
 
 ## The order
 
-Every shelf in every bay is stocked with plain cardboard boxes (about 450), each with a barcode label and a unique 4-digit SKU on all four sides. The clipboard lists two SKUs, a quantity of each, and their Rack-Bay-Shelf pick locations, picked at random each game from the upstairs racks:
+Every shelf in every bay is stocked with plain cardboard boxes (about 450), each with a barcode label and a unique 4-digit SKU on all four sides. The pick list is a clipboard hanging in the forklift cab (on the front-left guard post), not on the HUD: Ralph reads it from the seat, and Dave has to walk over and look in, or ask Ralph (in single player, swap to Ralph to check it). It lists two SKUs, a quantity of each, and their Rack-Bay-Shelf pick locations, picked at random each game from the upstairs racks:
 
 - **Line 1:** 3 boxes from shelf 2 of any upstairs rack (reach it from the forks or a ladder).
 - **Line 2:** 1 or 2 boxes from shelf 3, the top, of a different upstairs rack (reach it from the forks near full height, or from a ladder Ralph lifts on the forks).

@@ -218,6 +218,7 @@ export class Forklift {
     root.add(wheelMount);
     this.wheelMount = wheelMount;
     this.buildDashboard(root);
+    this.buildClipboard(root);
     this.steeringWheel = spinner;
     // Beacon
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff8800 }));
@@ -476,6 +477,103 @@ export class Forklift {
     this.drawDashboard();
   }
 
+  // The pick list lives on a clipboard hung on the front-left guard post, angled at the driver:
+  // Ralph reads it from the seat; Dave has to come and look (or ask).
+  buildClipboard(root) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 540;
+    canvas.height = 720;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    const group = new THREE.Group();
+    const board = boxMesh(0.3, 0.4, 0.012, 0x9b6a3c, { edges: false });
+    const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.27, 0.36), new THREE.MeshBasicMaterial({ map: tex }));
+    paper.position.set(0, -0.012, 0.0075);
+    const clip = boxMesh(0.1, 0.035, 0.03, 0xb8bec6);
+    clip.position.set(0, 0.19, 0.012);
+    group.add(board, paper, clip);
+    // On the inside of the left post, facing the driver's eye
+    const pos = new THREE.Vector3(0.37, 1.52, 0.62);
+    const eye = new THREE.Vector3(...CONFIG.forklift.seatEye);
+    group.position.copy(pos);
+    group.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(eye, pos, new THREE.Vector3(0, 1, 0)));
+    root.add(group);
+    this.clipboard = { canvas, tex, key: null };
+  }
+
+  drawClipboard() {
+    const game = this.game;
+    const order = game.level?.order;
+    if (!order || !this.clipboard) return;
+    const status = game.itemStatus || {};
+    const key = order.map((o) => `${o.sku}:${o.qty}:${status[o.line] || 0}`).join('|');
+    if (key === this.clipboard.key) return;
+    this.clipboard.key = key;
+    const { canvas, tex } = this.clipboard;
+    const g = canvas.getContext('2d');
+    const W = canvas.width;
+    g.fillStyle = '#f7f3e6';
+    g.fillRect(0, 0, W, canvas.height);
+    // Ruled lines
+    g.strokeStyle = '#d9e3ef';
+    g.lineWidth = 2;
+    for (let y = 300; y < 640; y += 56) {
+      g.beginPath();
+      g.moveTo(24, y);
+      g.lineTo(W - 24, y);
+      g.stroke();
+    }
+    g.textBaseline = 'middle';
+    g.fillStyle = '#111';
+    g.font = 'bold 44px system-ui, sans-serif';
+    g.textAlign = 'left';
+    g.fillText('PICK LIST', 28, 52);
+    g.textAlign = 'right';
+    g.fillText('ORDER #1', W - 28, 52);
+    g.fillStyle = '#c62828';
+    g.fillRect(28, 82, W - 56, 4);
+    // Column headings on a yellow band
+    g.fillStyle = '#f5c518';
+    g.fillRect(28, 100, W - 56, 44);
+    g.fillStyle = '#5a4a00';
+    g.font = 'bold 28px system-ui, sans-serif';
+    g.textAlign = 'left';
+    g.fillText('SKU', 40, 123);
+    g.fillText('QTY', 196, 123);
+    g.fillText('LOCATION', 296, 123);
+    order.forEach((o, i) => {
+      const y = 188 + i * 84;
+      const have = Math.min(o.qty, status[o.line] || 0);
+      const done = have >= o.qty;
+      g.fillStyle = done ? '#8a8a8a' : '#111';
+      g.font = 'bold 52px ui-monospace, Menlo, Consolas, monospace';
+      g.textAlign = 'left';
+      g.fillText(String(o.sku), 36, y);
+      g.fillStyle = done ? '#8a8a8a' : '#b3261e';
+      g.fillText(have > 0 && !done ? `${have}/${o.qty}` : String(o.qty), 190, y);
+      g.fillStyle = done ? '#8a8a8a' : '#111';
+      g.font = 'bold 46px ui-monospace, Menlo, Consolas, monospace';
+      g.fillText(o.location, 296, y);
+      if (done) {
+        g.strokeStyle = '#555';
+        g.lineWidth = 5;
+        g.beginPath();
+        g.moveTo(30, y);
+        g.lineTo(W - 30, y);
+        g.stroke();
+      }
+    });
+    g.fillStyle = '#333';
+    g.font = '30px system-ui, sans-serif';
+    g.textAlign = 'left';
+    g.fillText('Wrap, then ship to', 30, 650);
+    g.fillStyle = '#1a7f37';
+    g.font = 'bold 30px system-ui, sans-serif';
+    g.fillText('DOCK 1', 290, 650);
+    tex.needsUpdate = true;
+  }
+
   drawDashboard() {
     const mph = Math.abs(this.speed) * 2.237;
     const height = this.measuredHeight ? Math.max(0, this.measuredHeight()) : this.height;
@@ -604,6 +702,7 @@ export class Forklift {
     }
     this.steeringWheel.rotation.z = -this.steer * 3;
     this.drawDashboard();
+    this.drawClipboard();
     // Driver's gloves on the rim at ten and two, following the wheel as it turns
     this.driver.sit();
     this.mesh.updateMatrixWorld(true);
