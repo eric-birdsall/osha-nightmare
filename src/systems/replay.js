@@ -16,7 +16,7 @@ export const CCTV = [
   ['07', 'EAST WALL', [HX - 0.35, 5.0, -7]],
   ['08', 'LOWER LEVEL · SW', [-HX + 0.4, 5.0, HZ - 0.4]],
   ['09', 'LOWER LEVEL · S', [2, 5.0, HZ - 0.35]],
-  ['10', 'DOCK 1', [HX - 0.4, 5.4, HZ - 0.4]],
+  ['10', 'DOCKS', [HX - 0.4, 5.4, HZ - 0.4]],
   ['11', 'RAMP', [16, 5.0, HZ - 0.35]],
 ];
 

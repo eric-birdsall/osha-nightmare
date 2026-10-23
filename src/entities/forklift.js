@@ -38,9 +38,16 @@ const PARTS = [
   [[0.03, 0.66, 0.03], [0.53, 1.51, -0.78], 0x1d1f23],
   [[0.03, 0.66, 0.03], [-0.53, 1.51, -0.78], 0x1d1f23],
   [[0.57, 0.03, 0.76], [0, 2.19, -0.06], 0x1d1f23, false], // overhead guard roof (drawn as a bar grid)
-  [[0.05, 2.05, 0.05], [0.38, 2.15, MAST_Z], 0x30343a], // mast uprights
-  [[0.05, 2.05, 0.05], [-0.38, 2.15, MAST_Z], 0x30343a],
-  [[0.43, 0.05, 0.05], [0, 4.15, MAST_Z], 0x30343a], // mast crossbar
+  [[0.05, 1.1, 0.05], [0.38, 1.2, MAST_Z], 0x30343a], // outer mast uprights (fixed)
+  [[0.05, 1.1, 0.05], [-0.38, 1.2, MAST_Z], 0x30343a],
+];
+
+// Inner mast (uprights and crossbar): collapsed it tops out level with the outer mast, low enough
+// to drive into a trailer; once the forks rise past their free lift it telescopes up with them.
+const INNER_MAST = [
+  [[0.04, 1.1, 0.04], [0.31, 1.25, MAST_Z]],
+  [[0.04, 1.1, 0.04], [-0.31, 1.25, MAST_Z]],
+  [[0.37, 0.05, 0.05], [0, 2.35, MAST_Z]],
 ];
 
 export class Forklift {
@@ -77,6 +84,11 @@ export class Forklift {
       return c;
     };
     for (const [half, pos] of PARTS) addCol(RAPIER.ColliderDesc.cuboid(...half).setTranslation(...pos).setFriction(0.5));
+    this.innerMast = INNER_MAST.map(([half, pos]) => ({
+      half,
+      pos,
+      collider: addCol(RAPIER.ColliderDesc.cuboid(...half).setTranslation(...pos).setFriction(0.5)),
+    }));
     for (const w of WHEELS) {
       addCol(
         RAPIER.ColliderDesc.ball(WHEEL_R)
@@ -164,6 +176,11 @@ export class Forklift {
       const m = boxMesh(half[0] * 2, half[1] * 2, half[2] * 2, color);
       m.position.set(...pos);
       root.add(m);
+    }
+    for (const part of this.innerMast) {
+      part.mesh = boxMesh(part.half[0] * 2, part.half[1] * 2, part.half[2] * 2, 0x3a3f47);
+      part.mesh.position.set(...part.pos);
+      root.add(part.mesh);
     }
     // Overhead guard: a frame of bars the driver can see up through
     const guard = (w, h, d, x, y, z) => {
@@ -343,6 +360,12 @@ export class Forklift {
     if (this.height === cfg.liftMin && prevH > cfg.liftMin && impact < -CONFIG.climber.legBreakSpeed) this.slammedAt = this.game.clock;
     this.lastImpact = this.height === cfg.liftMin && prevH > cfg.liftMin ? -impact : this.lastImpact;
     this.liftJoint.configureMotor(this.height, this.liftVel, cfg.liftStiffness, cfg.liftDamping);
+    // Telescoping inner mast: rises with the forks above their free lift
+    const extend = Math.max(0, this.height - cfg.freeLift);
+    for (const part of this.innerMast) {
+      part.collider.setTranslationWrtParent({ x: part.pos[0], y: part.pos[1] + extend, z: part.pos[2] });
+      if (part.mesh) part.mesh.position.y = part.pos[1] + extend;
+    }
     if (this.height !== prevH) {
       body.wakeUp();
       this.carriage.wakeUp();
@@ -597,10 +620,10 @@ export class Forklift {
     g.fillStyle = '#333';
     g.font = '30px system-ui, sans-serif';
     g.textAlign = 'left';
-    g.fillText('Wrap, then ship to', 30, 650);
+    g.fillText('Wrap, then load at', 30, 650);
     g.fillStyle = '#1a7f37';
     g.font = 'bold 30px system-ui, sans-serif';
-    g.fillText('DOCK 1', 290, 650);
+    g.fillText((game.level.dock?.name || 'Dock').toUpperCase(), 290, 650);
     tex.needsUpdate = true;
   }
 

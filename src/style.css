@@ -326,6 +326,10 @@ h2.big {
   fill: #0e2744;
 }
 .fp-wrap,
+.fp-dock.open {
+  fill: rgba(49, 208, 122, 0.6);
+  stroke: #31d07a;
+}
 .fp-dock {
   fill: rgba(245, 197, 24, 0.35);
   stroke: var(--hazard-y);
@@ -510,22 +514,38 @@ td + td {
   bottom: 12px;
   left: 12px;
   display: flex;
-  gap: 10px;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   font-weight: 700;
   font-size: 14px;
 }
+/* Who you're controlling: a bright arrow beside their name; the other one is dimmed */
 .roles [data-r] {
+  position: relative;
+  padding: 1px 4px 1px 26px;
   opacity: 0.4;
-  padding: 2px 8px;
-  border-radius: 6px;
+}
+.roles [data-r]::before {
+  content: '▶';
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--hazard-y);
+  font-size: 15px;
+  visibility: hidden;
+  text-shadow: 0 0 6px rgba(245, 197, 24, 0.8);
 }
 .roles [data-r].on {
   opacity: 1;
-  background: #f5c518;
-  color: #111;
+  color: #fff;
+}
+.roles [data-r].on::before {
+  visibility: visible;
 }
 .swaphint {
+  margin-top: 3px;
   color: #8b96a3;
   font-weight: 400;
   font-size: 12px;
@@ -972,7 +992,7 @@ kbd {
   border-radius: 0;
   border-top: 4px solid var(--hazard-y);
   letter-spacing: 1px;
-  font-size: 16px;
+  font-size: 18px;
 }
 .prompt {
   border-radius: 0;

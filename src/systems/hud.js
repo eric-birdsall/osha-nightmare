@@ -7,7 +7,8 @@ const VIEW_HTML = (role) => `
     <div class="timer card">00:00</div>
   </div>
   <div class="roles card">
-    <span data-r="climber">🧗 Dave</span><span data-r="driver">🚜 Ralph</span>
+    <span data-r="driver">Ralph</span>
+    <span data-r="climber">Dave</span>
     <span class="swaphint">Tab / View to swap</span>
   </div>
   ${

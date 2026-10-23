@@ -16,6 +16,19 @@ export const RAMP = { x0: 6, x1: 14, z0: 12, z1: ROOM.halfZ }; // top at x1, bot
 export const STAIRS = { x0: -2.6, x1: -0.6, z0: LOWER.z0, steps: 6, tread: 0.3 };
 const FLOOR_BOTTOM = -1.5; // floor slabs are solid down to here; their sides are the pit walls
 
+// Loading docks on the east wall. Each order ships from one, picked at random: its roll-up door
+// is open with a trailer backed up to it, and the order completes when the wrapped load is in
+// the trailer. The others stay shut.
+export const DOCKS = [
+  { name: 'Dock 1', z: -5 },
+  { name: 'Dock 2', z: 2 },
+  { name: 'Dock 3', z: 9 },
+];
+const DOOR_HALF = 1.7; // half the door width
+const DOOR_H = 3.6;
+const TRAILER = { length: 13, halfW: 1.3, height: 2.75 }; // inside dimensions
+let openDock = DOCKS[1]; // this order's dock (set when the level is built)
+
 export const inLowerLevel = (x, z) => x < LOWER.x1 && z > LOWER.z0;
 
 // Height of the floor (not counting anything standing on it) at a spot.
@@ -784,7 +797,11 @@ export function describeLocation(p) {
   if (p.z < -13.8 && p.x >= 17.1 && p.x < 19) return 'The propane cage';
   if (p.z < -10.2 && p.x > 19.4) return 'Forklift parking';
   if (Math.abs(p.x - 12) < 1.4 && Math.abs(p.z - 9) < 1.4) return 'The WRAP square';
-  if (p.x > ROOM.halfX - 4 && Math.abs(p.z - 2) < 2.2) return 'Dock 1';
+  for (const d of DOCKS) {
+    if (Math.abs(p.z - d.z) > 2.2) continue;
+    if (p.x > ROOM.halfX + 0.3) return `The truck at ${d.name}`;
+    if (p.x > ROOM.halfX - 4) return d.name;
+  }
   if (p.x >= RAMP.x0 && p.x <= RAMP.x1 && p.z >= RAMP.z0) return 'The forklift ramp';
   if (p.x >= STAIRS.x0 - 0.3 && p.x <= STAIRS.x1 + 0.3 && Math.abs(p.z - (STAIRS.z0 + 0.6)) < 1.2) return 'The stairs to the lower level';
   const lower = inLowerLevel(p.x, p.z);
@@ -809,6 +826,144 @@ export function describeLocation(p) {
   }
   if (p.z < rows[0].z0) return lower ? `Aisle by Rack ${rows[0].name}, bay ${bay}${up}` : 'Behind Rack A';
   return `Aisle south of Rack ${rows[rows.length - 1].name}, by bay ${bay}${up}`;
+}
+
+// Roll-up door slats (grey with horizontal ribs).
+function doorMaterial(h) {
+  const c = document.createElement('canvas');
+  c.width = 16;
+  c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#8f969e';
+  g.fillRect(0, 0, 16, 64);
+  g.fillStyle = '#6f767e';
+  for (let y = 0; y < 64; y += 8) g.fillRect(0, y, 16, 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, h / 1.6);
+  return new THREE.MeshLambertMaterial({ map: tex });
+}
+
+// Wooden trailer floor boards.
+function boardsMaterial(len) {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#9a7650';
+  g.fillRect(0, 0, 64, 64);
+  g.fillStyle = '#7b5c3c';
+  for (let y = 0; y < 64; y += 16) g.fillRect(0, y, 64, 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(len / 2, 1.3);
+  return new THREE.MeshLambertMaterial({ map: tex });
+}
+
+// Three docks on the east wall, each with floor markings, bumpers, a sign and a lamp. The open
+// one (this order's) has its door rolled up, a dock plate, a black shelter round the opening and
+// a trailer backed up to it, floor level with the warehouse so the forklift can drive in.
+// Returns the sensor zone inside that trailer.
+function buildDocks(game) {
+  const { halfX } = ROOM;
+  const scene = game.scene;
+  for (const d of DOCKS) {
+    const open = d === openDock;
+    const green = '#31d07a';
+    floorMarking(game, halfX - 1.9, d.z, 3.6, 4.0, open ? 0x31d07a : 0x9aa0a8, 0.15);
+    floorText(game, d.name.toUpperCase(), halfX - 2.8, d.z, 3.2, 0.9, Math.PI / 2, open ? green : '#9aa0a8');
+    const sign = labelPlane(d.name.toUpperCase(), 2.6, 0.7, open ? { bg: green, fg: '#0b1f12' } : { bg: '#4a5058', fg: '#d9dde2' });
+    sign.position.set(halfX - 0.03, DOOR_H + 0.75, d.z);
+    sign.rotation.y = -Math.PI / 2;
+    scene.add(sign);
+    // Dock lamp: green when it's the one to load
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ color: open ? 0x31ff7a : 0xd02020 }));
+    lamp.position.set(halfX - 0.1, DOOR_H + 0.2, d.z + DOOR_HALF + 0.35);
+    scene.add(lamp);
+    for (const z of [d.z - DOOR_HALF - 0.2, d.z + DOOR_HALF + 0.2]) addStatic(game, [0.1, 0.25, 0.15], [halfX - 0.1, 0.4, z], 0x111111);
+    if (!open) {
+      const door = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, DOOR_H), doorMaterial(DOOR_H));
+      door.position.set(halfX - 0.02, DOOR_H / 2, d.z);
+      door.rotation.y = -Math.PI / 2;
+      scene.add(door);
+      const closed = labelPlane('CLOSED', 1.6, 0.5, { bg: '#d0141b', fg: '#ffffff' });
+      closed.position.set(halfX - 0.04, 1.9, d.z);
+      closed.rotation.y = -Math.PI / 2;
+      scene.add(closed);
+      continue;
+    }
+    // Rolled-up door: just the bottom slats showing under the hood
+    const rolled = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, 0.35), doorMaterial(0.35));
+    rolled.position.set(halfX + 0.05, DOOR_H - 0.17, d.z);
+    rolled.rotation.y = -Math.PI / 2;
+    scene.add(rolled);
+    // Dock plate bridging into the trailer
+    const plate = boxMesh(0.9, 0.04, 2.4, 0x7d838a, { shadows: false });
+    plate.position.set(halfX + 0.05, 0.0, d.z);
+    scene.add(plate);
+    for (const z of [d.z - 1.22, d.z + 1.22]) {
+      const edge = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.08), new THREE.MeshBasicMaterial({ color: 0xf5c518 }));
+      edge.rotation.x = -Math.PI / 2;
+      edge.position.set(halfX + 0.05, 0.025, z);
+      scene.add(edge);
+    }
+    // Trailer, backed up to the outside of the wall (inside dimensions in TRAILER)
+    const x0 = halfX + 0.4;
+    const x1 = x0 + TRAILER.length;
+    const cx = (x0 + x1) / 2;
+    const { halfW, height } = TRAILER;
+    const part = (size, pos, mat) => {
+      game.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(size[0] / 2, size[1] / 2, size[2] / 2).setTranslation(...pos).setFriction(0.8).setCollisionGroups(COL.static),
+        game.staticBody,
+      );
+      const m = new THREE.Mesh(new THREE.BoxGeometry(...size), mat);
+      m.position.set(...pos);
+      m.receiveShadow = true;
+      scene.add(m);
+    };
+    const inside = new THREE.MeshLambertMaterial({ color: 0xdfe3e8 });
+    part([TRAILER.length, 0.3, halfW * 2 + 0.16], [cx, -0.15, d.z], boardsMaterial(TRAILER.length)); // floor, level with the warehouse
+    part([TRAILER.length, height, 0.08], [cx, height / 2, d.z - halfW - 0.04], inside); // sides
+    part([TRAILER.length, height, 0.08], [cx, height / 2, d.z + halfW + 0.04], inside);
+    part([0.08, height, halfW * 2 + 0.16], [x1 + 0.04, height / 2, d.z], inside); // front (cab end)
+    part([TRAILER.length, 0.08, halfW * 2 + 0.16], [cx, height + 0.04, d.z], new THREE.MeshLambertMaterial({ color: 0xc9ced6, emissive: 0x3a3f46 })); // roof
+    // Ribs down the inside walls, every 1.2 m
+    const ribs = [];
+    for (let x = x0 + 0.6; x < x1; x += 1.2) ribs.push([x, height / 2, d.z - halfW + 0.02], [x, height / 2, d.z + halfW - 0.02]);
+    instancedBoxes(game, [0.05, height, 0.04], flatMat(0xb9bec6), ribs);
+    // Black dock shelter round the trailer, closing the gaps in the doorway
+    const shelter = flatMat(0x16171a);
+    const curtain = (size, pos) => {
+      game.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(size[0] / 2, size[1] / 2, size[2] / 2).setTranslation(...pos).setCollisionGroups(COL.static),
+        game.staticBody,
+      );
+      const m = new THREE.Mesh(new THREE.BoxGeometry(...size), shelter);
+      m.position.set(...pos);
+      scene.add(m);
+    };
+    const sideW = DOOR_HALF - halfW;
+    curtain([0.3, DOOR_H, sideW], [halfX + 0.25, DOOR_H / 2, d.z - halfW - sideW / 2]);
+    curtain([0.3, DOOR_H, sideW], [halfX + 0.25, DOOR_H / 2, d.z + halfW + sideW / 2]);
+    curtain([0.3, DOOR_H - height, DOOR_HALF * 2], [halfX + 0.25, (DOOR_H + height) / 2, d.z]);
+    // Load here: green marking down the trailer floor
+    const mark = new THREE.Mesh(new THREE.PlaneGeometry(TRAILER.length - 0.6, 0.1), new THREE.MeshBasicMaterial({ color: 0x31d07a }));
+    for (const z of [d.z - halfW + 0.2, d.z + halfW - 0.2]) {
+      const m = mark.clone();
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(cx, 0.006, z);
+      scene.add(m);
+    }
+    // A light inside so the far end isn't a black hole
+    const light = new THREE.PointLight(0xfff4e0, 8, 16);
+    light.position.set(cx, height - 0.3, d.z);
+    scene.add(light);
+  }
+  const x0 = halfX + 0.4;
+  return makeZone(game, 'dock', x0 + TRAILER.length / 2, openDock.z, TRAILER.length - 0.2, TRAILER.halfW * 2);
 }
 
 export function buildLevel(game) {
@@ -842,11 +997,18 @@ export function buildLevel(game) {
   const t = 0.2;
   const wallHalfY = (wallH - FLOOR_BOTTOM) / 2;
   const wallY = (wallH + FLOOR_BOTTOM) / 2;
+  // This order's dock (the east wall gets a doorway there)
+  openDock = DOCKS[Math.floor(Math.random() * DOCKS.length)];
+  const oz = openDock.z;
+  const eastWall = (z0, z1, y0, y1) => [[t, (y1 - y0) / 2, (z1 - z0) / 2], [halfX + t, (y0 + y1) / 2, (z0 + z1) / 2]];
   for (const [half, pos] of [
     [[halfX + t * 2, wallHalfY, t], [0, wallY, -halfZ - t]],
     [[halfX + t * 2, wallHalfY, t], [0, wallY, halfZ + t]],
     [[t, wallHalfY, halfZ], [-halfX - t, wallY, 0]],
-    [[t, wallHalfY, halfZ], [halfX + t, wallY, 0]],
+    eastWall(-halfZ, oz - DOOR_HALF, FLOOR_BOTTOM, wallH),
+    eastWall(oz + DOOR_HALF, halfZ, FLOOR_BOTTOM, wallH),
+    eastWall(oz - DOOR_HALF, oz + DOOR_HALF, DOOR_H, wallH), // over the door
+    eastWall(oz - DOOR_HALF, oz + DOOR_HALF, FLOOR_BOTTOM, 0), // under the threshold
   ]) {
     // Tall walls would throw the (fake) sun's shadow across half the floor
     const wall = addStatic(game, half, pos, wallC, { edges: false });
@@ -864,7 +1026,8 @@ export function buildLevel(game) {
     [LOWER.x1 + halfX, (LOWER.x1 - halfX) / 2, halfZ - 0.01, Math.PI, LOWER.y],
     [LOWER.z0 + halfZ, -halfX + 0.01, (LOWER.z0 - halfZ) / 2, Math.PI / 2, 0],
     [halfZ - LOWER.z0, -halfX + 0.01, (halfZ + LOWER.z0) / 2, Math.PI / 2, LOWER.y],
-    [halfZ * 2, halfX - 0.01, 0, -Math.PI / 2, 0],
+    [oz - DOOR_HALF + halfZ, halfX - 0.01, (oz - DOOR_HALF - halfZ) / 2, -Math.PI / 2, 0],
+    [halfZ - oz - DOOR_HALF, halfX - 0.01, (halfZ + oz + DOOR_HALF) / 2, -Math.PI / 2, 0],
   ]) {
     const s = new THREE.Mesh(new THREE.PlaneGeometry(w, 1.0), new THREE.MeshBasicMaterial({ color: 0xf5c518 }));
     s.position.set(x, y + 0.5, z);
@@ -903,21 +1066,8 @@ export function buildLevel(game) {
   arm.position.set(13.25, 2.7, 7.45);
   scene.add(arm);
 
-  // Dock 1 on the east wall
-  const dockZ = 2;
-  const dockZone = makeZone(game, 'dock', halfX - 1.9, dockZ, 3.6, 4.0);
-  floorMarking(game, halfX - 1.9, dockZ, 3.6, 4.0, 0x31d07a, 0.15);
-  floorText(game, 'DOCK 1', halfX - 2.8, dockZ, 3.2, 0.9, Math.PI / 2, '#31d07a');
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.6), new THREE.MeshLambertMaterial({ color: 0x2b2f36 }));
-  door.position.set(halfX - 0.02, 1.8, dockZ);
-  door.rotation.y = -Math.PI / 2;
-  scene.add(door);
-  const sign = labelPlane('DOCK 1', 2.4, 0.8, { bg: '#31d07a', fg: '#0b1f12' });
-  sign.position.set(halfX - 0.03, 4.3, dockZ);
-  sign.rotation.y = -Math.PI / 2;
-  scene.add(sign);
-  // Dock bumpers
-  for (const z of [dockZ - 1.9, dockZ + 1.9]) addStatic(game, [0.1, 0.25, 0.15], [halfX - 0.1, 0.4, z], 0x111111);
+  // Loading docks: this order's is open with a trailer backed up to it
+  const dockZone = buildDocks(game);
 
   // Wall-mounted incident sign (updated by the game)
   game.incidentSign = makeIncidentSign(scene);
@@ -962,7 +1112,8 @@ export function buildLevel(game) {
 
   return {
     wrapZone,
-    dockZone,
+    dockZone, // inside the trailer at the open dock
+    dock: openDock, // { name, z }: this order's dock
     items: orderBoxes, // { A: [...], B: [...] }: the boxes each order line wants (for debugging/tests)
     order, // [{ line, sku, location }]
     racks,

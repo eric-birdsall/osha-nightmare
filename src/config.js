@@ -71,6 +71,7 @@ export const CONFIG = {
     wheelbase: 1.4,
     liftMin: 0.1,
     liftMax: 3.5,
+    freeLift: 1.0, // m the forks rise before the inner mast starts telescoping up (collapsed, the mast fits in a trailer)
     liftSpeed: 0.4,
     lowerSpeed: 3.0, // forks can come down fast: holding F/LB keeps speeding them up...
     lowerAccel: 2.0, // ...at this rate (m/s²), so a short tap still lowers gently

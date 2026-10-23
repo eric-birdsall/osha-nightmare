@@ -5,6 +5,7 @@ import { Input } from './systems/input.js';
 import { Hud } from './systems/hud.js';
 import { Game } from './systems/game.js';
 import { unlockAudio, sfx } from './systems/audio.js';
+import { DOCKS } from './world/level.js';
 
 await RAPIER.init();
 
@@ -152,6 +153,8 @@ function pause() {
   if (state !== 'playing') return;
   state = 'paused';
   pausedAt = performance.now();
+  // Light up this order's dock on the floor plan
+  game.level.dock && document.querySelectorAll('.fp-dock').forEach((r, i) => r.classList.toggle('open', DOCKS[i]?.name === game.level.dock.name));
   // Mark Dave and Ralph on the pause screen's floor plan (SVG x/y = world x/z)
   for (const [id, body] of [['fp-dave', game.climber.body], ['fp-ralph', game.forklift.body]]) {
     const t = body.translation();

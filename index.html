@@ -73,8 +73,12 @@
                 </g>
                 <rect x="10.75" y="7.75" width="2.5" height="2.5" class="fp-wrap" />
                 <text x="12" y="7" class="fp-zone">WRAP</text>
-                <rect x="20.3" y="0" width="3.6" height="4" class="fp-dock" />
-                <text x="22.1" y="-0.8" class="fp-zone">DOCK 1</text>
+                <rect id="fp-dock-0" x="20.3" y="-7" width="3.6" height="4" class="fp-dock" />
+                <rect id="fp-dock-1" x="20.3" y="0" width="3.6" height="4" class="fp-dock" />
+                <rect id="fp-dock-2" x="20.3" y="7" width="3.6" height="4" class="fp-dock" />
+                <text x="18.4" y="-5" class="fp-zone">D1</text>
+                <text x="18.4" y="2" class="fp-zone">D2</text>
+                <text x="18.4" y="9" class="fp-zone">D3</text>
                 <text x="10" y="12.9" class="fp-zone">RAMP</text>
                 <rect x="6" y="-16" width="5" height="3.6" class="fp-room" />
                 <text x="8.5" y="-14.2" class="fp-zone">OFFICE</text>
@@ -141,7 +145,8 @@
             The order: read the clipboard in the forklift cab, then find each SKU at its Rack-Bay-Shelf location (check the label,
             some neighbours look similar). If a slot is short, its orange BACKSTOCK sign says where
             the rest is downstairs. Get the full quantity of both onto one pallet, set it down in the WRAP square
-            and back the forklift out, then deliver the wrapped pallet to DOCK 1.
+            and back the forklift out, then drive the wrapped pallet into the truck at the open dock
+            (the clipboard says which: its door is up and its lamp is green).
           </p>
           <div class="ctl-btns">
             <button class="btn" data-act="invert">Invert Look: Off</button>
