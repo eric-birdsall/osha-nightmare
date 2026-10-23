@@ -124,6 +124,7 @@ export class Game {
     this.devices = { climber: [], driver: [] };
     this.deviceHints = { climber: '', driver: '' };
     this.time = 0;
+    this.started = false; // the shift clock starts when someone first moves Dave or Ralph
     this.falls = 0;
     this.incidentCounts = {};
     this.days = CONFIG.hud.startDays;
@@ -211,6 +212,13 @@ export class Game {
     const singleActive = (role) => this.mode !== 'single' || this.active === role;
     const driverOn = singleActive('driver') && this.devices.driver.length > 0;
     const climberOn = singleActive('climber') && this.devices.climber.length > 0;
+    if (!this.started) {
+      const c = actions.climber;
+      const d = actions.driver;
+      const daveMoved = climberOn && (Math.abs(c.moveX) > 0.1 || Math.abs(c.moveY) > 0.1 || c.jump);
+      const ralphMoved = driverOn && (d.throttle > 0.05 || d.brake > 0.05 || Math.abs(d.steer) > 0.1 || d.liftUp > 0 || d.liftDown > 0);
+      this.started = daveMoved || ralphMoved;
+    }
     this.forklift.preStep(actions.driver, dt, driverOn);
     this.forklift.look(actions.driver, driverOn);
     this.climber.preStep(actions.climber, dt, climberOn);
@@ -219,7 +227,7 @@ export class Game {
     this.watchRacks(dt);
     this.wrap.step(dt);
     this.orderStep(dt);
-    if (!this.complete) this.time += dt;
+    if (this.started && !this.complete) this.time += dt;
     this.dayTimer += dt;
     if (this.dayTimer >= CONFIG.hud.secondsPerDay) {
       this.dayTimer = 0;
