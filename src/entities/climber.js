@@ -363,6 +363,8 @@ export class Climber {
       const hit = castRay(this.game.world, head, { x: 0, y: 1, z: 0 }, 0.2, COL.climberQuery, (c) => c.handle !== this.collider.handle && c.parent()?.handle !== lad.body.handle);
       if (hit) return this.goRagdoll('crushed', new THREE.Vector3(0, -1, 0));
     }
+    // Riding a ladder on the forks while Ralph drops them
+    if (lad.body.linvel().y < -cfg.legBreakSpeed) return this.goRagdoll('legs', new THREE.Vector3(0, -2, 0));
     const headHit = this.overheadHit(feet);
     if (headHit) return this.goRagdoll(headHit, new THREE.Vector3(0, -1.5, 0));
     const probeHalf = this.halfH - 0.05;
@@ -561,6 +563,14 @@ export class Climber {
     }
   }
 
+  // The fork carriage is coming down faster than legs can take, and we're standing over the forks.
+  forksDropping(feet) {
+    const fl = this.game.forklift;
+    if (fl.liftVel > -CONFIG.climber.legBreakSpeed) return false;
+    const local = this.carriageLocal(feet);
+    return Math.abs(local.x) < 0.65 && local.z > -0.1 && local.z < 1.4 && local.y > -0.15 && local.y < 2.5;
+  }
+
   // Height above the warehouse floor (upper or lower level, stairs or ramp). Boxes, pallets,
   // forks and racks are all things that can move or fall away, so only the floor counts as ground.
   heightAboveGround(feet) {
@@ -708,6 +718,8 @@ export class Climber {
         return this.goRagdoll('thrown', this.supportAccel.clone().setY(0).multiplyScalar(0.12).add(new THREE.Vector3(0, 2, 0)));
       }
     }
+    // Forks dropped fast with Dave on them, or on a pallet on them: the landing breaks his legs
+    if ((sb || this.holdingOn) && this.forksDropping(feet)) return this.goRagdoll('legs', new THREE.Vector3(0, -2, 0));
     if (sb && highUp && !this.holdingOn && this.supportVel.y < -cfg.dropSpeed) return this.goRagdoll('dropped');
     // Lifted into something overhead (rack beam, mast crossbar): crushed
     if (sb && this.supportVel.y > 0.05) {

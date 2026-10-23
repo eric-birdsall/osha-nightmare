@@ -36,6 +36,7 @@ export const CONFIG = {
     throwAccelSmoothing: 0.35, // EMA factor per step (higher = twitchier)
     throwMinSupportSpeed: 1.5, // the support must be moving at least this fast (m/s) to throw you
     dropSpeed: 2.0, // support falling faster than this drops them
+    legBreakSpeed: 1.5, // forks coming down faster than this with Dave on them (or on a load on them) = broken legs
     supportLostTime: 0.15, // moving support vanished for this long = thrown
     lowSupportHeight: 1.2, // thrown/dropped only count when Dave's feet are at least this high off the floor (m)
     ragdollTime: 3.0,
@@ -67,8 +68,10 @@ export const CONFIG = {
     liftMin: 0.1,
     liftMax: 3.5,
     liftSpeed: 0.4,
-    lowerSpeed: 0.7, // forks come down faster than they go up
-    liftAccel: 0.8, // ease in and out
+    lowerSpeed: 3.0, // forks can come down fast: holding F/LB keeps speeding them up...
+    lowerAccel: 2.0, // ...at this rate (m/s²), so a short tap still lowers gently
+    lowerStop: 8.0, // and they stop hard (m/s²) at the bottom or when you let go
+    liftAccel: 0.8, // ease in and out going up
     liftStiffness: 2500, // carriage motor (acceleration-based)
     liftDamping: 120,
     lookYawLimit: deg(120),
@@ -126,6 +129,7 @@ export const CONFIG = {
 
   order: {
     decoyChance: 0.6, // chance an order slot also holds a near-miss SKU next to the right box
+    extraBackstock: 8, // BACKSTOCK signs (with real backstock behind them) on stock that isn't on the order
     backstockChance: 0.5, // chance a 2-box line 2 is also one short at its pick face (line 1 always is)
   },
 

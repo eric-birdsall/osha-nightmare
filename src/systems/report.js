@@ -8,6 +8,7 @@ const CAUSES = {
   hit: ['Ralph'],
   thrown: ['Ralph', 'Gravity'],
   dropped: ['Ralph', 'Gravity'],
+  legs: ['Ralph', 'Gravity'],
   wrapped: ['Dave', 'The wrapper'],
   crushed: ['Ralph', 'The racking'],
   forks: ['Ralph'],

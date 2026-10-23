@@ -334,6 +334,23 @@ function stockShelves(game, racks) {
     }
     order.push({ line, sku: l.sku, qty: l.qty, location: locationCode(l.rack, l.bay, l.shelf), backstock });
   }
+  // Other stock has backstock too: BACKSTOCK signs on more pick faces upstairs, each pointing to
+  // a full row of that face's SKU on a lower-level bottom shelf (so a sign alone proves nothing)
+  const taken = (r, b, s) => slots.some((o) => o.rack === r && o.bay === b && o.shelf === s);
+  for (let n = 0; n < cfg.extraBackstock; n++) {
+    let face;
+    let store;
+    let tries = 0;
+    do face = { rack: pickOne(upstairs), bay: bay(), shelf: Math.floor(Math.random() * SHELF_LEVELS.length) };
+    while (taken(face.rack, face.bay, face.shelf) && ++tries < 50);
+    do store = { rack: pickOne(downstairs), bay: bay(), shelf: 0 };
+    while (taken(store.rack, store.bay, store.shelf) && ++tries < 100);
+    if (tries >= 100) break;
+    const sku = game.skus.next();
+    const short = Math.random() < 0.5;
+    slots.push({ ...face, line: null, sku, count: short ? 1 : 2, gap: short, backstock: locationCode(store.rack, store.bay, store.shelf) });
+    slots.push({ ...store, line: null, sku, count: 3 });
+  }
 
   const orderBoxes = { A: [], B: [] };
   const types = ['small', 'medium', 'medium', 'large'];
@@ -365,10 +382,10 @@ function stockShelves(game, racks) {
           const box = createBox(game, {
             type,
             sku,
-            item: isOrder ? slot.line : null,
+            item: isOrder ? slot.line : null, // null for other stock's backstock rows
             pos: [bayX(b) + dx + (Math.random() - 0.5) * 0.12, base + SHELF_LEVELS[shelf] + 0.005, z],
           });
-          if (isOrder) orderBoxes[slot.line].push(box);
+          if (isOrder && slot.line) orderBoxes[slot.line].push(box);
           // Where it was stocked, so resetting the racking can put it back
           const t = box.body.translation();
           const r = box.body.rotation();

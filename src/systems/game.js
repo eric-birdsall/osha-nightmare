@@ -28,6 +28,10 @@ const INCIDENT_LINES = {
     first: ['Ralph took that corner way too fast', 'Dave got yeeted off the load', 'Ralph floored it. Dave did not hold on.'],
     again: ['Ralph yeeted Dave... again', 'Dave forgot to hold on. Again.', 'Ralph drives like this on purpose'],
   },
+  legs: {
+    first: ["Ralph dropped the forks. Dave's legs disagreed.", "Ralph broke Dave's legs", "Dave's knees have filed a complaint", 'Ralph found the down button'],
+    again: ["Ralph broke Dave's legs... again", "Dave's knees are considering a union", 'Ralph dropped the forks. Again. Ow.'],
+  },
   dropped: {
     first: ['Ralph dropped Dave', 'The pallet left. Dave stayed in the air.', 'Dave lost the floor'],
     again: ['Ralph dropped Dave... again', 'Dave keeps trusting Ralph', 'Ralph dropped Dave. Classic Ralph.'],

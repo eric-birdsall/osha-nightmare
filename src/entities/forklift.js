@@ -308,10 +308,14 @@ export class Forklift {
     const liftDir = active ? a.liftUp - a.liftDown : 0;
     let target = liftDir * (liftDir < 0 ? cfg.lowerSpeed : cfg.liftSpeed);
     const maxUp = Math.sqrt(2 * cfg.liftAccel * Math.max(0, cfg.liftMax - this.height));
-    const maxDown = Math.sqrt(2 * cfg.liftAccel * Math.max(0, this.height - cfg.liftMin));
+    const maxDown = Math.sqrt(2 * cfg.lowerStop * Math.max(0, this.height - cfg.liftMin));
     target = Math.max(-maxDown, Math.min(maxUp, target));
     const dl = target - this.liftVel;
-    this.liftVel += Math.sign(dl) * Math.min(Math.abs(dl), cfg.liftAccel * dt);
+    // Going down: speed up gradually (tap to feather), stop hard; going up: ease in and out
+    let rate = cfg.liftAccel;
+    if (this.liftVel <= 0 && dl < 0) rate = cfg.lowerAccel;
+    else if (this.liftVel < 0 && dl > 0) rate = cfg.lowerStop;
+    this.liftVel += Math.sign(dl) * Math.min(Math.abs(dl), rate * dt);
     const prevH = this.height;
     this.height = Math.max(cfg.liftMin, Math.min(cfg.liftMax, this.height + this.liftVel * dt));
     if (this.height === cfg.liftMin || this.height === cfg.liftMax) this.liftVel = (this.height - prevH) / dt;
