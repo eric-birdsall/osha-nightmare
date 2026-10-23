@@ -34,7 +34,8 @@ export function buildWrapper(game) {
     for (const sz of [-1, 1]) {
       const px = x + sx * half;
       const pz = z + sz * half;
-      add(boxMesh(0.22, H, 0.22, YELLOW), px, H / 2, pz);
+      // A touch wider and taller than the beams that meet it, so no faces share a plane (flicker)
+      add(boxMesh(0.24, H + 0.02, 0.24, YELLOW), px, (H + 0.02) / 2, pz);
       add(boxMesh(0.45, 0.04, 0.45, STEEL, { edges: false }), px, 0.02, pz);
       solid(game, [0.26, H, 0.26], [px, H / 2, pz]);
     }
@@ -42,13 +43,14 @@ export function buildWrapper(game) {
   // Gantry: beams round the top and two across to the motor in the middle
   const beam = 0.3;
   for (const s of [-1, 1]) {
-    add(boxMesh(half * 2 + 0.22, beam, 0.2, STEEL), x, H - beam / 2, z + s * half);
-    add(boxMesh(0.2, beam, half * 2 + 0.22, STEEL), x + s * half, H - beam / 2, z);
+    // The beams end inside the posts; the ones along z sit 5 mm lower than the ones along x
+    add(boxMesh(half * 2, beam, 0.2, STEEL), x, H - beam / 2, z + s * half);
+    add(boxMesh(0.2, beam - 0.01, half * 2, STEEL), x + s * half, H - beam / 2 - 0.005, z);
     solid(game, [half * 2 + 0.22, beam, 0.2], [x, H - beam / 2, z + s * half]);
     solid(game, [0.2, beam, half * 2 + 0.22], [x + s * half, H - beam / 2, z]);
   }
   add(boxMesh(half * 2, 0.22, 0.25, STEEL), x, H - 0.25, z);
-  add(boxMesh(0.25, 0.22, half * 2, STEEL), x, H - 0.25, z);
+  add(boxMesh(0.25, 0.2, half * 2, STEEL), x, H - 0.25, z); // a little slimmer where they cross
   add(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.4, 20), flatMat(0x2b2f35)), x, H - 0.55, z);
   // Signs on the gantry, facing out both ways along x
   for (const s of [-1, 1]) {
