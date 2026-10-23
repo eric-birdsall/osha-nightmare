@@ -4,6 +4,7 @@ import { CONFIG } from '../config.js';
 import { COL, G, groups, castRay, yawQuat, quatToThree } from '../physics.js';
 import { floorHeightAt, ROOM } from '../world/level.js';
 import { buildLadderGhost, ladderFootprint } from './ladder.js';
+import { collectStack } from '../systems/wrapping.js';
 import { flatMat } from '../util/meshes.js';
 import { spawnRagdoll } from '../systems/ragdoll.js';
 import { WorkerModel, firstPersonArm } from './worker.js';
@@ -70,7 +71,10 @@ export class Climber {
     this.peakY = spawn.pos.y;
     this.jumpedThisStep = false;
     this.pushVel = new THREE.Vector3();
-    this.carried = null;
+    this.carried = null; // the box in Dave's hands (the bottom one, if he's carrying a stack)
+    this.stackAbove = []; // boxes stacked on it, bottom to top
+    this.heldViews = new Map(); // carried box -> see-through copy for Dave's own view
+    this.targetStack = 1; // boxes that would come with the targeted box
     this.target = null;
     this.mantle = null;
     this.onBlades = false;
@@ -165,7 +169,9 @@ export class Climber {
     const my = free ? a.moveY : 0;
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    const speed = this.ladderCarry ? cfg.walkSpeed * CONFIG.ladder.carrySpeedFactor : cfg.walkSpeed;
+    // Slower with a ladder on the shoulder, or with a stack of boxes in his arms
+    const stackFactor = cfg.stackSpeed[Math.max(0, this.carriedBoxes().length - 1)] ?? 1;
+    const speed = cfg.walkSpeed * (this.ladderCarry ? CONFIG.ladder.carrySpeedFactor : stackFactor);
     const wish = fwd.multiplyScalar(my * speed).addScaledVector(right, mx * speed);
 
     // Walking into the steps of a set-up ladder: climb on
@@ -234,6 +240,7 @@ export class Climber {
     if (this.carried) this.holdCarried();
     if (this.ladderCarry) this.holdLadder();
     this.resetStep(a, dt, active);
+    if (active && a.toss && this.carried) this.toss();
     if (active && a.interact) {
       if (this.holdingOn) this.letGo();
       else if (this.ladderCarry) this.setUpLadder();
@@ -308,6 +315,7 @@ export class Climber {
     this.grounded = true;
     this.lastOnLadder = this.game.clock;
     if (this.carried) this.holdCarried();
+    if (active && a.toss && this.carried) this.toss();
     if (active && a.interact) {
       if (this.carried) this.putDown();
       else if (this.target) this.pickUp(this.target);
@@ -850,6 +858,7 @@ export class Climber {
 
   updateTarget() {
     this.target = null;
+    this.targetStack = 1;
     this.nearKnockedRack = this.state === 'walk' && !this.onLadder ? this.findKnockedRack() : null;
     if (this.state !== 'walk' || this.carried || this.ladderCarry) return;
     const cfg = CONFIG.climber;
@@ -860,7 +869,10 @@ export class Climber {
     const chest = eye.clone().setY(eye.y - cfg.chestDrop);
     if (hit && chest.distanceTo(tmp.set(hit.point.x, hit.point.y, hit.point.z)) <= cfg.reach) {
       const ent = this.game.entityForCollider(hit.collider);
-      if (ent && ent.kind === 'box') this.target = ent;
+      if (ent && ent.kind === 'box') {
+        this.target = ent;
+        this.targetStack = this.stackOn(ent)?.length || 1;
+      }
       else if (ent && ent.kind === 'ladder' && !this.onLadder && ent.state !== 'carried' && this.support?.body.handle !== ent.body.handle) this.target = ent;
     }
     if (!this.target && !this.onLadder) this.target = this.nearbyLadder(chest, dir);
@@ -897,38 +909,74 @@ export class Climber {
     return Math.max(-0.5, Math.min(0.45, this.pitch));
   }
 
-  holdPose() {
-    const ent = this.carried;
+  // Everything Dave is carrying, bottom box first.
+  carriedBoxes() {
+    return this.carried ? [this.carried, ...this.stackAbove] : [];
+  }
+
+  // The carried stack as one block: widest footprint, total height.
+  carrySize() {
+    const boxes = this.carriedBoxes();
+    return [Math.max(...boxes.map((b) => b.size[0])), boxes.reduce((h, b) => h + b.size[1], 0), Math.max(...boxes.map((b) => b.size[2]))];
+  }
+
+  // Pose of the i-th carried box (0 = bottom): the bottom one in his hands, the rest stacked
+  // neatly on it, tilting with the carry pitch.
+  holdPose(i = 0) {
+    const boxes = this.carriedBoxes();
     const eye = this.eye;
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.holdPitch(), this.yaw, 0, 'YXZ'));
-    const off = new THREE.Vector3(0, HOLD_Y, -(HOLD_Z + ent.size[2] / 2)).applyQuaternion(q);
-    return { pos: eye.add(off), quat: q };
+    const off = new THREE.Vector3(0, HOLD_Y, -(HOLD_Z + this.carrySize()[2] / 2)).applyQuaternion(q);
+    const pos = eye.add(off);
+    let up = 0;
+    for (let k = 1; k <= i; k++) up += boxes[k - 1].size[1] / 2 + boxes[k].size[1] / 2;
+    pos.addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(q), up);
+    return { pos, quat: q };
   }
 
   holdCarried() {
-    const { pos } = this.holdPose();
-    this.carried.body.setNextKinematicTranslation(pos);
-    this.carried.body.setNextKinematicRotation(yawQuat(this.yaw));
+    this.carriedBoxes().forEach((b, i) => {
+      b.body.setNextKinematicTranslation(this.holdPose(i).pos);
+      b.body.setNextKinematicRotation(yawQuat(this.yaw));
+    });
   }
 
+  // The targeted box and everything stacked on it, bottom first (null if something other than
+  // boxes is on it).
+  stackOn(ent) {
+    const set = collectStack(this.game, ent);
+    const boxes = [...set].filter((e) => e.kind === 'box');
+    if (boxes.length !== set.size) return null;
+    return boxes.sort((a, b) => a.body.translation().y - b.body.translation().y);
+  }
+
+  // Picking up a box takes the boxes stacked on it too, up to climber.maxCarry in all. A taller
+  // stack is too much: he takes the top box instead.
   pickUp(ent) {
     if (ent.removed) return;
-    const body = ent.body;
-    body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
-    for (let i = 0; i < body.numColliders(); i++) body.collider(i).setCollisionGroups(COL.carried);
-    this.carried = ent;
+    let boxes = this.stackOn(ent) || [ent];
+    if (boxes[0] !== ent) boxes = [ent];
+    if (boxes.length > CONFIG.climber.maxCarry) {
+      boxes = [boxes[boxes.length - 1]];
+      this.game.toast(`Too many to carry: took the top box`, 2);
+    }
+    for (const [i, b] of boxes.entries()) {
+      b.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+      for (let i = 0; i < b.body.numColliders(); i++) b.body.collider(i).setCollisionGroups(COL.carried);
+      b.carried = true;
+      b.handled = true; // Dave moved it: resetting the racking leaves it wherever he puts it
+      this.makeHeldView(b, i ? 0.18 : 0.35); // boxes up the stack are fainter so he can see ahead
+    }
+    this.carried = boxes[0];
+    this.stackAbove = boxes.slice(1);
     this.target = null;
-    ent.carried = true;
-    ent.handled = true; // Dave moved it: resetting the racking leaves it wherever he puts it
-    this.makeGhost(ent);
-    this.makeHeldView(ent);
+    this.makeGhost();
     sfx.pickup();
-    this.game.onPickup?.(ent);
+    this.game.onPickup?.(boxes[0]);
   }
 
-  releaseCarried(pos, rot, vel) {
-    const ent = this.carried;
-    if (!ent) return;
+  // Let one carried box go as a normal physics body.
+  releaseBox(ent, pos, rot, vel) {
     const body = ent.body;
     body.setTranslation(pos, true);
     body.setRotation(rot, true);
@@ -938,14 +986,52 @@ export class Climber {
     body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     body.wakeUp();
     ent.carried = false;
-    this.carried = null;
-    if (this.ghost) this.ghost.visible = false;
     this.dropHeldView(ent);
+  }
+
+  // Put the whole carried stack down as a column centred on `center` (the middle of the block).
+  releaseStack(center, rot, vel) {
+    const boxes = this.carriedBoxes();
+    let y = center.y - this.carrySize()[1] / 2;
+    for (const b of boxes) {
+      this.releaseBox(b, { x: center.x, y: y + b.size[1] / 2, z: center.z }, rot, vel);
+      y += b.size[1];
+    }
+    this.carried = null;
+    this.stackAbove = [];
+    if (this.ghost) this.ghost.visible = false;
+  }
+
+  // Let go of everything where it is (Dave went flying, got wrapped...).
+  dropAll(vel) {
+    this.carriedBoxes().forEach((b, i) => this.releaseBox(b, this.holdPose(i).pos, yawQuat(this.yaw), vel));
+    this.carried = null;
+    this.stackAbove = [];
+    if (this.ghost) this.ghost.visible = false;
+  }
+
+  // Throw the top carried box along the crosshair.
+  toss() {
+    const boxes = this.carriedBoxes();
+    if (!boxes.length) return;
+    const cfg = CONFIG.climber;
+    const top = boxes[boxes.length - 1];
+    const { pos } = this.holdPose(boxes.length - 1);
+    const v = this.viewDir().multiplyScalar(cfg.tossSpeed);
+    v.y += cfg.tossLift;
+    v.add(this.velocity);
+    this.releaseBox(top, pos, yawQuat(this.yaw), { x: v.x, y: v.y, z: v.z });
+    top.body.setAngvel({ x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3, z: (Math.random() - 0.5) * 3 }, true);
+    if (this.stackAbove.length) this.stackAbove.pop();
+    else this.carried = null;
+    if (this.carried) this.makeGhost();
+    else if (this.ghost) this.ghost.visible = false;
+    sfx.jump();
   }
 
   // In our own view the carried box is see-through so the placement ghost shows through it.
   // The real mesh moves to layer 1 (everyone but us); a translucent copy goes on layer 2 (only us).
-  makeHeldView(ent) {
+  makeHeldView(ent, opacity = 0.35) {
     ent.mesh.traverse((o) => o.layers.set(1));
     const view = ent.mesh.clone(true);
     view.traverse((o) => {
@@ -955,7 +1041,7 @@ export class Climber {
         const see = (m) => {
           const c = m.clone();
           c.transparent = true;
-          c.opacity *= 0.35;
+          c.opacity *= opacity;
           c.depthWrite = false;
           return c;
         };
@@ -963,37 +1049,39 @@ export class Climber {
       }
       o.castShadow = false;
     });
-    this.heldView = view;
+    this.heldViews.set(ent, view);
     this.game.scene.add(view);
   }
 
   dropHeldView(ent) {
     ent.mesh.traverse((o) => o.layers.set(0));
-    if (!this.heldView) return;
-    this.game.scene.remove(this.heldView);
-    this.heldView.traverse((o) => [o.material].flat().forEach((m) => m?.dispose()));
-    this.heldView = null;
+    const view = this.heldViews.get(ent);
+    if (!view) return;
+    this.game.scene.remove(view);
+    view.traverse((o) => [o.material].flat().forEach((m) => m?.dispose()));
+    this.heldViews.delete(ent);
   }
 
-  // Translucent box showing where the carried box will land (climber's camera only).
-  makeGhost(ent) {
+  // Translucent block showing where the carried box (or stack) will land (climber's camera only).
+  makeGhost() {
     if (this.ghost) {
       this.game.scene.remove(this.ghost);
       this.ghost.traverse((o) => o.geometry?.dispose());
     }
-    const geo = new THREE.BoxGeometry(...ent.size);
+    const size = this.carrySize();
+    const geo = new THREE.BoxGeometry(...size);
     const ghost = new THREE.Mesh(
       geo,
       new THREE.MeshBasicMaterial({ color: 0x7cf0a0, transparent: true, opacity: 0.28, depthWrite: false }),
     );
     ghost.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff })));
-    // Drop line from the ghost down to where it lands is implied; mark the footprint on the surface
+    // Mark the footprint on the surface it lands on
     const foot = new THREE.Mesh(
-      new THREE.PlaneGeometry(ent.size[0], ent.size[2]),
+      new THREE.PlaneGeometry(size[0], size[2]),
       new THREE.MeshBasicMaterial({ color: 0x7cf0a0, transparent: true, opacity: 0.45, depthWrite: false }),
     );
     foot.rotation.x = -Math.PI / 2;
-    foot.position.y = -ent.size[1] / 2 + 0.006;
+    foot.position.y = -size[1] / 2 + 0.006;
     ghost.add(foot);
     ghost.renderOrder = 4;
     ghost.traverse((o) => o.layers.set(2));
@@ -1009,7 +1097,7 @@ export class Climber {
       return;
     }
     const p = this.computePlacement();
-    const [, sy] = this.carried.size;
+    const sy = this.carrySize()[1];
     this.ghost.visible = true;
     this.ghost.position.set(p.pos.x, p.pos.y, p.pos.z);
     this.ghost.quaternion.set(p.rot.x, p.rot.y, p.rot.z, p.rot.w);
@@ -1024,10 +1112,9 @@ export class Climber {
   // of our own capsule, then dropped straight down onto whatever is below.
   // onSurface is false when there's nowhere sensible and it would just be let go.
   computePlacement() {
-    const ent = this.carried;
     const cfg = CONFIG.climber;
     const world = this.game.world;
-    const [hx, hy, hz] = ent.size.map((s) => s / 2);
+    const [hx, hy, hz] = this.carrySize().map((s) => s / 2);
     const ext = Math.max(hx, hz);
     const eye = this.eye;
     const dir = this.viewDir();
@@ -1081,7 +1168,7 @@ export class Climber {
 
   putDown() {
     const { pos, rot, vel } = this.computePlacement();
-    this.releaseCarried(pos, rot, vel);
+    this.releaseStack(pos, rot, vel);
     sfx.putdown();
   }
 
@@ -1095,10 +1182,7 @@ export class Climber {
     const vel = this.velocity.clone();
     if (this.state === 'wrapped') vel.set(0, 0, 0);
     if (extraVel) vel.add(extraVel);
-    if (this.carried) {
-      const { pos } = this.holdPose();
-      this.releaseCarried(pos, yawQuat(this.yaw), { x: vel.x, y: vel.y, z: vel.z });
-    }
+    if (this.carried) this.dropAll({ x: vel.x, y: vel.y, z: vel.z });
     this.dropLadder();
     this.onLadder = null;
     this.state = 'ragdoll';
@@ -1185,10 +1269,7 @@ export class Climber {
   // ---------------------------------------------------------------- wrapped into a pallet
 
   wrapInto(body) {
-    if (this.carried) {
-      const { pos } = this.holdPose();
-      this.releaseCarried(pos, yawQuat(this.yaw), { x: 0, y: 0, z: 0 });
-    }
+    if (this.carried) this.dropAll({ x: 0, y: 0, z: 0 });
     const t = this.body.translation();
     const bt = body.translation();
     const inv = quatToThree(body.rotation()).invert();
@@ -1262,11 +1343,13 @@ export class Climber {
     const bob = Math.sin(this.armPhase * 2) * 0.008 * Math.min(1, walkSpeed / 3.5);
     this.armRig.rotation.x = this.carried ? this.holdPitch() - this.pitch : 0;
     if (this.carried) {
-      const { pos } = this.holdPose();
-      this.carried.mesh.position.copy(pos);
-      this.carried.mesh.quaternion.setFromAxisAngle(UP, this.yaw);
-      this.heldView?.position.copy(pos);
-      this.heldView?.quaternion.copy(this.carried.mesh.quaternion);
+      this.carriedBoxes().forEach((b, k) => {
+        const { pos } = this.holdPose(k);
+        b.mesh.position.copy(pos);
+        b.mesh.quaternion.setFromAxisAngle(UP, this.yaw);
+        this.heldViews.get(b)?.position.copy(pos);
+        this.heldViews.get(b)?.quaternion.copy(b.mesh.quaternion);
+      });
       const [sx] = this.carried.size;
       // Gloves flat against the sides of the box, palms in
       this.hands.forEach((arm, i) => {

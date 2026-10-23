@@ -31,6 +31,7 @@ The warehouse is 48 × 32 m, on two levels. Upstairs, five racks (A–E, six bay
 | | Gamepad | Keyboard / mouse |
 |---|---|---|
 | **Climber** move / look | Left / right stick | WASD / mouse or IJKL |
+| Toss the box in hand (top box of a stack) | RB | Q |
 | Jump | A | Space |
 | Pick up / put down a box, pick up / set up / fold a ladder, hold on to the forks | X | E |
 | **Driver** steer / look | Left / right stick | A, D / mouse or IJKL |
@@ -39,7 +40,7 @@ The warehouse is 48 × 32 m, on two levels. Upstairs, five racks (A–E, six bay
 | Swap character (single player) | View | Tab |
 | Pause | Menu | Esc |
 
-Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber and gamepad 2 the Driver. If only one pad is connected, player 2 uses keyboard and mouse. Pause → Swap Roles trades characters. **Invert Look** (title screen or pause menu) flips up/down for the mouse, sticks and I/K; it's remembered in this browser. The pause menu also shows a floor plan of the warehouse with Dave and Ralph marked on it.
+Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber and gamepad 2 the Driver. If only one pad is connected, player 2 uses keyboard and mouse. Pause → Swap Roles trades characters. **Invert Look** (on the Controls screen, from the title or pause menu) flips up/down for the mouse, sticks and I/K; it's remembered in this browser. The pause menu also shows a floor plan of the warehouse with Dave and Ralph marked on it.
 
 ## Layout
 
@@ -62,6 +63,7 @@ Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber an
 - **Tipping:** the tires' sideways grip acts at the floor, so hard cornering rolls the truck. Roll damping (`forklift.rollDamping`) soaks up the lurch of a quick flick of the wheel, so only a sharp turn (over about half lock) held at full throttle (~3.8 m/s) tips it. Gentle turns at full speed, and full-lock turns even slightly below full throttle, stay upright. Raised forks make it tippier. A tipped truck is set back on its wheels after 4 s.
 - **Ramp driving:** the forklift's drive holds it against the slope (like a hydrostatic drive), so on the ramp it drives, brakes and coasts as on the flat: it doesn't run away downhill, and it can stop and reverse back up.
 - **Dashboard:** a screen built into a sloped yellow binnacle on the dash, centred behind the steering wheel, shows a speedometer (mph, needle plus digital readout, red above 8 mph), D/R gear lights, and a fork-height bar with the reading in metres and ticks at the 1.5 m and 3.0 m shelf heights. These replaced the driver's on-screen gear and fork-height boxes.
+- **Stacks and tossing:** picking up a box also lifts whatever is stacked on it, up to 3 boxes (`climber.maxCarry`); aim at the bottom box to take the stack. A taller stack is too much, so Dave takes the top box. He walks a little slower with 2 or 3 (`climber.stackSpeed`), and putting down sets the whole stack down as a neat column where the ghost shows. Q / RB tosses the box in hand (the top one of a stack) along the crosshair at about 6 m/s with a small lob (`climber.tossSpeed`, `tossLift`): handy for lobbing boxes onto a pallet or up onto raised forks. Tossing is never an incident.
 - **Forks can drop fast.** They rise at 0.4 m/s, but holding F/LB speeds the descent up to 3 m/s (2 m/s², stopping hard at the bottom or on release), so a full drop takes about 2 s. Short taps lower gently. **If the forks come down faster than 1.5 m/s with Dave on them** (standing on the blades, holding on, on a pallet on the forks, or on a ladder Ralph is carrying) **his legs break** and it's Ralph's incident ("Ralph broke Dave's legs"): hold the button for under about 0.75 s at a time to bring him down safely. Lowering the forks onto the Climber's head is an incident, and so is a box or pallet falling on it (the spec's optional head hit).
 - **CCTV incident replays:** eight security cameras are mounted high on the walls. 1.5 s after every incident, the game freezes and replays the moment at half speed in black and white. It cuts between up to three cameras with a clear view of the Climber, and any button skips. The replay is built from a rolling 5 s recording of everything that moves (`src/systems/replay.js`, tuning under `replay` in `config.js`).
 - **Ralph's incidents:** tipping the forklift is an incident ("Ralph tipped the forklift"), with a replay that follows the truck. A rack falling over is an incident too, blamed on Ralph if the forklift touched it in the last few seconds. Racks falling within 6 s of each other count as one domino incident with a growing banner ("Ralph took out Racks D and E").

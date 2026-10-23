@@ -22,7 +22,11 @@ export const CONFIG = {
     gravity: 9.81,
     characterMass: 70, // used when the climber shoves boxes and pallets
     pushStrength: 2.5, // how hard walking into a box shoves it
-    reach: 1.5, // pick up: aimed box surface within this distance of the chest
+    reach: 1.5,
+    maxCarry: 3, // boxes Dave can carry as a stack (pick up the bottom one)
+    stackSpeed: [1, 0.85, 0.75], // walk speed factor carrying 1, 2, 3 boxes
+    tossSpeed: 6, // m/s along the crosshair when he throws a box (Q / RB)
+    tossLift: 1.5, // plus a little upward lob // pick up: aimed box surface within this distance of the chest
     chestDrop: 0.45, // chest is this far below the eye
     placeReach: 2.2, // put down: how far the aim ray looks for a surface
     lookSensitivity: 0.0022, // rad per mouse pixel

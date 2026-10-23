@@ -13,7 +13,7 @@ function deadzone2(x, y) {
 
 const blank = () => ({
   moveX: 0, moveY: 0, lookX: 0, lookY: 0,
-  jump: false, interact: false, interactHeld: false,
+  jump: false, interact: false, interactHeld: false, toss: false,
   steer: 0, throttle: 0, brake: 0, liftUp: 0, liftDown: 0,
   swap: false, pause: false,
 });
@@ -149,6 +149,7 @@ export class Input {
         a.jump ||= this.pressed.has('Space');
         a.interact ||= this.pressed.has('KeyE');
         a.interactHeld ||= this.key('KeyE') > 0;
+        a.toss ||= this.pressed.has('KeyQ');
         a.swap ||= this.pressed.has('Tab');
       } else {
         const p = this.pad(d);
@@ -162,6 +163,7 @@ export class Input {
         a.jump ||= this.padPressed(p, BTN.A);
         a.interact ||= this.padPressed(p, BTN.X);
         a.interactHeld ||= !!p.buttons[BTN.X]?.pressed;
+        a.toss ||= this.padPressed(p, BTN.RB);
         a.swap ||= this.padPressed(p, BTN.BACK);
         a.pause ||= this.padPressed(p, BTN.START);
       }

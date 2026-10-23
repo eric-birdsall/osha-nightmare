@@ -141,8 +141,16 @@ export class Hud {
           else p = `Walk into the steps to climb · Fold ladder <kbd>${key}</kbd>`;
         }
         else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
-        else if (c.carried) p = `Put down SKU ${c.carried.sku} <kbd>${key}</kbd>`;
-        else if (c.target) p = `Pick up SKU ${c.target.sku} <kbd>${key}</kbd>`;
+        else if (c.carried) {
+          const n = c.carriedBoxes().length;
+          const toss = `Toss${n > 1 ? ' top box' : ''} <kbd>${game.keyHint(role, 'toss')}</kbd>`;
+          p = n > 1 ? `Put down ${n} boxes <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku} <kbd>${key}</kbd> · ${toss}`;
+        } else if (c.target) {
+          const n = c.targetStack;
+          p = n > 1 && n <= CONFIG.climber.maxCarry
+            ? `Pick up ${n} boxes <kbd>${key}</kbd> · bottom SKU ${c.target.sku}`
+            : `Pick up SKU ${c.target.sku} <kbd>${key}</kbd>`;
+        }
         // Knocked-over racking nearby: offer the reset (alongside any box prompt), and fill a
         // ring round the crosshair while E/X is held
         const hold = CONFIG.racks.resetHoldTime;

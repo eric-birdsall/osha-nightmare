@@ -53,7 +53,8 @@ function refreshScreens() {
   for (const s of Object.values(screens)) s.classList.toggle('hidden', s !== vis);
   for (const b of document.querySelectorAll('.coop-only')) b.style.display = game?.mode === 'coop' ? '' : 'none';
   focusIdx = 0;
-  if (vis) setFocus(0);
+  // The Controls screen opens on Back, so a stray confirm can't flip Invert Look
+  if (vis) setFocus(Math.max(0, buttons(vis).findIndex((b) => b.dataset.act === 'back')));
 }
 
 function setFocus(i) {
@@ -208,12 +209,12 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-const noEdges = (a) => ({ ...a, lookX: 0, lookY: 0, jump: false, interact: false, swap: false, pause: false });
+const noEdges = (a) => ({ ...a, lookX: 0, lookY: 0, jump: false, interact: false, toss: false, swap: false, pause: false });
 
 // One-shot presses and look deltas collected since the last physics step.
 const latched = { climber: null, driver: null };
 function clearLatched() {
-  latched.climber = { jump: false, interact: false, lookX: 0, lookY: 0 };
+  latched.climber = { jump: false, interact: false, toss: false, lookX: 0, lookY: 0 };
   latched.driver = { lookX: 0, lookY: 0 };
 }
 clearLatched();
@@ -221,6 +222,7 @@ function latch(actions) {
   const c = latched.climber;
   c.jump ||= actions.climber.jump;
   c.interact ||= actions.climber.interact;
+  c.toss ||= actions.climber.toss;
   c.lookX += actions.climber.lookX;
   c.lookY += actions.climber.lookY;
   latched.driver.lookX += actions.driver.lookX;

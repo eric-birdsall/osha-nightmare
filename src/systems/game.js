@@ -188,7 +188,7 @@ export class Game {
   keyHint(role, action) {
     const kb = this.usesKeyboard(role);
     const pad = this.devices[role].some((d) => d.startsWith('pad'));
-    const map = { interact: ['E', 'X'] };
+    const map = { interact: ['E', 'X'], toss: ['Q', 'RB'] };
     const [k, p] = map[action];
     if (kb && pad && this.mode === 'single') return `${k} / ${p}`;
     return kb ? k : p;

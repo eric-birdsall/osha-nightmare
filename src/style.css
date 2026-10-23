@@ -226,6 +226,14 @@ h2.big {
 .cols .menu {
   min-width: 260px;
 }
+/* Controls screen: Invert Look and Back side by side */
+.ctl-btns {
+  display: flex;
+  gap: 14px;
+}
+.ctl-btns .btn {
+  flex: 1;
+}
 /* Pause screen floor plan: a blueprint pinned to the panel */
 .map {
   flex: 1;
