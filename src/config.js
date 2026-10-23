@@ -61,7 +61,7 @@ export const CONFIG = {
     reverseAccel: 1.6,
     brakeDecel: 5.33, // 4 m/s to 0 in ~1.5 m
     coastDecel: 0.7,
-    parkDecel: 6.0, // idle forklift in single player holds still
+    parkDecel: 0.7, // m/s²: unattended (you swapped to Dave), it coasts like Ralph taking his foot off
     traction: 1.0, // tire friction coefficient (caps drive/lateral impulses)
     steerMax: deg(60),
     steerRate: deg(140), // how fast the rear wheels turn
