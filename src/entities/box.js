@@ -147,7 +147,7 @@ function boxGeometry(type) {
 
 // type: 'small' | 'medium' | 'large'
 // sku: 3-digit number printed on every side
-// item: order line ('A' | 'B') when this is the box the order asks for, else null
+// item: order line ('A', 'B' or 'C') when this is one of the SKUs the order asks for, else null
 export function createBox(game, { type = 'medium', sku, item = null, pos, yaw = 0 }) {
   const spec = CONFIG.objects[type];
   const [sx, sy, sz] = spec.size;

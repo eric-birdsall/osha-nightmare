@@ -4,12 +4,12 @@ import { COL } from '../physics.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { sfx } from '../systems/audio.js';
 import { LAYOUT } from './layout.js';
-import { addPuddle } from './spills.js';
+import { addPuddle } from './puddles.js';
 
 // OSHA violations dotted round the building (placed in LAYOUT.hazards):
 //  - an overloaded outlet with power strips daisy-chained off it, which shoots cartoon sparks
-//  - an electrical panel with a leaking pipe dripping on it: it zaps, and its puddle is slippery
-//  - unlabelled barrels leaking brightly coloured, slippery liquids; knock one over and it gushes
+//  - an electrical panel with a leaking pipe dripping on it: it zaps, into a puddle on the floor
+//  - unlabelled barrels leaking brightly coloured liquids; knock one over and it gushes
 //  - fire exits blocked by junk
 // (The missing section of railing is in level.js, where the railings are built.)
 
@@ -68,7 +68,7 @@ function canvasTexture(w, h, draw) {
   return tex;
 }
 
-// Where each hazard is, for incident reports and keeping random spills off them: [{ name, x, z, r }]
+// Where each hazard is, for incident reports: [{ name, x, z, r }]
 export function hazardZones() {
   const hz = LAYOUT.hazards;
   const wallSpot = (h, out) => {
@@ -278,9 +278,9 @@ function buildPanel(game, sparks) {
   // Water streaking down the front of the panel
   const wet = new THREE.MeshBasicMaterial({ color: 0x8fc8ff, transparent: true, opacity: 0.45, depthWrite: false });
   put(g, new THREE.Mesh(new THREE.PlaneGeometry(0.1, 1.15), wet), 0.12, 1.5, 0.258);
-  // ...and the puddle it makes: properly slippery
+  // ...and the puddle it makes (just for looks: nothing's slippery)
   const pp = g.localToWorld(new THREE.Vector3(0.1, 0, 0.9));
-  const puddle = addPuddle(game, { x: pp.x, y: 0, z: pp.z, r: 1.1, liquid: { name: 'water', color: '#4f86b0', alpha: 0.55 } });
+  addPuddle(game, { x: pp.x, y: 0, z: pp.z, r: 1.1, liquid: { color: '#4f86b0', alpha: 0.55 } });
   // A bucket nearby, catching none of it
   const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.13, 0.3, 14), flatMat(YELLOW));
   put(g, bucket, 0.9, 0.15, 0.45);
@@ -333,7 +333,7 @@ function buildPanel(game, sparks) {
     flash = Math.max(0, flash - dt);
     light.intensity = flash * 20;
   };
-  return { update, puddle };
+  return { update };
 }
 
 // ---------------------------------------------------------------- mystery barrels
@@ -382,12 +382,12 @@ function buildBarrels(game) {
   const { x, z, y } = LAYOUT.hazards.barrels;
   const spots = [[0, 0], [0.66, 0.12], [0.2, 0.64], [0.12, -0.66], [0.78, -0.52]];
   const barrels = [];
-  const puddles = [];
+  const turn = [-0.3, 0.25, -0.1, 0.35, 0.05]; // each leaks a little off east (fixed, like the rest of the warehouse)
   spots.forEach(([dx, dz], i) => {
     const liquid = MYSTERY[i % MYSTERY.length];
     const mesh = barrelMesh(DRUMS[i % DRUMS.length], liquid, i % 2 === 0);
     // Leak toward the room (east), turned a little each
-    const yaw = Math.PI / 2 + (Math.random() - 0.5) * 0.8;
+    const yaw = Math.PI / 2 + turn[i];
     const body = game.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(x + dx, y + HALF_H + 0.01, z + dz)
@@ -402,9 +402,9 @@ function buildBarrels(game) {
     // The puddle each one has made already, in front of its leak
     const px = x + dx + Math.sin(yaw) * 0.75;
     const pz = z + dz + Math.cos(yaw) * 0.75;
-    puddles.push(addPuddle(game, { x: px, y, z: pz, r: 0.45 + Math.random() * 0.35, liquid }));
+    addPuddle(game, { x: px, y, z: pz, r: 0.5 + (i % 3) * 0.12, liquid });
   });
-  return { barrels, puddles };
+  return { barrels };
 }
 
 // ---------------------------------------------------------------- blocked fire exits
@@ -434,20 +434,19 @@ function buildFireExit(game, { wall, at, y }) {
   solidIn(game, g, [1.9, 1.6, 1.4], [0.15, 0.8, 0.75]);
 }
 
-// Builds them all. Returns { spills, update(dt, listeners) }: spills to add to the level's, and a
-// per-frame update; listeners are the camera positions that hear the sparks.
+// Builds them all. Returns { update(dt, listeners) }: a per-frame update; listeners are the
+// camera positions that hear the sparks.
 export function buildHazards(game, { floorHeightAt }) {
   const sparks = new Sparks(game.scene);
   const outlet = buildOutlet(game, sparks);
   const panel = buildPanel(game, sparks);
-  const { barrels, puddles } = buildBarrels(game);
+  const { barrels } = buildBarrels(game);
   for (const e of LAYOUT.hazards.fireExits) buildFireExit(game, e);
   const up = new THREE.Vector3();
   let listeners = [];
   // 0..1: how loud something at p is for the nearest listener
   const loud = (p) => Math.max(0, ...listeners.map((l) => 1 - l.distanceTo(p) / 16));
   return {
-    spills: [panel.puddle, ...puddles],
     update(dt, ears) {
       listeners = ears;
       outlet(dt, loud);
@@ -461,7 +460,7 @@ export function buildHazards(game, { floorHeightAt }) {
         b.gushed = true;
         b.mesh.userData.stream.visible = false;
         const t = b.body.translation();
-        game.level.spills.push(addPuddle(game, { x: t.x, y: floorHeightAt(t.x, t.z), z: t.z, r: 1.0, liquid: b.liquid }));
+        addPuddle(game, { x: t.x, y: floorHeightAt(t.x, t.z), z: t.z, r: 1.0, liquid: b.liquid });
       }
     },
   };

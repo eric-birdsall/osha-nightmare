@@ -7,7 +7,8 @@ import { createBox } from '../entities/box.js';
 import { createPallet } from '../entities/pallet.js';
 import { createLadderStand } from '../entities/ladder.js';
 import { buildParking, parkingRect } from './parking.js';
-import { buildSpills } from './spills.js';
+import WAREHOUSE from './warehouse-v1.json';
+import ORDERS_FILE from './orders.json';
 import { LAYOUT, rackX1 } from './layout.js';
 import { buildWrapper } from './wrapper.js';
 import { buildPacking, packingRect } from './packing.js';
@@ -266,48 +267,12 @@ function makeZone(game, name, cx, cz, w, d) {
   };
 }
 
-// Unique random 3-digit SKUs for every box in the warehouse. Each SKU also has a "look" (box
-// colour, brand logo, FRAGILE or not): its own, except a near-miss decoy copies the look of the
-// SKU it imitates, so only the number tells them apart.
-class SkuPool {
-  constructor() {
-    this.used = new Set();
-    this.looks = new Map();
-  }
-  take(n, look = n) {
-    if (n < 100 || n > 999 || this.used.has(n)) return null;
-    this.used.add(n);
-    this.looks.set(n, look);
-    return n;
-  }
-  look(sku) {
-    return this.looks.get(sku) ?? sku;
-  }
-  next() {
-    for (;;) {
-      const n = this.take(100 + Math.floor(Math.random() * 900));
-      if (n) return n;
-    }
-  }
-  // A plausible misread of `sku`: two neighbouring digits swapped, or one digit off by one.
-  nearMiss(sku) {
-    const d = String(sku).split('');
-    for (let tries = 0; tries < 30; tries++) {
-      const t = [...d];
-      const i = Math.floor(Math.random() * 2);
-      if (Math.random() < 0.5 && t[i] !== t[i + 1]) [t[i], t[i + 1]] = [t[i + 1], t[i]];
-      else {
-        const j = Math.floor(Math.random() * 3);
-        t[j] = String((Number(t[j]) + (Math.random() < 0.5 ? 1 : 9)) % 10);
-      }
-      const n = this.take(Number(t.join('')), this.look(sku));
-      if (n) return n;
-    }
-    return this.next();
-  }
-}
-
-const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+// The warehouse's stock never changes: every shelf face's boxes (SKU, look, size) and the BACKSTOCK
+// signs come from a baked planogram (see tools/bake-warehouse.js), and the orders pick from it.
+// A SKU's "look" (box colour, brand, FRAGILE or not) is its own number, except a near-miss decoy
+// wears the look of the SKU it imitates, so only the number tells them apart.
+const ORDERS = ORDERS_FILE.orders;
+export { ORDERS };
 
 // Backstock placard hung under a short pick face's beam: where the rest of that SKU is kept.
 function backstockSign(location) {
@@ -333,110 +298,40 @@ function backstockSign(location) {
   return new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.23), new THREE.MeshBasicMaterial({ map: tex }));
 }
 
-// Three boxes per shelf along the open face, in every bay of every rack. The order has two
-// lines, each a quantity of one SKU, picked from the upstairs racks:
-//  A: 3 boxes from shelf 2 of any rack (reachable from the forks or an A-frame ladder). The pick
-//     face is always one short: a BACKSTOCK sign on its beam says which lower-level slot holds the rest.
-//  B: 1 or 2 boxes from shelf 3, the top, of a different rack; sometimes short as well.
-// Backstock slots are on the bottom shelf of the lower-level racks, in reach from the floor, and
-// hold a full row of the SKU. A short pick face has a gap where the missing box would be; other
-// spare spots in an order slot usually hold a near-miss SKU (a decoy).
-function stockShelves(game, racks) {
-  const cfg = CONFIG.order;
-  game.skus = new SkuPool();
-  const upstairs = RACKS.filter((r) => !r.base).map((r) => r.name);
-  const downstairs = RACKS.filter((r) => r.base).map((r) => r.name);
-  // A random bay of the named rack
-  const bay = (name) => Math.floor(Math.random() * RACKS.find((r) => r.name === name).bays);
-  // A random slot { rack, bay, shelf } on one of these racks
-  const slotIn = (names, shelf) => {
-    const rack = pickOne(names);
-    return { rack, bay: bay(rack), shelf: shelf ?? Math.floor(Math.random() * RACKS.find((r) => r.name === rack).shelves.length) };
-  };
-  const rackA = pickOne(upstairs);
-  const qtyB = Math.random() < 0.5 ? 1 : 2;
-  const lines = {
-    A: { rack: rackA, bay: bay(rackA), shelf: 1, qty: 3, short: 1 },
-    B: { ...slotIn(upstairs.filter((n) => n !== rackA), 2), qty: qtyB, short: qtyB > 1 && Math.random() < cfg.backstockChance ? 1 : 0 },
-  };
-  const order = [];
-  const slots = []; // [{ rack, bay, shelf, line, sku, count, gap, backstock }]
-  for (const [line, l] of Object.entries(lines)) {
-    l.sku = game.skus.next();
-    slots.push({ rack: l.rack, bay: l.bay, shelf: l.shelf, line, sku: l.sku, count: l.qty - l.short, gap: l.short > 0, decoys: true });
-    let backstock = null;
-    if (l.short) {
-      // A free bottom-shelf slot downstairs
-      let b;
-      do b = slotIn(downstairs, 0);
-      while (slots.some((o) => o.rack === b.rack && o.bay === b.bay && o.shelf === b.shelf));
-      backstock = locationCode(b.rack, b.bay, b.shelf);
-      slots.push({ ...b, line, sku: l.sku, count: 3 });
-      slots[slots.length - 2].backstock = backstock;
-    }
-    order.push({ line, sku: l.sku, qty: l.qty, location: locationCode(l.rack, l.bay, l.shelf), backstock });
-  }
-  // Other stock has backstock too: BACKSTOCK signs on more pick faces upstairs, each pointing to
-  // a full row of that face's SKU on a lower-level bottom shelf (so a sign alone proves nothing)
-  const taken = (r, b, s) => slots.some((o) => o.rack === r && o.bay === b && o.shelf === s);
-  for (let n = 0; n < cfg.extraBackstock; n++) {
-    let face;
-    let store;
-    let tries = 0;
-    do face = slotIn(upstairs);
-    while (taken(face.rack, face.bay, face.shelf) && ++tries < 50);
-    do store = slotIn(downstairs, 0);
-    while (taken(store.rack, store.bay, store.shelf) && ++tries < 100);
-    if (tries >= 100) break;
-    const sku = game.skus.next();
-    const short = Math.random() < 0.5;
-    slots.push({ ...face, line: null, sku, count: short ? 1 : 2, gap: short, backstock: locationCode(store.rack, store.bay, store.shelf) });
-    slots.push({ ...store, line: null, sku, count: 3 });
-  }
-
-  const orderBoxes = { A: [], B: [] };
-  const types = ['small', 'medium', 'medium', 'large'];
+// Three boxes per shelf along the open face, in every bay of every rack, exactly as the planogram
+// has them (a null is a gap). Boxes of this order's SKUs know which line they're for. The order's
+// locations come from where its SKUs sit on the main floor; a short face's BACKSTOCK sign says
+// where the rest is, on the mezzanine.
+function stockShelves(game, racks, spec) {
+  const looks = new Map();
+  for (const spots of Object.values(WAREHOUSE.faces)) for (const sp of spots) if (sp) looks.set(sp[0], sp[1]);
+  game.skus = { look: (sku) => looks.get(sku) ?? sku };
+  const lineOf = new Map(spec.lines.map((l, i) => [l.sku, 'ABC'[i]]));
+  const orderBoxes = Object.fromEntries(spec.lines.map((l, i) => ['ABC'[i], []]));
   for (const rack of RACKS) {
     const { name, z0, z1, face, base } = rack;
     const ent = racks.find((r) => r.name === name);
     for (let b = 0; b < rack.bays; b++) {
       for (let shelf = 0; shelf < rack.shelves.length; shelf++) {
-        const slot = slots.find((o) => o.rack === name && o.bay === b && o.shelf === shelf);
-        // What goes in each of the three spots: 'sku' (an order box), 'decoy', 'gap' or a random box
-        const spots = [null, null, null];
-        if (slot) {
-          const fill = [1, 0, 2].slice(0, slot.count); // middle first, so a short face shows a gap at the end
-          for (const i of fill) spots[i] = 'sku';
-          const free = [0, 1, 2].filter((i) => !spots[i]);
-          if (slot.gap && free.length) spots[free.shift()] = 'gap';
-          if (slot.decoys && free.length && Math.random() < cfg.decoyChance) spots[pickOne(free)] = 'decoy';
-        }
-        [-0.85, 0, 0.85].forEach((dx, i) => {
-          if (spots[i] === 'gap') return;
-          const isOrder = spots[i] === 'sku';
-          const type = isOrder ? 'medium' : pickOne(types);
+        const at = locationCode(name, b, shelf);
+        (WAREHOUSE.faces[at] || []).forEach((sp, i) => {
+          if (!sp) return;
+          const [sku, , type, jitter] = sp;
           const half = CONFIG.objects[type].size[2] / 2;
           const z = face === 'south' ? z1 - BEAM_D - 0.03 - half : z0 + BEAM_D + 0.03 + half;
-          let sku;
-          if (isOrder) sku = slot.sku;
-          else if (spots[i] === 'decoy') sku = game.skus.nearMiss(slot.sku);
-          else sku = game.skus.next();
-          const box = createBox(game, {
-            type,
-            sku,
-            item: isOrder ? slot.line : null, // null for other stock's backstock rows
-            pos: [bayX(rack, b) + dx + (Math.random() - 0.5) * 0.12, base + rack.shelves[shelf] + 0.005, z],
-          });
-          if (isOrder && slot.line) orderBoxes[slot.line].push(box);
+          const item = lineOf.get(sku) ?? null;
+          const box = createBox(game, { type, sku, item, pos: [bayX(rack, b) + (i - 1) * 0.85 + jitter, base + rack.shelves[shelf] + 0.005, z] });
+          if (item) orderBoxes[item].push(box);
           // Where it was stocked, so resetting the racking can put it back
           const t = box.body.translation();
           const r = box.body.rotation();
           box.home = { rack: name, pos: { x: t.x, y: t.y, z: t.z }, rot: { x: r.x, y: r.y, z: r.z, w: r.w } };
           ent.stock.push(box);
         });
-        if (slot?.backstock) {
+        const to = WAREHOUSE.signs[at];
+        if (to) {
           // Hung under this shelf's beam, beside the location tag, so it moves with the rack
-          const sign = backstockSign(slot.backstock);
+          const sign = backstockSign(to);
           const fz = face === 'south' ? z1 + 0.016 : z0 - 0.016;
           sign.position.set(bayX(rack, b) + 0.62 - (rack.x0 + rackX1(rack)) / 2, rack.shelves[shelf] - BEAM_H - 0.13, fz - (z0 + z1) / 2);
           sign.rotation.y = face === 'south' ? 0 : Math.PI;
@@ -445,6 +340,18 @@ function stockShelves(game, racks) {
       }
     }
   }
+  // Each line's pick face: the main-floor face holding most of its SKU
+  const mainFloor = new Set(RACKS.filter((r) => !r.base).map((r) => r.name));
+  const order = spec.lines.map((l, i) => {
+    let best = null;
+    let most = 0;
+    for (const [at, spots] of Object.entries(WAREHOUSE.faces)) {
+      const n = spots.filter((sp) => sp && sp[0] === l.sku).length;
+      if (mainFloor.has(at[0]) && n > most) [best, most] = [at, n];
+    }
+    if (!best) console.warn(`Order ${spec.id}: SKU ${l.sku} isn't on any main-floor shelf`);
+    return { line: 'ABC'[i], sku: l.sku, qty: l.qty, location: best, backstock: WAREHOUSE.signs[best] ?? null };
+  });
   return { order, orderBoxes };
 }
 
@@ -1140,6 +1047,8 @@ function buildDocks(game) {
 }
 
 export function buildLevel(game) {
+  // This level's order (orders.json): which SKUs, how many, and which dock
+  const spec = ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0];
   const { scene } = game;
   const { halfX, halfZ, wallH } = ROOM;
 
@@ -1171,7 +1080,7 @@ export function buildLevel(game) {
   const wallHalfY = (wallH - FLOOR_BOTTOM) / 2;
   const wallY = (wallH + FLOOR_BOTTOM) / 2;
   // This order's dock: its wall gets a doorway there
-  openDock = DOCKS[Math.floor(Math.random() * DOCKS.length)];
+  openDock = DOCKS.find((d) => d.name === spec.dock) ?? DOCKS[0];
   const doorFloor = dockFrame(openDock).y;
   // Each wall as boxes along it ([half size, centre]); the north and south walls run past the
   // corners to close them
@@ -1302,28 +1211,24 @@ export function buildLevel(game) {
   const parking = buildParking(game);
 
   // Stock every shelf and pick this shift's order
-  const { order, orderBoxes } = stockShelves(game, racks);
+  const { order, orderBoxes } = stockShelves(game, racks, spec);
 
   // Loose boxes on the open floor for stacking
-  for (const [type, x, y, z] of LAYOUT.looseBoxes) {
-    const box = createBox(game, { type, sku: game.skus.next(), pos: [x, y, z], yaw: (Math.random() - 0.5) * 0.3 });
+  LAYOUT.looseBoxes.forEach(([type, x, y, z], i) => {
+    const [sku, yaw] = WAREHOUSE.loose[i];
+    const box = createBox(game, { type, sku, pos: [x, y, z], yaw });
     // Home is where it started (no rack): a FRAGILE one that goes off turns up here again
     const t = box.body.translation();
     const r = box.body.rotation();
     box.home = { pos: { x: t.x, y: t.y, z: t.z }, rot: { x: r.x, y: r.y, z: r.z, w: r.w } };
-  }
+  });
 
   // A-frame ladders: two on each LADDERS stand, upstairs and down
   for (const st of LAYOUT.ladderStands) createLadderStand(game, { pos: [st.x, st.y, st.z], yaw: st.yaw });
 
-  // Spills (2-3, random), hard to see
   const climberStart = new THREE.Vector3(...LAYOUT.climberSpawn.pos);
   // OSHA violations: sparking outlet, dripping electrical panel, mystery barrels, blocked fire exits
   const hazards = buildHazards(game, { floorHeightAt });
-  const spills = [
-    ...buildSpills(game, { wrapZone, stairs: STAIRS, keepClear: hazardZones(), spawns: [climberStart, parking.pos], floorHeightAt }),
-    ...hazards.spills, // the panel's puddle and the barrels' leaks are slippery too
-  ];
 
   // Empty pallets (fork pockets open toward ±local Z)
   for (const [x, y, z, yaw] of LAYOUT.pallets) createPallet(game, { pos: [x, y, z], yaw });
@@ -1339,7 +1244,6 @@ export function buildLevel(game) {
     order, // [{ line, sku, location }]
     racks,
     fans, // giant ceiling fans (the game turns them)
-    spills, // [{ x, y, z, r, liquid }]
     climberSpawn: { pos: climberStart, yaw: LAYOUT.climberSpawn.yaw },
     spawnPoints: LAYOUT.spawnPoints.map((p) => new THREE.Vector3(...p)),
     forkliftSpawn: parking, // the parking bay

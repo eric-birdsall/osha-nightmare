@@ -112,7 +112,8 @@ function rackDownLine(rows, byRalph, again) {
 
 // Owns one playthrough: physics world, scene, entities, order state, swap logic.
 export class Game {
-  constructor({ mode, hud }) {
+  constructor({ mode, hud, order = 1 }) {
+    this.orderId = order; // which of the fixed orders (orders.json) this level is
     this.mode = mode; // 'single' | 'coop'
     this.hud = hud;
     this.world = new RAPIER.World({ x: 0, y: CONFIG.physics.gravity, z: 0 });
@@ -143,7 +144,7 @@ export class Game {
     this.incidentCounts = {};
     this.days = CONFIG.hud.startDays;
     this.dayTimer = 0;
-    this.itemStatus = { A: 0, B: 0 }; // boxes of each order line on the best-stocked pallet
+    this.itemStatus = Object.fromEntries(this.level.order.map((o) => [o.line, 0])); // boxes of each order line on the best-stocked pallet
     this.statusTimer = 0;
     this.dockRest = new Map();
     this.hintCooldown = 0;
@@ -274,13 +275,14 @@ export class Game {
     if (this.statusTimer <= 0) {
       this.statusTimer = 0.2;
       // Order boxes per line on the best-stocked load (they all have to end up on one pallet)
-      const best = { A: 0, B: 0 };
+      const lines = this.level.order.map((o) => o.line);
+      const best = Object.fromEntries(lines.map((k) => [k, 0]));
       for (const ent of this.entities) {
         if (ent.kind !== 'wrapped' && ent.kind !== 'pallet') continue;
         const n = this.lineCounts(ent);
-        for (const k of ['A', 'B']) best[k] = Math.max(best[k], n[k]);
+        for (const k of lines) best[k] = Math.max(best[k], n[k]);
       }
-      for (const k of ['A', 'B']) {
+      for (const k of lines) {
         if (best[k] > this.itemStatus[k]) sfx.check();
         this.itemStatus[k] = best[k];
       }
@@ -323,7 +325,7 @@ export class Game {
 
   // Order boxes of each line on a pallet or wrapped load: wrapped in, plus loose on top.
   lineCounts(ent) {
-    const n = { A: ent.items?.A || 0, B: ent.items?.B || 0 };
+    const n = Object.fromEntries(this.level.order.map((o) => [o.line, ent.items?.[o.line] || 0]));
     for (const e of collectStack(this, ent)) if (e.item) n[e.item]++;
     return n;
   }

@@ -3,7 +3,6 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL, castRay, yawQuat, quatToThree } from '../physics.js';
 import { floorHeightAt } from '../world/level.js';
-import { onSpill } from '../world/spills.js';
 import { boxLook } from './box.js';
 import { DriftFx } from './driftfx.js';
 import { boxMesh, flatMat } from '../util/meshes.js';
@@ -456,10 +455,7 @@ export class Forklift {
       body.applyImpulse({ x: 0, y: body.mass() * dc.hop, z: 0 }, true);
       sfx.driftHop();
     }
-    // Wet wheels (on a spill) lose most of their traction
-    let wet = 0;
-    for (const w of WHEELS) if (onSpill(this.game.level?.spills, new THREE.Vector3(...w.pos).applyQuaternion(q).add(t))) wet++;
-    this.grip = 1 - (wet / 4) * (1 - CONFIG.spill.forkliftGrip);
+    this.grip = 1; // tyre traction (1 = full; nothing on the floor is slippery)
 
     const lv = body.linvel();
     const vel = new THREE.Vector3(lv.x, lv.y, lv.z);
@@ -692,7 +688,7 @@ export class Forklift {
     g.textAlign = 'left';
     g.fillText('PICK LIST', 28, 52);
     g.textAlign = 'right';
-    g.fillText('ORDER #1', W - 28, 52);
+    g.fillText(`ORDER #${game.orderId ?? 1}`, W - 28, 52);
     g.fillStyle = '#c62828';
     g.fillRect(28, 82, W - 56, 4);
     // Column headings on a yellow band

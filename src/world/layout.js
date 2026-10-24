@@ -1,5 +1,5 @@
 // The warehouse layout: where the building's features, racks, props and start spots are.
-// level.js, parking.js, spills.js, the CCTV cameras and the pause screen's floor plan all work
+// level.js, parking.js, the CCTV cameras and the pause screen's floor plan all work
 // from this, so trying a new layout is mostly a matter of editing the numbers here.
 // Axes: x runs west to east, z north to south, y up; y = 0 is the main floor. All in metres.
 //

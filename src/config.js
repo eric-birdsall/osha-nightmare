@@ -170,14 +170,6 @@ export const CONFIG = {
     forkliftScale: 0.25, // the forklift only gets shoved, not launched
   },
 
-  spill: {
-    count: [2, 3], // spills per order (min, max)
-    radius: [1.2, 1.6], // m (2.4-3.2 m across: room for the whole forklift)
-    daveGrip: 0.06, // Dave's grip on a spill (of normal): he slides along with whatever momentum he had
-    forkliftGrip: 0.1, // tyre traction per wet wheel (of normal)
-    friction: 0.03, // the slick patch loose things (boxes, pallets, ladders) slide on
-  },
-
   order: {
     decoyChance: 0.6, // chance an order slot also holds a near-miss SKU next to the right box
     extraBackstock: 6, // BACKSTOCK signs (with real backstock behind them) on stock that isn't on the order

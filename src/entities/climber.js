@@ -5,7 +5,6 @@ import { COL, G, groups, castRay, yawQuat, quatToThree } from '../physics.js';
 import { floorHeightAt, floorHeightNear, ROOM } from '../world/level.js';
 import { buildLadderGhost, ladderFootprint } from './ladder.js';
 import { collectStack } from '../systems/wrapping.js';
-import { onSpill } from '../world/spills.js';
 import { flatMat } from '../util/meshes.js';
 import { spawnRagdoll } from '../systems/ragdoll.js';
 import { WorkerModel, firstPersonArm } from './worker.js';
@@ -199,9 +198,7 @@ export class Climber {
     const disp = new THREE.Vector3();
     let liftY = 0; // a rising platform carries us up directly (the controller can't push out of a surface)
     if (this.grounded) {
-      // On a spill there's next to no grip: he keeps sliding the way he was going
-      const grip = onSpill(this.game.level.spills, this.feet) ? CONFIG.spill.daveGrip : 1;
-      approach(this.relVel, wish, cfg.groundAccel * grip * dt);
+      approach(this.relVel, wish, cfg.groundAccel * dt);
       if (free && a.jump) {
         this.grounded = false;
         this.jumpedThisStep = true;

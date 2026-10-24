@@ -5,7 +5,7 @@ import { Input } from './systems/input.js';
 import { Hud } from './systems/hud.js';
 import { Game } from './systems/game.js';
 import { unlockAudio, sfx } from './systems/audio.js';
-import { DOCKS } from './world/level.js';
+import { DOCKS, ORDERS } from './world/level.js';
 import { drawFloorPlan } from './world/floorplan.js';
 
 await RAPIER.init();
@@ -112,7 +112,7 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   unlockAudio();
   const act = b.dataset.act;
-  if (act === 'single' || act === 'coop') startGame(act);
+  if (act === 'single' || act === 'coop') startGame(act, urlOrder());
   else if (act === 'controls' || act === 'howto') {
     overlay = act;
     screens[act].querySelector('.panel').scrollTop = 0; // always from the top
@@ -122,7 +122,7 @@ document.addEventListener('click', (e) => {
     input.setInvertY(!input.invertY);
     refreshInvert();
   } else if (act === 'resume') resume();
-  else if (act === 'restart') startGame(game.mode);
+  else if (act === 'restart') startGame(game.mode, game.orderId);
   else if (act === 'swaproles') {
     game.swapRoles();
     resume();
@@ -147,9 +147,15 @@ function wantsPointer() {
   return game && (game.mode === 'single' || game.usesKeyboard('climber') || game.usesKeyboard('driver'));
 }
 
-function startGame(mode) {
+// Which fixed order to play until there's a level select: ?order=3 in the URL, else Order 1
+function urlOrder() {
+  const n = Number(new URLSearchParams(location.search).get('order'));
+  return ORDERS.some((o) => o.id === n) ? n : 1;
+}
+
+function startGame(mode, order = 1) {
   game?.dispose();
-  game = new Game({ mode, hud });
+  game = new Game({ mode, hud, order });
   game.assignDevices(input);
   game.onComplete = showComplete;
   state = 'playing';
