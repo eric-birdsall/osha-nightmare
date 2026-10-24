@@ -1,10 +1,10 @@
 {
   "warehouse": 1,
   "orders": [
-    {"id":1,"title":"Tutorial","dock":"Dock 2","lines":[{"sku":355,"qty":1}]},
-    {"id":2,"title":"Reach for it","dock":"Dock 2","lines":[{"sku":584,"qty":3}]},
-    {"id":3,"title":"Top shelf","dock":"Dock 1","lines":[{"sku":929,"qty":2},{"sku":959,"qty":1}]},
-    {"id":4,"title":"Handle with care","dock":"Dock 2","lines":[{"sku":825,"qty":3},{"sku":874,"qty":2}]},
-    {"id":5,"title":"The whole nightmare","dock":"Dock 1","lines":[{"sku":907,"qty":3},{"sku":411,"qty":2},{"sku":437,"qty":2}]}
+    {"id":1,"title":"Tutorial","dock":"Dock 2","lines":[{"sku":355,"qty":1}],"medals":{"gold":60,"silver":90,"bronze":120}},
+    {"id":2,"title":"Reach for it","dock":"Dock 2","lines":[{"sku":584,"qty":3}],"medals":{"gold":120,"silver":180,"bronze":240}},
+    {"id":3,"title":"Top shelf","dock":"Dock 1","lines":[{"sku":929,"qty":2},{"sku":959,"qty":1}],"medals":{"gold":180,"silver":240,"bronze":330}},
+    {"id":4,"title":"Handle with care","dock":"Dock 2","lines":[{"sku":825,"qty":3},{"sku":874,"qty":2}],"medals":{"gold":240,"silver":330,"bronze":420}},
+    {"id":5,"title":"The whole nightmare","dock":"Dock 1","lines":[{"sku":907,"qty":3},{"sku":411,"qty":2},{"sku":437,"qty":2}],"medals":{"gold":360,"silver":480,"bronze":600}}
   ]
 }

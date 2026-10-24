@@ -272,6 +272,7 @@ function makeZone(game, name, cx, cz, w, d) {
 // A SKU's "look" (box colour, brand, FRAGILE or not) is its own number, except a near-miss decoy
 // wears the look of the SKU it imitates, so only the number tells them apart.
 const ORDERS = ORDERS_FILE.orders;
+export const WAREHOUSE_VERSION = WAREHOUSE.version;
 export { ORDERS };
 
 // Backstock placard hung under a short pick face's beam: where the rest of that SKU is kept.

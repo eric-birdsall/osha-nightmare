@@ -176,6 +176,10 @@ export const CONFIG = {
     backstockChance: 0.5, // chance a 2-box line 2 is also one short at its pick face (line 1 always is)
   },
 
+  score: {
+    incidentPenalty: 15, // s added to a run's time for each incident
+  },
+
   wrap: {
     restSpeed: 0.1,
     restTime: 1.0,

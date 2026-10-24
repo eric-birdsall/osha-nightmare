@@ -20,18 +20,21 @@ const SEED = 20261024;
 const ORDER_SPECS = [
   {
     id: 1,
+    medals: { gold: 60, silver: 90, bronze: 120 }, // placeholder targets (s): set from playtests
     title: 'Tutorial',
     dock: 'Dock 2',
     lines: [{ rack: 'A', bay: 6, shelf: 1, qty: 1, short: 0, fragile: false, decoy: false }],
   },
   {
     id: 2,
+    medals: { gold: 120, silver: 180, bronze: 240 }, // placeholder targets (s): set from playtests
     title: 'Reach for it',
     dock: 'Dock 2',
     lines: [{ rack: 'C', bay: 4, shelf: 2, qty: 3, short: 0, fragile: false, decoy: true }],
   },
   {
     id: 3,
+    medals: { gold: 180, silver: 240, bronze: 330 }, // placeholder targets (s): set from playtests
     title: 'Top shelf',
     dock: 'Dock 1',
     lines: [
@@ -41,6 +44,7 @@ const ORDER_SPECS = [
   },
   {
     id: 4,
+    medals: { gold: 240, silver: 330, bronze: 420 }, // placeholder targets (s): set from playtests
     title: 'Handle with care',
     dock: 'Dock 2',
     lines: [
@@ -50,6 +54,7 @@ const ORDER_SPECS = [
   },
   {
     id: 5,
+    medals: { gold: 360, silver: 480, bronze: 600 }, // placeholder targets (s): set from playtests
     title: 'The whole nightmare',
     dock: 'Dock 1',
     lines: [
@@ -146,6 +151,7 @@ export async function bake() {
     id: o.id,
     title: o.title,
     dock: o.dock,
+    medals: o.medals,
     lines: o.lines.map((l) => {
       const c = code(l.rack, l.bay - 1, l.shelf - 1);
       if (taken(c)) throw new Error(`Order ${o.id}: ${c} is used twice`);

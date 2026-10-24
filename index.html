@@ -57,13 +57,29 @@
         <div class="panel">
           <div class="screen-title osha-text osha-text--yellow" data-text="ORDER COMPLETE">ORDER COMPLETE</div>
           <div class="stamp">SHIPPED</div>
+          <p class="fine" id="c-order">Order 1 · Tutorial</p>
           <div class="stats">
-            <div><span>Time</span><b id="c-time">00:00</b></div>
-            <div><span>Incidents</span><b id="c-falls">0</b></div>
+            <div><span>Time</span><b id="c-time">0:00.0</b></div>
+            <div><span>Incidents</span><b id="c-falls">0</b><small id="c-penalty"></small></div>
+            <div class="total"><span>Total</span><b id="c-total">0:00.0</b></div>
+            <div><span>Best</span><b id="c-best">0:00.0</b><small id="c-newbest">NEW BEST!</small></div>
           </div>
+          <p class="medal-line" id="c-medal"></p>
           <p class="tag" id="c-quip"></p>
-          <button class="btn" data-act="restart"><span class="osha-text osha-text--ivory" data-text="RESTART">RESTART</span></button>
-          <button class="btn" data-act="quit"><span class="osha-text osha-text--ivory" data-text="QUIT TO TITLE">QUIT TO TITLE</span></button>
+          <button class="btn" data-act="restart"><span class="osha-text osha-text--ivory" data-text="RETRY">RETRY</span></button>
+          <button class="btn" data-act="next"><span class="osha-text osha-text--ivory" data-text="NEXT ORDER">NEXT ORDER</span></button>
+          <button class="btn" data-act="levels"><span class="osha-text osha-text--ivory" data-text="LEVEL SELECT">LEVEL SELECT</span></button>
+        </div>
+      </div>
+
+      <div id="levels" class="screen hidden">
+        <div class="panel wide">
+          <div class="screen-title osha-text osha-text--yellow" data-text="SELECT ORDER">SELECT ORDER</div>
+          <p class="fine" id="lv-mode">Single player</p>
+          <div class="level-list"><!-- one button per order, built from orders.json by main.js --></div>
+          <div class="ctl-btns">
+            <button class="btn" data-act="back"><span class="osha-text osha-text--ivory" data-text="BACK">BACK</span></button>
+          </div>
         </div>
       </div>
 
@@ -74,7 +90,7 @@
           <div class="howto">
             <section>
               <h3>The job</h3>
-              <p>Ship one order as fast as you can, with as few incidents as you can manage. The clock runs from the moment the shift starts, and the Order Complete screen shows your time and your incident count.</p>
+              <p>Pick an order (1 is the tutorial, 5 is the whole nightmare) and ship it as fast as you can. Every incident adds 15 seconds to your time. Beat your best, and go for gold, silver or bronze.</p>
               <h3>Who's who</h3>
               <p><b>Ralph</b> drives the forklift. He has a cast on his leg and his crutches in the cab, so he never gets off the truck. He has the pick list, too: it's the clipboard in his cab.</p>
               <p><b>Dave</b> is on foot. He walks, climbs, picks boxes off shelves, carries them, and punts them.</p>

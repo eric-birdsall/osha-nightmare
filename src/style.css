@@ -242,6 +242,82 @@ body {
 .howto kbd {
   margin-left: 0;
 }
+.level-list {
+  max-width: 720px;
+  margin: 8px auto 6px;
+}
+/* A level: ORDER n in kit lettering, its name, and this mode's best time and medal on the right */
+.btn.level {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-right: 48px; /* room for the focus arrow */
+}
+.btn.level .lv-name {
+  font-size: 18px;
+  letter-spacing: 1px;
+  text-transform: none;
+  opacity: 0.85;
+}
+.btn.level .lv-best {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  letter-spacing: 1px;
+}
+.btn.level .none {
+  font-size: 15px;
+  opacity: 0.6;
+  text-transform: none;
+}
+.btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+/* Medal tags: gold, silver, bronze */
+.medal {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #1d1f23;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+}
+.medal.gold {
+  background: #ffcb05;
+}
+.medal.silver {
+  background: #cfd5dc;
+}
+.medal.bronze {
+  background: #d08a4e;
+}
+.medal-line {
+  margin: 10px 0 0;
+  color: #c3cbd3;
+  font-size: 17px;
+}
+.stats small {
+  color: #ff8a7a;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.stats .total {
+  border-top-color: #3fbf6a;
+}
+.stats .total b {
+  color: #fff;
+}
+#c-newbest {
+  color: #3fbf6a;
+}
 .pads {
   color: #8b96a3;
   font-size: 14px;
@@ -442,14 +518,15 @@ td + td {
 }
 .stats {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
   justify-content: center;
   margin: 14px 0 6px;
 }
 .stats div {
   display: flex;
   flex-direction: column;
-  min-width: 130px;
+  min-width: 120px;
   padding: 6px 14px;
   background: rgba(0, 0, 0, 0.3);
   border-top: 4px solid var(--hazard-y);

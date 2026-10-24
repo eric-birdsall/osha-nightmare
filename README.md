@@ -27,7 +27,9 @@ Open the printed URL in Chrome. Click the canvas to capture the mouse.
 | 4 · Handle with care | 3 from shelf 2 (one short: backstock), plus 2 FRAGILE from shelf 1 | Dock 2 |
 | 5 · The whole nightmare | 3 from shelf 3 (short), 2 FRAGILE from shelf 2, 2 from shelf 3 (short) | Dock 1 |
 
-Each line is a SKU and a quantity; the clipboard shows where it lives (worked out from the warehouse file) and its brand, colour and FRAGILE tag. You can tune an order's quantities in `orders.json`, up to what's stocked for it. Until there's a level-select menu, the game plays Order 1; add `?order=3` to the page's address to play another (Restart keeps the same order).
+Each line is a SKU and a quantity; the clipboard shows where it lives (worked out from the warehouse file) and its brand, colour and FRAGILE tag. You can tune an order's quantities in `orders.json`, up to what's stocked for it.
+
+**Playing a level.** The title screen asks for the mode (Single Player or Couch Co-op), then a level: Order 1-5 (Full Shift, all five back to back, is coming). Each level in the list shows your best time in that mode and its medal. A run's score is its time plus 15 s per incident (`score.incidentPenalty`). The Order Complete screen shows the time, incidents and penalty, the total, your best (NEW BEST! when you beat it) and your medal with the next one to aim for; then Retry, Next Order or Level Select. Best times are kept in this browser per level and per mode. Each level is versioned by the warehouse and its order's lines and dock, so changing either resets that level's times; retuning medal targets doesn't. The medal targets in `orders.json` (`medals: { gold, silver, bronze }`, in seconds) are placeholders until they're set from playtests.
 
 The pick list is a clipboard hanging in the forklift cab (on the front-left guard post; Ralph's crutches lean beside his seat, and he has a cast on his left leg, which is why he never gets off the truck), not on the HUD: Ralph reads it from the seat, and Dave has to walk over and look in, or ask Ralph (in single player, swap to Ralph to check it).
 
