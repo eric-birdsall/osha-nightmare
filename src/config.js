@@ -29,6 +29,8 @@ export const CONFIG = {
     // Up from 8 and 1.5: the longest punt goes half as far again (shorter, flatter ones a bit less)
     puntSpeed: 10.0, // m/s along the crosshair when he punts a box (R / RB): aim higher to punt further
     puntLift: 1.88, // plus a little upward lob
+    palletFlipRange: 1.8, // m: a tipped-over pallet this close can be flipped back flat...
+    palletFlipHoldTime: 1.0, // ...by holding E / X this long
     puntHeight: 0.25, // the box's bottom when his boot meets it (it's dropped from his hands onto his foot)
     chestDrop: 0.45, // chest is this far below the eye
     placeReach: 2.2, // put down: how far the aim ray looks for a surface

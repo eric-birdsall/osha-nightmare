@@ -50,7 +50,7 @@ export function drawFloorPlan(svg) {
     `<g class="fp-labels">${racks.map((r) => text((r.x0 + rackX1(r)) / 2, (r.z0 + r.z1) / 2, `RACK ${r.name}`)).join('')}</g>`,
     rect(wrap.x - wrap.frame.half, wrap.z - wrap.frame.half, wrap.frame.half * 2, wrap.frame.half * 2, 'fp-room'),
     rect(wrap.x - wrap.size / 2, wrap.z - wrap.size / 2, wrap.size, wrap.size, 'fp-wrap'),
-    text(wrap.x, wrap.z - wrap.frame.half - 0.6, 'WRAPPER', 'fp-zone'),
+    text(wrap.x, wrap.z + wrap.frame.half + 1.0, 'WRAPPER', 'fp-zone'), // below it: the ramp is above
     ...(() => {
       const pk = packingRect();
       return [box(pk, 'fp-room'), text((pk.x0 + pk.x1) / 2, pk.z1 + 0.9, 'PACKING', 'fp-zone')];
@@ -63,8 +63,9 @@ export function drawFloorPlan(svg) {
     text(rcx, rcz + 0.5, 'RAMP', 'fp-zone'),
     rect(park.x0, park.z0, park.x1 - park.x0, park.z1 - park.z0, 'fp-park'),
     text((park.x0 + park.x1) / 2, (park.z0 + park.z1) / 2, 'PARK', 'fp-zone'),
-    ...LAYOUT.ladderStands.map((st) => rect(st.x - 1.1, st.z - 0.2, 2.2, 0.6, 'fp-ladders')),
-    ...LAYOUT.ladderStands.map((st) => text(st.x, st.z + 1.1, 'LADDERS', 'fp-zone')),
+    // A stand turned side-on (against an east or west wall) runs north-south, labelled off to one side
+    ...LAYOUT.ladderStands.map((st) => (Math.abs(Math.sin(st.yaw)) > 0.5 ? rect(st.x - 0.3, st.z - 1.1, 0.6, 2.2, 'fp-ladders') : rect(st.x - 1.1, st.z - 0.2, 2.2, 0.6, 'fp-ladders'))),
+    ...LAYOUT.ladderStands.map((st) => (Math.abs(Math.sin(st.yaw)) > 0.5 ? text(st.x - 2.2, st.z - 1.8, 'LADDERS', 'fp-zone') : text(st.x, st.z + 1.1, 'LADDERS', 'fp-zone'))),
     // Fire exits (blocked, but they're on the plan) and the barrels nobody can identify
     ...hazardZones()
       .filter((h) => h.name === 'The blocked fire exit' || h.name === 'The mystery barrels')

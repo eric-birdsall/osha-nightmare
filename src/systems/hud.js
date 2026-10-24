@@ -142,6 +142,13 @@ export class Hud {
           const r = resetting ? `Resetting the racking… ${Math.ceil(hold - c.resetTimer)}` : `Hold <kbd>${key}</kbd> ${hold} s to reset the racking`;
           p = p ? `${p}<br><small>${r}</small>` : r;
         }
+        // A tipped-over pallet nearby (hands empty): hold E / X to flip it flat
+        const flipHold = CONFIG.climber.palletFlipHoldTime;
+        const flipping = c.flipTimer > 0;
+        if (c.tippedPallet && c.state === 'walk') {
+          const r = flipping ? 'Flipping the pallet…' : `Flip the pallet flat: hold <kbd>${key}</kbd>`;
+          p = p ? `${p}<br><small>${r}</small>` : r;
+        }
         // A fallen ladder nearby (hands empty): hold R / RB to stand it back up
         const upHold = CONFIG.ladder.uprightHoldTime;
         const uprighting = c.uprightTimer > 0;
@@ -154,7 +161,7 @@ export class Hud {
         // The same ring fills while Q / Y is held to go back to the start
         if (respawn(role) > 0) p = p ? `${p}<br><small>Going back to the start…</small>` : 'Going back to the start…';
         const back = respawn(role);
-        const ring = Math.min(1, Math.max(back, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0));
+        const ring = Math.min(1, Math.max(back, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0, flipping ? c.flipTimer / flipHold : 0));
         v.holdRing.style.display = ring > 0 ? '' : 'none';
         if (ring > 0) v.holdFill.style.strokeDashoffset = String(113.1 * (1 - ring));
         v.prompt.innerHTML = p;

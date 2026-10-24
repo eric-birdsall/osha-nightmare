@@ -87,6 +87,8 @@ export class Climber {
     this.onLadder = null; // { ent, h: metres up the steps, heading }
     this.resetTimer = 0; // holding E/X near knocked-over racking
     this.uprightTimer = 0; // holding R/RB near a fallen ladder (-1: done, waiting for release)
+    this.flipTimer = 0; // holding E/X near a tipped-over pallet (-1: done, waiting for release)
+    this.tippedPallet = null;
     this.fallenLadder = null;
     this.nearKnockedRack = null;
     this.holdLocal = new THREE.Vector3();
@@ -259,6 +261,7 @@ export class Climber {
     if (this.ladderCarry) this.holdLadder();
     this.resetStep(a, dt, active);
     this.uprightStep(a, dt, active);
+    this.palletFlipStep(a, dt, active);
     this.puntStep(a, dt, active);
     if (active && a.interact) {
       // A box in reach comes first, even from the forks: he lets go of the carriage to take it
@@ -547,6 +550,66 @@ export class Climber {
       if (d < bestD) [best, bestD] = [lad, d];
     }
     return best;
+  }
+
+  // An empty pallet on its side or upside down (not flat) within reach.
+  findTippedPallet() {
+    const feet = this.feet;
+    let best = null;
+    let bestD = CONFIG.climber.palletFlipRange;
+    for (const p of this.game.entities) {
+      if (p.kind !== 'pallet' || p.removed || p.carried) continue;
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(p.body.rotation()));
+      if (up.y > 0.9) continue;
+      const t = p.body.translation();
+      if (Math.abs(t.y - feet.y) > 1.2) continue;
+      const d = Math.hypot(t.x - feet.x, t.z - feet.z);
+      if (d < bestD) [best, bestD] = [p, d];
+    }
+    return best;
+  }
+
+  // Holding E / X (hands empty) near a tipped-over pallet for a second drops it back flat where it
+  // lies, keeping its heading. (A tap of E / X still picks things up as usual.)
+  palletFlipStep(a, dt, active) {
+    const free = !this.carried && !this.ladderCarry && !this.onLadder && !this.holdingOn;
+    this.tippedPallet = free ? this.findTippedPallet() : null;
+    const pal = this.tippedPallet;
+    if (!(active && pal && a.interactHeld)) {
+      this.flipTimer = 0;
+      return;
+    }
+    if (this.flipTimer < 0) return; // already tried this hold
+    this.flipTimer += dt;
+    if (this.flipTimer < CONFIG.climber.palletFlipHoldTime) return;
+    this.flipTimer = -1;
+    const [w, h, l] = CONFIG.objects.pallet.size;
+    const q = quatToThree(pal.body.rotation());
+    // Where it is now (the middle of the pallet, whichever way up) and which way it was pointing
+    const mid = new THREE.Vector3(0, h / 2, 0).applyQuaternion(q).add(pal.body.translation());
+    const along = new THREE.Vector3(0, 0, 1).applyQuaternion(q).setY(0);
+    if (along.lengthSq() < 0.04) along.set(1, 0, 0).applyQuaternion(q).setY(0); // stood on its end
+    const yaw = Math.atan2(along.x, along.z);
+    const floor = floorHeightNear(mid.x, mid.z, mid.y - 0.5);
+    const pos = { x: mid.x, y: floor + 0.02, z: mid.z };
+    // Room for it lying flat? (not counting itself or Dave's hands)
+    const skip = new Set([this.collider.handle]);
+    for (let i = 0; i < pal.body.numColliders(); i++) skip.add(pal.body.collider(i).handle);
+    let blocked = false;
+    this.game.world.intersectionsWithShape(
+      { x: pos.x, y: pos.y + h / 2 + 0.01, z: pos.z }, yawQuat(yaw), new RAPIER.Cuboid(w / 2 - 0.02, h / 2 - 0.01, l / 2 - 0.02),
+      () => ((blocked = true), false), RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, undefined, undefined, (c) => !skip.has(c.handle),
+    );
+    if (blocked) {
+      this.game.toast('No room to flip the pallet here', 1.5);
+      return;
+    }
+    pal.body.setTranslation(pos, true);
+    pal.body.setRotation(yawQuat(yaw), true);
+    pal.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    pal.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.tippedPallet = null;
+    sfx.putdown();
   }
 
   // Holding R / RB (hands empty) near a fallen ladder for a second stands it back up where it

@@ -5,13 +5,14 @@
 //
 //  N ┌──────────────────D2─────────────────────────────┐
 //    │ PARK ►            │◄── RAMP ──┐                    │
-//    │D1   BASEMENT  stairs◄          ┊        WRAPPER    C│
-//    │═══ railing ═══════╛                               O│
-//    │  west ┌──── A ─────┐                    P          N│
-//    │  lane │   aisle    │  east              A          V│
-//    │       ├─── B/C ────┤  lane              C          E│
-//    │       ├─── D/E ────┤                    K          Y│
-//    │       ├─── F/G ────┘                               O│
+//    │D1   BASEMENT      │ WRAPPER   ┊                   C│
+//    │stairs     LADDERS │                               O│
+//    │═▲═ railing ═══════╛                               N│
+//    │  west ┌──── A ─────┐                    P          V│
+//    │  lane │   aisle    │  east              A          E│
+//    │       ├─── B/C ────┤  lane              C          Y│
+//    │       ├─── D/E ────┤                    K          O│
+//    │       ├─── F/G ────┘                               R│
 //    │ MEZZANINE (H aisle I) over break rm │stairs     PANEL│
 //  S └──────────────────────────────────────────────────┘
 
@@ -26,11 +27,11 @@ const E = room.halfX; // inside face of the east wall
 const SOUTH = room.halfZ; // inside face of the south wall
 
 // The basement: the north-west corner of the floor sits 1 m down and holds the backstock racks.
-// The forklift's ramp runs down westward along the north wall; Dave's stairs go down westward
-// from the basement's east edge, just south of the ramp.
+// The forklift's ramp runs down westward along the north wall. Dave's stairs go down northward
+// from the basement's south edge in the west lane, beside Rack A's west end.
 const lower = { y: -1.0, x0: W, x1: W + 20, z0: NORTH, z1: -9, label: 'BASEMENT' };
 const ramp = { x0: lower.x1, x1: lower.x1 + 8, z0: NORTH, z1: -18, down: 'west' };
-const stairs = { from: -12.5, to: -10.5, edge: lower.x1, down: 'west', steps: 6, tread: 0.3 };
+const stairs = { from: W + 0.2, to: W + 2.2, edge: lower.z1, down: 'north', steps: 6, tread: 0.3 };
 
 // Racking: every rack is single-deep and open on its aisle face. Bays count from the west end.
 const racking = {
@@ -79,21 +80,23 @@ const racks = [
   rack('I', W + 0.3, mezzanine.z0 + 0.3 + racking.depth + MEZZ_AISLE, 'north', mezzanine.y, LOW),
 ];
 
-// The wrapper stands north-east, 3 m in from the conveyor on the east wall; the packing stations
-// run north-south below it, lined up with its west side. A wrapped pallet heads west along the
-// north wall, down the ramp and into the basement's docks.
-const WRAP = { x: E - 6.6, z: -13 };
+// The wrapper stands on the main floor against the basement's east edge, between the ramp and the
+// basement's LADDERS stand: a wrapped pallet heads out its east side, onto the top of the ramp
+// and down into the basement's docks. (Watch the missing railing on its west side.)
 const FRAME = 2.6; // the wrapper's posts, out from its centre
+const WRAP = { x: lower.x1 + 0.4 + FRAME, z: ramp.z1 + 0.3 + FRAME };
+// The packing stations run north-south down the east side, their west side this far in from the
+// east wall, with the packing line between their rows
+const PACK_WEST = E - 9.2;
 const PACK_BELT = 1.6; // the packing line's width: a wide target for boxes bounced off the benches' back panels
 const PACK_DEPTH = 0.9 * 2 + PACK_BELT + 0.2; // two benches back to back with the belt between (see packing.js)
-// The packing line ends this far short of the wrapper's frame, leaving room for the pallet it fills
-// and a clear gap between that pallet and the wrapper
-const PACK_LINE_END = WRAP.z + FRAME + 2.2;
+// The packing line's north end, where the pallet it fills waits
+const PACK_LINE_END = -8.2;
 // The two rows are staggered by half a bench, so a gap in one row looks across the belt at the
 // back panel of a bench in the other: stand in the gap and throw at that panel
 const PACK_GAP = 1.4; // between benches in a row: room for Dave to stand in
 const PACK_LEN = 3 * 2.4 + 2 * PACK_GAP + (2.4 + PACK_GAP) / 2; // the island's length, stagger included
-const PACKING = { x: WRAP.x - FRAME + PACK_DEPTH / 2, z: PACK_LINE_END + 4.2 + PACK_LEN / 2, perRow: 3, yaw: Math.PI / 2, belt: PACK_BELT, gap: PACK_GAP };
+const PACKING = { x: PACK_WEST + PACK_DEPTH / 2, z: PACK_LINE_END + 4.2 + PACK_LEN / 2, perRow: 3, yaw: Math.PI / 2, belt: PACK_BELT, gap: PACK_GAP };
 const CONVEYORS = [
   { name: 'Conveyor', x0: E - 2.0, x1: E - 0.05, z0: -15.3, z1: 6.8, height: 0.8, speed: 1.2, sign: true, backstop: true },
   { name: 'Packing line', x0: PACKING.x - PACKING.belt / 2, x1: PACKING.x + PACKING.belt / 2, z0: PACK_LINE_END, z1: PACKING.z + PACK_LEN / 2 + 0.2, height: 0.8, speed: 0.8 },
@@ -134,7 +137,7 @@ export const LAYOUT = {
   // OSHA violations round the building (hazards.js). Things on a wall give the wall and how far
   // along it they are (x for the north and south walls, z for east and west); y is the floor height.
   hazards: {
-    outlet: { wall: 'north', at: WRAP.x - 0.8 }, // overloaded outlet behind the wrapper
+    outlet: { wall: 'north', at: E - 7.4 }, // overloaded outlet on the north wall, east of the ramp
     panel: { wall: 'east', at: 8 }, // electrical panel with a leaking pipe dripping on it, just past the conveyor
     // A section of the basement's railing that isn't there: on its east edge, by the ramp
     railingGap: { along: 'z', line: lower.x1, from: -17.5, to: -15.5 },
@@ -144,10 +147,9 @@ export const LAYOUT = {
       { wall: 'south', at: E - 4.1, y: 0 }, // south-east corner
     ],
   },
-  // yaw 0: the ladders hang on the south side of the stand; π: the north side
+  // yaw 0: the ladders hang on the south side of the stand; π: the north side; -π/2: the west side
   ladderStands: [
-    { x: RACKS_E + 2.5, z: -15, y: 0, yaw: 0 }, // just north of the top of the stairs, out of the way
-    { x: RACKS_E - 3.5, z: lower.z1 - 0.3, y: lower.y, yaw: Math.PI }, // basement, by the foot of the stairs
+    { x: lower.x1 - 0.3, z: -11.5, y: lower.y, yaw: -Math.PI / 2 }, // basement, against its east edge, ladders facing west
     { x: mezzanine.x1 + 0.9, z: SOUTH - 0.3, y: mezzanine.y, yaw: Math.PI }, // top landing of the mezzanine stairs, against the south wall
   ],
   incidentSign: { x: E - 3.5, y: 3.6 }, // on the north wall
@@ -196,9 +198,9 @@ export const LAYOUT = {
     { name: 'The packing line', x0: PACKING.x - PACK_BELT / 2, z0: PACK_LINE_END - 1.5, x1: PACKING.x + PACK_BELT / 2, z1: PACKING.z + PACK_LEN / 2 + 0.2 },
     { name: 'The west lane', x0: W, z0: lower.z1, x1: WEST, z1: mezzanine.z0 },
     { name: 'South of the racks', x0: WEST, z0: 13.3, x1: RACKS_E, z1: mezzanine.z0 },
-    { name: 'By the ramp', x0: lower.x1, z0: NORTH, x1: WRAP.x - FRAME, z1: lower.z1 },
-    { name: 'The east lane', x0: RACKS_E, z0: lower.z1, x1: WRAP.x - FRAME - 1.6, z1: SOUTH },
-    { name: 'The east side', x0: WRAP.x - FRAME - 1.6, z0: NORTH, x1: E, z1: SOUTH },
+    { name: 'By the ramp', x0: lower.x1, z0: NORTH, x1: PACK_WEST, z1: lower.z1 },
+    { name: 'The east lane', x0: RACKS_E, z0: lower.z1, x1: PACK_WEST - 1.6, z1: SOUTH },
+    { name: 'The east side', x0: PACK_WEST - 1.6, z0: NORTH, x1: E, z1: SOUTH },
   ],
   ceiling: {
     fans: [[W + 13, 0], [W + 11, -15], [RACKS_E + 10, -8], [RACKS_E + 11, 10]], // giant HVLS fans: [x, z]
@@ -217,7 +219,7 @@ export const LAYOUT = {
     ['03', 'NORTH EAST', [E - 0.4, 5.4, NORTH + 0.4]],
     ['04', 'WEST LANE', [W + 0.35, 5.0, 6]],
     ['05', 'RAMP', [RACKS_E + 10, 5.4, NORTH + 0.35]],
-    ['06', 'WRAPPER', [E - 0.35, 5.4, -10]],
+    ['06', 'PACKING', [E - 0.35, 5.4, -10]],
     ['07', 'CONVEYOR', [E - 0.35, 5.0, 2]],
     ['08', 'SOUTH WEST', [W + 0.4, 7.2, SOUTH - 0.4]],
     ['09', 'MEZZANINE', [RACKS_E + 2.5, 6.0, SOUTH - 0.35]],
