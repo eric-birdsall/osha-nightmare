@@ -124,7 +124,7 @@ export class Hud {
         else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
         else if (c.carried) {
           const n = c.carriedBoxes().length;
-          const toss = `Throw${n > 1 ? ' top box' : ''} <kbd>${game.keyHint(role, 'toss')}</kbd>`;
+          const toss = `Punt${n > 1 ? ' top box' : ''} <kbd>${game.keyHint(role, 'toss')}</kbd>`;
           const fragile = c.carriedBoxes().some((b) => b.fragile) ? ' <b class="fragile">FRAGILE</b>' : '';
           p = (n > 1 ? `Put down ${n} boxes <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku} <kbd>${key}</kbd> · ${toss}`) + fragile;
         } else if (c.target) {
@@ -148,8 +148,8 @@ export class Hud {
           const r = uprighting ? 'Standing the ladder up…' : `Stand the ladder up: hold <kbd>${game.keyHint(role, 'toss')}</kbd>`;
           p = p ? `${p}<br><small>${r}</small>` : r;
         }
-        // Aiming a throw: the arc and ghost show where it'll land
-        if (c.aimingThrow) p = 'Let go to throw<br><small>Aim higher to throw further</small>';
+        // Aiming a punt: the arc and ghost show where it will land
+        if (c.aimingPunt) p = 'Let go to punt it<br><small>Aim higher to punt further</small>';
         // The same ring fills while Q / Y is held to go back to the start
         if (respawn(role) > 0) p = p ? `${p}<br><small>Going back to the start…</small>` : 'Going back to the start…';
         const back = respawn(role);

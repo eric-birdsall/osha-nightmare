@@ -16,6 +16,7 @@ const C = {
   glove: 0xc9a066,
   gloveDark: 0xa98248,
   hat: 0xffd400,
+  cast: 0xf4f1ea,
 };
 
 export const PARTS = [
@@ -168,6 +169,22 @@ export class WorkerModel {
     [this.pivots.hipR, this.pivots.kneeR] = limb('uLegR', 'lLegR', torso, pos('torso'));
   }
 
+  // A plaster cast from below the knee to the toes, on the left or right leg.
+  addCast(side = 'L') {
+    const knee = this.pivots[`knee${side}`];
+    const lower = part(`lLeg${side}`);
+    const y = lower.pos[1] - JOINTS.find((j) => j[1] === `lLeg${side}`)[2][1]; // the lower leg's centre, below the knee
+    const hy = lower.half[1];
+    // The boot comes off (it would sit a hair inside the cast and flicker through it)
+    const [, boot, sole] = knee.children[0].children;
+    boot.visible = sole.visible = false;
+    // (Each piece a different size, so no two faces share a plane and flicker)
+    knee.add(box(0.22, hy * 2 - 0.02, 0.22, C.cast, 0, y + 0.01, 0.005));
+    knee.add(box(0.2, 0.14, 0.34, C.cast, 0, y - hy + 0.06, 0.065)); // the foot, a little narrower
+    knee.add(box(0.14, 0.05, 0.05, C.skin, 0, y - hy + 0.07, 0.25)); // toes poking out
+    knee.add(box(0.235, 0.03, 0.235, 0x2f5fb3, 0, y + 0.05, 0.005)); // someone signed it in blue pen
+  }
+
   // Seated (legs and lean only; arms are placed with reach()).
   sit() {
     const P = this.pivots;
@@ -204,7 +221,7 @@ export class WorkerModel {
   }
 
   // speed: walking speed over the ground (m/s). Rotations about X: negative swings a limb forward.
-  update(dt, { yaw, pitch = 0, speed = 0, grounded = true, carrying = false, holdPitch = 0, holding = false, gripBehind = false }) {
+  update(dt, { yaw, pitch = 0, speed = 0, grounded = true, carrying = false, holdPitch = 0, holding = false, gripBehind = false, kick = -1 }) {
     const P = this.pivots;
     this.body.rotation.y = yaw + Math.PI;
     const amp = grounded ? Math.min(1, speed / 3.5) * 0.65 : 0;
@@ -241,16 +258,28 @@ export class WorkerModel {
       elL = elR = -0.35;
       armOut = 0.22;
     }
+    let snap = 12;
+    if (kick >= 0 && kick < 1) {
+      // Punting: the right leg swings through and up, arms out for balance
+      const swing = Math.sin(Math.PI * kick);
+      hipR = -1.5 * swing;
+      kneeR = 0.9 * (1 - kick) * swing;
+      hipL = 0.15 * swing;
+      shL = -0.5 * swing;
+      shR = 0.4 * swing;
+      armOut = 0.35;
+      snap = 30;
+    }
     if (carrying) {
       // Forearms reach forward to the box; raise/lower with the carry pitch
       shL = shR = -1.0 - holdPitch * 0.9;
       elL = elR = -0.45;
       armOut = -0.12;
     }
-    lerp(P.hipL.rotation, 'x', hipL);
-    lerp(P.hipR.rotation, 'x', hipR);
-    lerp(P.kneeL.rotation, 'x', kneeL);
-    lerp(P.kneeR.rotation, 'x', kneeR);
+    lerp(P.hipL.rotation, 'x', hipL, snap);
+    lerp(P.hipR.rotation, 'x', hipR, snap);
+    lerp(P.kneeL.rotation, 'x', kneeL, snap);
+    lerp(P.kneeR.rotation, 'x', kneeR, snap);
     lerp(P.shoulderL.rotation, 'x', shL);
     lerp(P.shoulderR.rotation, 'x', shR);
     lerp(P.elbowL.rotation, 'x', elL);

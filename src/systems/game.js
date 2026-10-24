@@ -249,6 +249,7 @@ export class Game {
     this.climber.preStep(actions.climber, dt, climberOn);
     for (const c of this.level.conveyors) c.step(); // the belts carry whatever's on them
     this.world.step();
+    this.puntedStep(dt);
     this.climber.postStep(dt);
     this.watchRacks(dt);
     this.watchFragile(dt);
@@ -445,9 +446,62 @@ export class Game {
     this.rackContacts = now;
   }
 
+  // ---------------------------------------------------------------- Punted boxes
+
+  // A punted box lands dead, so it ends up exactly where Dave's ghost showed: the first time
+  // anything knocks it off its flight path it stops. Landing on top of something, it stays put;
+  // hitting a wall or a panel side-on, it drops straight down (and then lands dead on whatever's
+  // below). Climber.updatePuntGhost predicts the same thing.
+  puntedStep(dt) {
+    const g = CONFIG.physics.gravity;
+    for (const box of this.entities) {
+      const p = box.punted;
+      if (!p) continue;
+      if (box.carried || box.removed) {
+        box.punted = null;
+        continue;
+      }
+      p.time = (p.time || 0) + dt;
+      if (p.time > 4) {
+        box.punted = null; // came to rest somewhere without a clean landing
+        continue;
+      }
+      const v = box.body.linvel();
+      const dx = v.x - p.vel.x;
+      const dy = v.y - (p.vel.y + g * dt);
+      const dz = v.z - p.vel.z;
+      if (Math.hypot(dx, dy, dz) < 0.5) {
+        p.vel.set(v.x, v.y, v.z); // still flying free
+        continue;
+      }
+      box.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      if (dy > Math.hypot(dx, dz)) {
+        // Pushed up: it landed on something. The physics lets it skid on for the rest of that
+        // step, so settle it on the spot the ghost showed (if that's where it came down)
+        const t = box.body.translation();
+        if (p.land && Math.hypot(t.x - p.land.x, t.z - p.land.z) < 0.4 && Math.abs(t.y - p.land.y) < 0.3) {
+          box.body.setTranslation({ x: p.land.x, y: Math.max(t.y, p.land.y), z: p.land.z }, true);
+          box.body.setRotation(p.rot ?? box.body.rotation(), true);
+        }
+        box.body.setLinvel({ x: 0, y: Math.min(0, v.y), z: 0 }, true);
+        box.punted = null;
+      } else {
+        // Side-on into something: straight down from here, in line with the ghost's spot (the
+        // physics may have nudged it up onto a corner the ghost had it dropping past)
+        const t = box.body.translation();
+        if (p.land && Math.hypot(t.x - p.land.x, t.z - p.land.z) < 0.4 && t.y > p.land.y - 0.05) {
+          box.body.setTranslation({ x: p.land.x, y: t.y, z: p.land.z }, true);
+          if (p.rot) box.body.setRotation(p.rot, true);
+        }
+        box.body.setLinvel({ x: 0, y: Math.min(0, v.y), z: 0 }, true);
+        p.vel.set(0, Math.min(0, v.y), 0);
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- FRAGILE boxes
 
-  // A FRAGILE box Dave tossed or dropped is armed: the first thing it hits sets it off.
+  // A FRAGILE box Dave punted or dropped is armed: the first thing it hits sets it off.
   watchFragile(dt) {
     for (const box of this.entities) {
       if (!box.armed || box.carried || box.removed) continue;

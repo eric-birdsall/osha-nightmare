@@ -29,6 +29,35 @@ const STEER_R = 0.17;
 const FORK_T = 0.035;
 const FORK_Z = PLATE_Z + 0.03 + FORK_LEN / 2;
 
+// An underarm crutch, standing on its rubber tip at the origin: aluminium side rails from a padded
+// top down to a hand grip and on to a single shaft
+function crutch() {
+  const g = new THREE.Group();
+  const metal = flatMat(0xb8bec6);
+  const rod = (r, a, b, mat = metal) => {
+    const [ax, ay] = a;
+    const [bx, by] = b;
+    const len = Math.hypot(bx - ax, by - ay);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), mat);
+    m.position.set((ax + bx) / 2, (ay + by) / 2, 0);
+    m.rotation.z = Math.atan2(ax - bx, by - ay);
+    m.castShadow = true;
+    g.add(m);
+    return m;
+  };
+  for (const sx of [-1, 1]) rod(0.012, [sx * 0.025, 0.5], [sx * 0.075, 1.25]); // side rails
+  rod(0.016, [0, 0.04], [0, 0.55]); // shaft
+  rod(0.022, [0, 0], [0, 0.05], flatMat(0x16171a)); // rubber tip
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.16, 8), flatMat(0x2b2f35));
+  grip.rotation.z = Math.PI / 2;
+  grip.position.y = 0.82;
+  g.add(grip);
+  const pad = boxMesh(0.22, 0.05, 0.07, 0x5b636d, { edges: false }); // underarm pad
+  pad.position.y = 1.27;
+  g.add(pad);
+  return g;
+}
+
 // Static parts on the chassis body: [half extents, position, color, drawn?]
 const PARTS = [
   [[0.55, 0.3, 0.525], [0, 0.55, -0.625], 0xf2b705], // rear chassis (under the seat)
@@ -219,6 +248,14 @@ export class Forklift {
       s.rotation.z = 0.6;
       root.add(s);
     }
+    // Ralph's crutches (see the cast on his leg), leaning in the cab beside his seat: tips on the
+    // footwell floor, pads up on the counterweight behind him. Why he never gets off.
+    for (const [z, roll] of [[0.25, 0], [0.15, 0.6]]) {
+      const c = crutch();
+      c.position.set(0.36, 0.6, z);
+      c.rotation.set(-Math.atan2(1.1, 0.8), roll, 0, 'XZY'); // leaning back, rolled about its own length
+      root.add(c);
+    }
     // Seat and steering wheel
     const seat = boxMesh(0.5, 0.12, 0.45, 0x1d1f23);
     seat.position.set(0, 0.92, -0.3);
@@ -330,6 +367,7 @@ export class Forklift {
     this.driver = new WorkerModel({ heavy: true });
     this.driver.root.position.set(0, 0.2, -0.3); // hips just above the seat cushion
     this.driver.sit(0);
+    this.driver.addCast('L'); // hence the crutches
     this.driver.root.traverse((o) => {
       o.layers.set(2);
       if (o.isMesh) o.castShadow = true;

@@ -81,7 +81,7 @@ export class Climber {
     this.mantle = null;
     this.onBlades = false;
     this.holdingOn = false;
-    this.aimingThrow = false; // R / RB held with a box: showing where it'll land
+    this.aimingPunt = false; // R / RB held with a box: showing where it'll land
     this.lastOnLadder = -Infinity;
     this.ladderCarry = null; // folded ladder on the shoulder
     this.onLadder = null; // { ent, h: metres up the steps, heading }
@@ -259,7 +259,7 @@ export class Climber {
     if (this.ladderCarry) this.holdLadder();
     this.resetStep(a, dt, active);
     this.uprightStep(a, dt, active);
-    this.throwStep(a, dt, active);
+    this.puntStep(a, dt, active);
     if (active && a.interact) {
       if (this.holdingOn) this.letGo();
       else if (this.ladderCarry) this.setUpLadder();
@@ -335,7 +335,7 @@ export class Climber {
     this.grounded = true;
     this.lastOnLadder = this.game.clock;
     if (this.carried) this.holdCarried();
-    this.throwStep(a, dt, active);
+    this.puntStep(a, dt, active);
     if (active && a.interact) {
       if (this.carried) this.putDown();
       else if (this.target) this.pickUp(this.target);
@@ -1139,38 +1139,57 @@ export class Climber {
     if (this.ghost) this.ghost.visible = false;
   }
 
-  // Throwing: hold R / RB to aim (an arc and a ghost show where it'll land), let go to throw.
-  // Always the same speed: aim higher to throw further.
-  throwStep(a, dt, active) {
+  // Punting: hold R / RB to aim (an arc and a ghost show exactly where it'll land), let go and
+  // Dave drops the box onto his foot and boots it. Always the same speed: aim higher to punt further.
+  puntStep(a, dt, active) {
     if (!this.carried || !active) {
-      this.aimingThrow = false;
+      this.aimingPunt = false;
       return;
     }
-    if (a.toss) this.aimingThrow = true;
-    else if (this.aimingThrow && !a.tossHeld) {
-      this.toss();
-      this.aimingThrow = false;
+    if (a.toss) this.aimingPunt = true;
+    else if (this.aimingPunt && !a.tossHeld) {
+      this.punt();
+      this.aimingPunt = false;
     }
   }
 
-  // Where the top carried box starts and how fast it goes
-  throwStart() {
+  // Where the punted box starts (at his boot, just in front of his feet) and how fast it goes
+  puntStart() {
     const cfg = CONFIG.climber;
-    const { pos } = this.holdPose(this.carriedBoxes().length - 1);
-    const v = this.viewDir().multiplyScalar(cfg.throwSpeed);
-    v.y += cfg.tossLift;
+    const boxes = this.carriedBoxes();
+    const [, sy, sz] = boxes[boxes.length - 1].size;
+    const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const pos = this.feet.addScaledVector(fwd, cfg.radius + 0.08 + sz / 2);
+    pos.y += cfg.puntHeight + sy / 2;
+    // Something low right in front of him (the belt, a pallet): he kicks it from higher up
+    for (let k = 0; k < 10 && this.boxBlocked(pos, boxes); k++) pos.y += 0.1;
+    const v = this.viewDir().multiplyScalar(cfg.puntSpeed);
+    v.y += cfg.puntLift;
     v.add(this.velocity);
     return { pos, v };
   }
 
-  // Throw the top carried box along the crosshair.
-  toss() {
+  // Would the top carried box overlap anything (but Dave and what he's carrying) at `pos`?
+  boxBlocked(pos, boxes = this.carriedBoxes(), at = pos) {
+    const [sx, sy, sz] = boxes[boxes.length - 1].size;
+    const skip = new Set([this.collider.handle]);
+    for (const b of boxes) for (let i = 0; i < b.body.numColliders(); i++) skip.add(b.body.collider(i).handle);
+    let hit = false;
+    this.game.world.intersectionsWithShape(at, yawQuat(this.yaw), new RAPIER.Cuboid(sx / 2, sy / 2, sz / 2), () => ((hit = true), false), RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, undefined, undefined, (c) => !skip.has(c.handle));
+    return hit;
+  }
+
+  // Punt the top carried box along the crosshair. It flies without spinning and lands dead (see
+  // Game.puntedStep), so it ends up exactly where the ghost showed.
+  punt() {
     const boxes = this.carriedBoxes();
     if (!boxes.length) return;
     const top = boxes[boxes.length - 1];
-    const { pos, v } = this.throwStart();
+    const { pos, v } = this.puntStart();
+    const land = this.puntGhost?.visible ? this.puntGhost.position.clone() : null; // where the ghost said
     this.releaseBox(top, pos, yawQuat(this.yaw), { x: v.x, y: v.y, z: v.z });
-    top.body.setAngvel({ x: (Math.random() - 0.5) * 1.2, y: (Math.random() - 0.5) * 1.2, z: (Math.random() - 0.5) * 1.2 }, true); // a little tumble, not enough to stray far off the shown arc
+    top.punted = { vel: v.clone(), land, rot: yawQuat(this.yaw) };
+    this.kickTime = this.game.clock;
     this.arm(top);
     if (this.stackAbove.length) this.stackAbove.pop();
     else this.carried = null;
@@ -1242,81 +1261,88 @@ export class Climber {
 
   // While a throw winds up: dots along the flight path and a ghost box where it'll land (red
   // for a FRAGILE box: that's where it goes off). Only Dave sees them (camera layer 2).
-  updateThrowGhost() {
-    if (!this.throwArc) {
+  updatePuntGhost() {
+    if (!this.puntArc) {
       const dot = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false });
-      this.throwArc = new THREE.InstancedMesh(new THREE.SphereGeometry(0.035, 8, 6), dot, 40);
-      this.throwArc.frustumCulled = false;
+      this.puntArc = new THREE.InstancedMesh(new THREE.SphereGeometry(0.035, 8, 6), dot, 40);
+      this.puntArc.frustumCulled = false;
       const ghost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffd400, transparent: true, opacity: 0.35, depthWrite: false }));
       ghost.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0xffd400 })));
-      this.throwGhost = ghost;
-      for (const o of [this.throwArc, ghost, ghost.children[0]]) o.layers.set(2);
-      this.game.scene.add(this.throwArc, ghost);
+      this.puntGhost = ghost;
+      for (const o of [this.puntArc, ghost, ghost.children[0]]) o.layers.set(2);
+      this.game.scene.add(this.puntArc, ghost);
     }
     const boxes = this.carriedBoxes();
-    const show = this.aimingThrow && boxes.length > 0 && this.state === 'walk';
-    this.throwArc.visible = this.throwGhost.visible = false;
+    const show = this.aimingPunt && boxes.length > 0 && this.state === 'walk';
+    this.puntArc.visible = this.puntGhost.visible = false;
     if (!show) return;
-    // Fly it forward in small steps under gravity until the box (not just its centre) would
-    // touch something: a ray along each step for surfaces dead ahead, and a box-sized overlap
-    // test for edges the box would clip
+    // Fly it the way the physics will (semi-implicit Euler at the physics step, no spin) until the
+    // box would touch something. Landing on top of something, that's where it stays; meeting
+    // something side-on, it drops straight down from there (see Game.puntedStep).
     const top = boxes[boxes.length - 1];
     const [sx, sy, sz] = top.size;
     const skip = new Set([this.collider.handle]);
     for (const b of boxes) for (let i = 0; i < b.body.numColliders(); i++) skip.add(b.body.collider(i).handle);
     const notUs = (c) => !skip.has(c.handle);
-    const shape = new RAPIER.Cuboid(sx * 0.68, sy * 0.68, sz * 0.68); // a bit over size: it tumbles a little in flight
+    const shape = new RAPIER.Cuboid(sx / 2, sy / 2, sz / 2);
     const rot = yawQuat(this.yaw);
-    const { pos, v } = this.throwStart();
+    const touches = (at) => {
+      let hit = false;
+      this.game.world.intersectionsWithShape(at, rot, shape, () => ((hit = true), false), RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, undefined, undefined, notUs);
+      return hit;
+    };
+    const { pos, v } = this.puntStart();
     const p = pos.clone();
     const vel = v.clone();
     const g = CONFIG.physics.gravity;
-    const step = 1 / 60;
+    const step = CONFIG.physics.dt;
     const m = new THREE.Matrix4();
     const d = new THREE.Vector3();
+    const next = new THREE.Vector3();
     let n = 0;
-    let land = null; // { point, normal } from the ray, or just where the box was when it clipped
-    for (let i = 0; i < 240 && !land; i++) {
-      d.copy(vel).multiplyScalar(step);
-      d.y += 0.5 * g * step * step;
+    let land = touches(p) ? p.clone() : null; // jammed against something already: it just drops there
+    for (let i = 0; i < 400 && !land; i++) {
       vel.y += g * step;
-      const len = d.length();
-      const hit = castRay(this.game.world, p, d.clone().divideScalar(len), len, COL.climberQuery, notUs);
-      if (hit) {
-        land = { point: hit.point, normal: hit.normal };
-        break;
+      d.copy(vel).multiplyScalar(step);
+      next.copy(p).add(d);
+      if (!touches(next)) {
+        p.copy(next);
+        if (i % 4 === 3 && n < 40) this.puntArc.setMatrixAt(n++, m.makeTranslation(p.x, p.y, p.z));
+        continue;
       }
-      const next = p.clone().add(d);
-      let touches = false;
-      this.game.world.intersectionsWithShape(next, rot, shape, () => ((touches = true), false), RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, undefined, undefined, notUs);
-      if (touches) {
-        land = { center: p.clone() };
-        break;
+      // Close in on the moment it first touches
+      let lo = 0;
+      let hi = 1;
+      for (let k = 0; k < 8; k++) {
+        const mid = (lo + hi) / 2;
+        if (touches(next.copy(p).addScaledVector(d, mid))) hi = mid;
+        else lo = mid;
       }
-      p.copy(next);
-      if (i % 4 === 3 && n < 40) this.throwArc.setMatrixAt(n++, m.makeTranslation(p.x, p.y, p.z));
+      p.addScaledVector(d, lo);
+      // Side-on (moving across, it would touch; just dropping, it wouldn't): fall straight down
+      const sideOn = touches(next.set(p.x + d.x * 0.5, p.y, p.z + d.z * 0.5)) && !touches(next.set(p.x, p.y + Math.min(0, d.y), p.z));
+      if (sideOn && (vel.x || vel.z)) {
+        vel.set(0, Math.min(0, vel.y), 0);
+        continue;
+      }
+      land = p.clone();
     }
-    this.throwArc.count = n;
-    this.throwArc.instanceMatrix.needsUpdate = true;
-    this.throwArc.visible = true;
+    this.puntArc.count = n;
+    this.puntArc.instanceMatrix.needsUpdate = true;
+    this.puntArc.visible = true;
     if (!land) return;
-    if (land.center) this.throwGhost.position.copy(land.center);
-    else {
-      const nrm = new THREE.Vector3(land.normal.x, land.normal.y, land.normal.z);
-      const ext = (Math.abs(nrm.x) * sx) / 2 + (Math.abs(nrm.y) * sy) / 2 + (Math.abs(nrm.z) * sz) / 2;
-      this.throwGhost.position.set(land.point.x, land.point.y, land.point.z).addScaledVector(nrm, ext);
-    }
-    this.throwGhost.scale.set(sx, sy, sz);
-    this.throwGhost.quaternion.setFromAxisAngle(UP, this.yaw);
+    this.puntGhost.position.copy(land);
+    this.puntGhost.scale.set(sx, sy, sz);
+    this.puntGhost.quaternion.setFromAxisAngle(UP, this.yaw);
     const color = top.fragile ? 0xff3030 : 0xffd400;
-    this.throwGhost.material.color.setHex(color);
-    this.throwGhost.children[0].material.color.setHex(color);
-    this.throwGhost.visible = true;
+    this.puntGhost.material.color.setHex(color);
+    this.puntGhost.children[0].material.color.setHex(color);
+    this.puntGhost.visible = true;
   }
 
   updateGhost() {
     if (!this.ghost) return;
-    if (!this.carried || this.state !== 'walk' || this.aimingThrow) {
+    if (!this.carried || this.state !== 'walk' || this.aimingPunt) {
       this.ghost.visible = false;
       return;
     }
@@ -1571,6 +1597,7 @@ export class Climber {
       holding: !!this.onLadder,
       gripBehind: this.holdingOn,
       holdPitch: this.holdPitch(),
+      kick: this.kickTime != null ? (this.game.clock - this.kickTime) / 0.35 : -1,
     });
 
     // Blob shadow on whatever is below us
@@ -1587,7 +1614,7 @@ export class Climber {
     } else this.blob.visible = false;
 
     this.updateGhost();
-    this.updateThrowGhost();
+    this.updatePuntGhost();
     this.updateLadderGhost();
     if (this.ladderCarry) {
       const { pos, quat } = this.shoulderPose();

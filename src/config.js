@@ -25,8 +25,10 @@ export const CONFIG = {
     reach: 1.5,
     maxCarry: 3, // boxes Dave can carry as a stack (pick up the bottom one)
     stackSpeed: [1, 0.85, 0.75], // walk speed factor carrying 1, 2, 3 boxes
-    throwSpeed: 8, // m/s along the crosshair when he throws a box (R / RB): aim higher to throw further
-    tossLift: 1.5, // plus a little upward lob // pick up: aimed box surface within this distance of the chest
+    // Up from 8 and 1.5: the longest punt goes half as far again (shorter, flatter ones a bit less)
+    puntSpeed: 10.0, // m/s along the crosshair when he punts a box (R / RB): aim higher to punt further
+    puntLift: 1.88, // plus a little upward lob
+    puntHeight: 0.25, // the box's bottom when his boot meets it (it's dropped from his hands onto his foot)
     chestDrop: 0.45, // chest is this far below the eye
     placeReach: 2.2, // put down: how far the aim ray looks for a surface
     lookSensitivity: 0.0022, // rad per mouse pixel

@@ -89,10 +89,11 @@ function station(game, n, x, z, yaw) {
   mat.rotation.set(-Math.PI / 2, 0, yaw);
   mat.position.copy(at(0, BENCH_D / 2 + 0.45)).setY(0.006);
   game.scene.add(mat);
-  // A bin at the end of the bench
+  // A bin at the end of the packer's mat (not in the gap between benches, where Dave stands to
+  // punt boxes at the packing line)
   const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.7, 16), flatMat(0x2f5fb3));
   bin.castShadow = true;
-  const b = at(BENCH_W / 2 + 0.32, 0.15);
+  const b = at(BENCH_W / 2 - 0.25, BENCH_D / 2 + 0.35);
   prop(game, 'bin', bin, [b.x, 0.355, b.z], 0, [{ cyl: [0.35, 0.24] }], 6);
   return bench;
 }
