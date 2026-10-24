@@ -12,14 +12,16 @@ import { prop } from './props.js';
 const BENCH_W = 2.4;
 const BENCH_D = 0.9;
 const BENCH_H = 0.9;
-const GAP = 0.8; // between benches in a row
+const GAP = LAYOUT.packing.gap; // between benches in a row
+const STAGGER = (BENCH_W + GAP) / 2; // the east row is shifted half a bench along, so its benches face the west row's gaps
+const BOARD_TOP = 2.8; // top of the solid back panel: a backboard for boxes thrown at the packing line
 const CARDBOARD = 0xc49a6c;
 const STEEL = 0x6b7280;
 
 // Island size before it's turned: [length along the rows, depth across them]
 export function packingSize() {
   const { perRow } = LAYOUT.packing;
-  return [perRow * BENCH_W + (perRow - 1) * GAP, BENCH_D * 2 + LAYOUT.packing.belt + 0.2];
+  return [perRow * BENCH_W + (perRow - 1) * GAP + STAGGER, BENCH_D * 2 + LAYOUT.packing.belt + 0.2];
 }
 
 // The island's floor rectangle in world x/z, with `pad` round it: { x0, x1, z0, z1 }
@@ -46,8 +48,12 @@ function station(game, n, x, z, yaw) {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) box([0.06, BENCH_H - 0.06, 0.06], [sx * (BENCH_W / 2 - 0.05), (BENCH_H - 0.06) / 2, sz * (BENCH_D / 2 - 0.05)], STEEL);
   box([BENCH_W - 0.1, 0.04, BENCH_D - 0.1], [0, 0.2, 0], STEEL);
   box([1.6, 0.12, 0.7], [-0.2, 0.28, 0], CARDBOARD);
-  // Upright at the back with a shelf: bubble wrap and a kraft paper roll
-  for (const sx of [-1, 1]) box([0.06, 1.25, 0.06], [sx * (BENCH_W / 2 - 0.05), BENCH_H + 0.6, -BENCH_D / 2 + 0.05], STEEL);
+  // Uprights at the back with a solid pegboard panel between them (facing the belt, it's a
+  // backboard: boxes thrown at it drop onto the packing line), and a shelf with bubble wrap and a
+  // kraft paper roll
+  for (const sx of [-1, 1]) box([0.06, BOARD_TOP - BENCH_H, 0.06], [sx * (BENCH_W / 2 - 0.05), (BOARD_TOP + BENCH_H) / 2, -BENCH_D / 2 + 0.05], STEEL);
+  box([BENCH_W - 0.04, BOARD_TOP - BENCH_H - 0.04, 0.03], [0, (BOARD_TOP + BENCH_H) / 2, -BENCH_D / 2 + 0.03], 0xd8cfb8, { edges: true });
+  box([BENCH_W, 0.06, 0.06], [0, BOARD_TOP, -BENCH_D / 2 + 0.05], 0xf5c518);
   box([BENCH_W, 0.04, 0.4], [0, 2.1, -BENCH_D / 2 + 0.2], STEEL);
   const bubble = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.95, 18), new THREE.MeshLambertMaterial({ color: 0xdff3ff, transparent: true, opacity: 0.85 }));
   bubble.rotation.z = Math.PI / 2;
@@ -75,7 +81,7 @@ function station(game, n, x, z, yaw) {
   // tips it over
   const bench = prop(game, `PACK ${n}`, g, [x, 0.005, z], yaw, [
     { half: [BENCH_W / 2, BENCH_H / 2, BENCH_D / 2], pos: [0, BENCH_H / 2, 0] },
-    { half: [BENCH_W / 2, 0.65, 0.2], pos: [0, BENCH_H + 0.65, -BENCH_D / 2 + 0.2] },
+    { half: [BENCH_W / 2, (BOARD_TOP - BENCH_H) / 2, 0.2], pos: [0, (BOARD_TOP + BENCH_H) / 2, -BENCH_D / 2 + 0.2] },
   ], 90, { grip: true, kickTop: 2.0 });
   const at = (lx, lz) => new THREE.Vector3(lx, 0, lz).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).add(new THREE.Vector3(x, 0, z));
   // Anti-fatigue mat where the packer stands (painted on, it stays put)
@@ -102,7 +108,7 @@ export function buildPacking(game) {
   for (const [row, yaw] of [[-1, Math.PI], [1, 0]]) {
     const benches = [];
     for (let i = 0; i < perRow; i++) {
-      const p = at(-w / 2 + BENCH_W / 2 + i * (BENCH_W + GAP), row * (d / 2 - BENCH_D / 2));
+      const p = at(-w / 2 + BENCH_W / 2 + i * (BENCH_W + GAP) + (row > 0 ? STAGGER : 0), row * (d / 2 - BENCH_D / 2));
       benches.push(station(game, n++, p.x, p.z, yaw + turn));
     }
     rows.push(benches);

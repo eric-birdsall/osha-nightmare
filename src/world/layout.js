@@ -84,14 +84,19 @@ const racks = [
 // north wall, down the ramp and into the basement's docks.
 const WRAP = { x: E - 6.6, z: -13 };
 const FRAME = 2.6; // the wrapper's posts, out from its centre
-const PACK_DEPTH = 0.9 * 2 + 1.0 + 0.2; // two benches back to back with the belt between (see packing.js)
+const PACK_BELT = 1.6; // the packing line's width: a wide target for boxes bounced off the benches' back panels
+const PACK_DEPTH = 0.9 * 2 + PACK_BELT + 0.2; // two benches back to back with the belt between (see packing.js)
 // The packing line ends this far short of the wrapper's frame, leaving room for the pallet it fills
 // and a clear gap between that pallet and the wrapper
 const PACK_LINE_END = WRAP.z + FRAME + 2.2;
-const PACKING = { x: WRAP.x - FRAME + PACK_DEPTH / 2, z: PACK_LINE_END + 8.6, perRow: 3, yaw: Math.PI / 2, belt: 1.0 };
+// The two rows are staggered by half a bench, so a gap in one row looks across the belt at the
+// back panel of a bench in the other: stand in the gap and throw at that panel
+const PACK_GAP = 1.4; // between benches in a row: room for Dave to stand in
+const PACK_LEN = 3 * 2.4 + 2 * PACK_GAP + (2.4 + PACK_GAP) / 2; // the island's length, stagger included
+const PACKING = { x: WRAP.x - FRAME + PACK_DEPTH / 2, z: PACK_LINE_END + 4.2 + PACK_LEN / 2, perRow: 3, yaw: Math.PI / 2, belt: PACK_BELT, gap: PACK_GAP };
 const CONVEYORS = [
   { name: 'Conveyor', x0: E - 2.0, x1: E - 0.05, z0: -15.3, z1: 6.8, height: 0.8, speed: 1.2, sign: true, backstop: true },
-  { name: 'Packing line', x0: PACKING.x - PACKING.belt / 2, x1: PACKING.x + PACKING.belt / 2, z0: PACK_LINE_END, z1: PACKING.z + 4.6, height: 0.8, speed: 0.8 },
+  { name: 'Packing line', x0: PACKING.x - PACKING.belt / 2, x1: PACKING.x + PACKING.belt / 2, z0: PACK_LINE_END, z1: PACKING.z + PACK_LEN / 2 + 0.2, height: 0.8, speed: 0.8 },
 ];
 
 // Loading docks in the basement's north-west corner, one on the west wall and one on the north
@@ -188,7 +193,7 @@ export const LAYOUT = {
   // mezzanine and the break room are named separately)
   zones: [
     { name: 'The conveyor', x0: E - 2.6, z0: -15.3, x1: E, z1: 6.8 },
-    { name: 'The packing line', x0: PACKING.x - 0.5, z0: PACK_LINE_END - 1.5, x1: PACKING.x + 0.5, z1: PACKING.z + 4.6 },
+    { name: 'The packing line', x0: PACKING.x - PACK_BELT / 2, z0: PACK_LINE_END - 1.5, x1: PACKING.x + PACK_BELT / 2, z1: PACKING.z + PACK_LEN / 2 + 0.2 },
     { name: 'The west lane', x0: W, z0: lower.z1, x1: WEST, z1: mezzanine.z0 },
     { name: 'South of the racks', x0: WEST, z0: 13.3, x1: RACKS_E, z1: mezzanine.z0 },
     { name: 'By the ramp', x0: lower.x1, z0: NORTH, x1: WRAP.x - FRAME, z1: lower.z1 },
