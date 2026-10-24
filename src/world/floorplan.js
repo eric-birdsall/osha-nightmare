@@ -11,7 +11,7 @@ const rect = (x, y, w, h, cls, id) => `<rect${id ? ` id="${id}"` : ''} x="${n(x)
 const text = (x, y, t, cls) => `<text x="${n(x)}" y="${n(y)}"${cls ? ` class="${cls}"` : ''}>${t}</text>`;
 
 export function drawFloorPlan(svg) {
-  const { room, lower, ramp, racks, docks, wrap, conveyor, mezzanine: mz } = LAYOUT;
+  const { room, lower, ramp, racks, docks, wrap, conveyors, mezzanine: mz } = LAYOUT;
   const park = parkingRect();
   const { halfX, halfZ } = room;
   const box = (r, cls) => rect(r.x0, r.z0, r.x1 - r.x0, r.z1 - r.z0, cls);
@@ -44,8 +44,8 @@ export function drawFloorPlan(svg) {
     box(mz, 'fp-lower'),
     box(mezzanineStairs(), 'fp-stairs'),
     text((mz.x0 + mz.x1) / 2, mz.z1 - 0.7, 'MEZZANINE · BREAK ROOM UNDER', 'fp-zone'),
-    box(conveyor, 'fp-ramp'),
-    text(conveyor.x0 - 1.2, (conveyor.z0 + conveyor.z1) / 2, 'CONVEYOR', 'fp-zone'),
+    ...conveyors.map((c) => box(c, 'fp-ramp')),
+    text(conveyors[0].x0 - 1.2, (conveyors[0].z0 + conveyors[0].z1) / 2, 'CONVEYOR', 'fp-zone'),
     `<g class="fp-racks">${racks.map((r) => rect(r.x0, r.z0, rackX1(r) - r.x0, r.z1 - r.z0)).join('')}</g>`,
     `<g class="fp-labels">${racks.map((r) => text((r.x0 + rackX1(r)) / 2, (r.z0 + r.z1) / 2, `RACK ${r.name}`)).join('')}</g>`,
     rect(wrap.x - wrap.frame.half, wrap.z - wrap.frame.half, wrap.frame.half * 2, wrap.frame.half * 2, 'fp-room'),

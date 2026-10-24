@@ -3,7 +3,8 @@ import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { LAYOUT } from './layout.js';
 import { prop } from './props.js';
 
-// Packing stations: an island of workbenches back to back, each with bubble wrap and kraft paper
+// Packing stations: an island of workbenches in two rows back to back, with the packing line (a
+// conveyor, see conveyor.js) running between them up to the wrapper. Each bench has bubble wrap and kraft paper
 // on a shelf overhead, a scale, a monitor, a half-packed box and a stack of flat cardboard.
 // Set dressing for now: nothing here has a job yet. The benches, the bins and the pallet stack
 // are physics props, so the forklift or a blast can shove them about and knock them over.
@@ -18,7 +19,7 @@ const STEEL = 0x6b7280;
 // Island size before it's turned: [length along the rows, depth across them]
 export function packingSize() {
   const { perRow } = LAYOUT.packing;
-  return [perRow * BENCH_W + (perRow - 1) * GAP, BENCH_D * 2 + 0.1];
+  return [perRow * BENCH_W + (perRow - 1) * GAP, BENCH_D * 2 + LAYOUT.packing.belt + 0.2];
 }
 
 // The island's floor rectangle in world x/z, with `pad` round it: { x0, x1, z0, z1 }
@@ -101,17 +102,12 @@ export function buildPacking(game) {
   for (const [row, yaw] of [[-1, Math.PI], [1, 0]]) {
     const benches = [];
     for (let i = 0; i < perRow; i++) {
-      const p = at(-w / 2 + BENCH_W / 2 + i * (BENCH_W + GAP), row * (BENCH_D / 2 + 0.05));
+      const p = at(-w / 2 + BENCH_W / 2 + i * (BENCH_W + GAP), row * (d / 2 - BENCH_D / 2));
       benches.push(station(game, n++, p.x, p.z, yaw + turn));
     }
     rows.push(benches);
   }
-  // Back-to-back benches brace each other (a hit pushes both, see Game.rackImpacts)
-  rows[0].forEach((b, i) => {
-    b.partner = rows[1][i];
-    rows[1][i].partner = b;
-  });
-  // A stack of empty pallets at one end
+  // A stack of empty pallets at the south end, clear of the belt
   const stack = new THREE.Group();
   for (let k = 0; k < 6; k++) {
     const p = boxMesh(1.0, 0.13, 1.2, 0x9a7650, { edges: true });
@@ -119,13 +115,13 @@ export function buildPacking(game) {
     p.rotation.y = (k % 2) * 0.05;
     stack.add(p);
   }
-  const sp = at(w / 2 + 1.2, 0);
+  const sp = at(-w / 2 - 2.0, 0);
   prop(game, 'pallet stack', stack, [sp.x, 0.005, sp.z], turn, [{ half: [0.5, 0.42, 0.6], pos: [0, 0.42, 0] }], 120);
   // Painted work area round the island, and its name on the floor
   const pad = 1.6; // working room round the benches
   const area = new THREE.Mesh(new THREE.PlaneGeometry(w + 2 * pad + 1.6, d + 2 * pad), new THREE.MeshBasicMaterial({ color: 0x2f5fb3, transparent: true, opacity: 0.18, depthWrite: false }));
   area.rotation.set(-Math.PI / 2, 0, turn);
-  area.position.copy(at(0.8, 0)).setY(0.004);
+  area.position.copy(at(-0.8, 0)).setY(0.004);
   game.scene.add(area);
   const label = labelPlane('PACKING', 3.2, 0.8, { bg: 'rgba(0,0,0,0)', fg: '#7fa8e8', transparent: true });
   label.rotation.set(-Math.PI / 2, 0, turn);

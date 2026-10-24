@@ -769,8 +769,8 @@ export class Climber {
         ? fl.pointVelocity(this.support.point, this.support.collider)
         : this.support.body.velocityAtPoint(this.support.point);
       this.supportVel.set(v.x, v.y, v.z);
-    } else if (this.support && this.game.level.conveyor?.owns(this.support.collider)) {
-      this.supportVel.copy(this.game.level.conveyor.velocity); // riding the conveyor belt
+    } else if (this.support && this.game.level.conveyors.some((c) => c.owns(this.support.collider))) {
+      this.supportVel.copy(this.game.level.conveyors.find((c) => c.owns(this.support.collider)).velocity); // riding a conveyor belt
     } else {
       this.supportVel.set(0, 0, 0);
     }

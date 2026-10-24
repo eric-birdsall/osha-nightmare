@@ -4,9 +4,9 @@ import { COL } from '../physics.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { LAYOUT } from './layout.js';
 
-// A powered roller conveyor along the east wall: a waist-high belt that carries anything resting
-// on it north at LAYOUT.conveyor.speed, and drops it off the north end. Boxes, pallets, barrels,
-// ladders, and Dave if he climbs on (he rides it; see Climber's support velocity).
+// Powered roller conveyors (LAYOUT.conveyors): waist-high belts that carry anything resting on
+// them north at their `speed`, and drop it off the north end. Boxes, pallets, barrels, ladders,
+// and Dave if he climbs on (he rides it; see Climber's support velocity).
 
 const YELLOW = 0xf5c518;
 const STEEL = 0x5b636d;
@@ -28,8 +28,11 @@ function beltTexture(len) {
   return tex;
 }
 
-export function buildConveyor(game) {
-  const c = LAYOUT.conveyor;
+export function buildConveyors(game) {
+  return LAYOUT.conveyors.map((c) => buildConveyor(game, c));
+}
+
+function buildConveyor(game, c) {
   const { x0, x1, z0, z1, height: h, speed } = c;
   const [w, len, cx, cz] = [x1 - x0, z1 - z0, (x0 + x1) / 2, (z0 + z1) / 2];
   // The body: solid up to the belt
@@ -62,9 +65,43 @@ export function buildConveyor(game) {
   add(boxMesh(w, 0.5, 0.6, 0x2f5fb3), cx, 0.35, z1 + 0.35);
   game.world.createCollider(RAPIER.ColliderDesc.cuboid(w / 2, 0.25, 0.3).setTranslation(cx, 0.35, z1 + 0.35).setCollisionGroups(COL.static), game.staticBody);
   add(boxMesh(w + 0.02, 0.12, 0.04, YELLOW, { edges: false }), cx, h + 0.1, z0 + 0.02);
-  const sign = labelPlane('CONVEYOR · KEEP HANDS CLEAR · NO RIDING', 3.2, 0.3, { bg: '#f5c518', fg: '#16171a' });
-  sign.rotation.y = -Math.PI / 2;
-  add(sign, LAYOUT.room.halfX - 0.03, 1.7, cz + 4);
+  if (c.sign) {
+    const sign = labelPlane('CONVEYOR · KEEP HANDS CLEAR · NO RIDING', 3.2, 0.3, { bg: '#f5c518', fg: '#16171a' });
+    sign.rotation.y = -Math.PI / 2;
+    add(sign, LAYOUT.room.halfX - 0.03, 1.7, cz + 4);
+  }
+  // A funnel over the last stretch: yellow guide rails angle in from the belt's sides to a
+  // pallet-width (1.1 m) mouth at the north end, and the belt steers what's on it toward the middle,
+  // so everything drops onto the pallet waiting there
+  const FUNNEL = 2.0;
+  const mouth = Math.min(w, 1.1) / 2; // wide enough for a box turned corner-on
+  for (const side of [-1, 1]) {
+    const [ax, az, bx, bz] = [cx + side * (w / 2 - 0.03), z0 + FUNNEL, cx + side * (mouth - 0.03), z0 + 0.05];
+    const len = Math.hypot(bx - ax, bz - az);
+    const ry = Math.atan2(bx - ax, bz - az);
+    const rail = boxMesh(0.04, 0.12, len, YELLOW, { edges: false });
+    rail.rotation.y = ry;
+    add(rail, (ax + bx) / 2, h + 0.14, (az + bz) / 2);
+    // Solid, so boxes are guided in rather than passing through (taller than it looks, so a
+    // tumbling box can't ride over it)
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry);
+    game.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(0.02, 0.2, len / 2)
+        .setTranslation((ax + bx) / 2, h + 0.2, (az + bz) / 2)
+        .setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
+        .setFriction(0.1)
+        .setCollisionGroups(COL.static),
+      game.staticBody,
+    );
+  }
+  // A backstop past the pallet (on a fast belt): boxes flying off the end hit it and drop onto the
+  // pallet instead of sailing over it
+  if (c.backstop) {
+    const bz = z0 - 0.75 - 0.5 - 0.06;
+    add(boxMesh(1.3, 1.2, 0.08, YELLOW), cx, 0.6, bz);
+    add(boxMesh(1.3, 0.2, 0.09, 0x16171a, { edges: false }), cx, 1.05, bz);
+    game.world.createCollider(RAPIER.ColliderDesc.cuboid(0.65, 0.6, 0.04).setTranslation(cx, 0.6, bz).setFriction(0.4).setCollisionGroups(COL.static), game.staticBody);
+  }
   const velocity = new THREE.Vector3(0, 0, -speed); // north
   return {
     collider,
@@ -79,7 +116,9 @@ export function buildConveyor(game) {
         const t = ent.body.translation();
         if (t.y < h - 0.05) return; // touching the side, not riding on top
         const v = ent.body.linvel();
-        ent.body.setLinvel({ x: v.x * 0.8, y: v.y, z: velocity.z }, true);
+        // In the funnel, steer toward the middle; elsewhere just damp any sideways drift
+        const vx = t.z < z0 + FUNNEL ? THREE.MathUtils.clamp((cx - t.x) * 3, -1.2, 1.2) : v.x * 0.8;
+        ent.body.setLinvel({ x: vx, y: v.y, z: velocity.z }, true);
       });
     },
     // Each frame: scroll the belt

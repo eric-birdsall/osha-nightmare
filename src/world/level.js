@@ -12,7 +12,7 @@ import { LAYOUT, rackX1 } from './layout.js';
 import { buildWrapper } from './wrapper.js';
 import { buildPacking, packingRect } from './packing.js';
 import { buildMezzanine, mezzanineStairs } from './mezzanine.js';
-import { buildConveyor } from './conveyor.js';
+import { buildConveyors } from './conveyor.js';
 import { buildHazards, hazardZones } from './hazards.js';
 
 // The layout's numbers live in layout.js; these are the parts other modules use by name
@@ -1276,7 +1276,7 @@ export function buildLevel(game) {
   // The stretch wrapper's gantry over it, the packing stations, the conveyor and the mezzanine
   const wrapper = buildWrapper(game);
   buildPacking(game);
-  const conveyor = buildConveyor(game);
+  const conveyors = buildConveyors(game);
   buildMezzanine(game);
 
   // Loading docks: this order's is open with a trailer backed up to it
@@ -1331,7 +1331,7 @@ export function buildLevel(game) {
   return {
     wrapZone,
     wrapper, // the stretch wrapper's arm (the wrap system swings it)
-    conveyor, // the belt (the game drives things along it)
+    conveyors, // the belts (the game drives things along them)
     hazards, // the hazards' per-frame update (sparks, drips, barrels gushing)
     dockZone, // inside the trailer at the open dock
     dock: openDock, // { name, z }: this order's dock

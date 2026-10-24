@@ -79,7 +79,7 @@ export function buildSpills(game, { wrapZone, stairs, keepClear = [], spawns, fl
       }[d.wall];
     }),
     // The conveyor, the mezzanine (and the break room under it) and its stairs
-    grow(LAYOUT.conveyor, 1.0),
+    ...LAYOUT.conveyors.map((c) => grow(c, 1.0)),
     grow(LAYOUT.mezzanine, 0.8),
     grow(mezzanineStairs(), 1.0),
     // The stretch wrapper (its frame and control panel)

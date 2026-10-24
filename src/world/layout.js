@@ -84,6 +84,15 @@ const racks = [
 // north wall, down the ramp and into the basement's docks.
 const WRAP = { x: E - 6.6, z: -13 };
 const FRAME = 2.6; // the wrapper's posts, out from its centre
+const PACK_DEPTH = 0.9 * 2 + 1.0 + 0.2; // two benches back to back with the belt between (see packing.js)
+// The packing line ends this far short of the wrapper's frame, leaving room for the pallet it fills
+// and a clear gap between that pallet and the wrapper
+const PACK_LINE_END = WRAP.z + FRAME + 2.2;
+const PACKING = { x: WRAP.x - FRAME + PACK_DEPTH / 2, z: PACK_LINE_END + 8.6, perRow: 3, yaw: Math.PI / 2, belt: 1.0 };
+const CONVEYORS = [
+  { name: 'Conveyor', x0: E - 2.0, x1: E - 0.05, z0: -15.3, z1: 6.8, height: 0.8, speed: 1.2, sign: true, backstop: true },
+  { name: 'Packing line', x0: PACKING.x - PACKING.belt / 2, x1: PACKING.x + PACKING.belt / 2, z0: PACK_LINE_END, z1: PACKING.z + 4.6, height: 0.8, speed: 0.8 },
+];
 
 // Loading docks in the basement's north-west corner, one on the west wall and one on the north
 // wall: `at` is how far along the wall (z for east/west walls, x for north/south). Each order
@@ -106,10 +115,12 @@ export const LAYOUT = {
   // The WRAP square, under a rotary-arm stretch wrapper: posts `half` out from the centre, a
   // gantry `height` up, and an arm swinging the film round at radius `arm`
   wrap: { x: WRAP.x, z: WRAP.z, size: 3.0, frame: { half: FRAME, height: 3.9, arm: 1.9 } },
-  // Packing stations: two rows back to back, centred here and turned by yaw (π/2: running north-south)
-  packing: { x: WRAP.x - FRAME + 0.95, z: -1.7, perRow: 3, yaw: Math.PI / 2 },
-  // A powered conveyor along the east wall, carrying anything on it north (toward -z) at `speed`
-  conveyor: { x0: E - 2.0, x1: E - 0.05, z0: -15.3, z1: 6.8, height: 0.8, speed: 1.2 },
+  // Packing stations: two rows back to back with a belt between them, centred here and turned by
+  // yaw (π/2: running north-south), the west side lined up with the wrapper's
+  packing: PACKING,
+  // Powered conveyors, each carrying anything on it north (toward -z) at `speed`: one along the
+  // east wall, and one between the packing rows up to the wrapper (packed boxes go to be wrapped)
+  conveyors: CONVEYORS,
   mezzanine,
   // Forklift bay: its back against a wall, `width` along it and `depth` out from it, the truck
   // parked nose-out. In the basement's north-west corner, facing east along the ramp, so each
@@ -169,11 +180,15 @@ export const LAYOUT = {
     [RACKS_E + 3.5, 0, 9.0, 0],
     [RACKS_E + 3.5, 0, 11.0, 0],
     [W + 5, lower.y, -11.5, Math.PI / 2],
+    // One just off the north end of each conveyor, so what rides off the end drops onto it (fork
+    // pockets facing west, for the forklift to come in from the open side)
+    ...CONVEYORS.map((c) => [(c.x0 + c.x1) / 2, 0, c.z0 - 0.75, Math.PI / 2]),
   ],
   // Named stretches of the main floor, for incident reports (first match wins; the basement, the
   // mezzanine and the break room are named separately)
   zones: [
     { name: 'The conveyor', x0: E - 2.6, z0: -15.3, x1: E, z1: 6.8 },
+    { name: 'The packing line', x0: PACKING.x - 0.5, z0: PACK_LINE_END - 1.5, x1: PACKING.x + 0.5, z1: PACKING.z + 4.6 },
     { name: 'The west lane', x0: W, z0: lower.z1, x1: WEST, z1: mezzanine.z0 },
     { name: 'South of the racks', x0: WEST, z0: 13.3, x1: RACKS_E, z1: mezzanine.z0 },
     { name: 'By the ramp', x0: lower.x1, z0: NORTH, x1: WRAP.x - FRAME, z1: lower.z1 },
