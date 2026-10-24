@@ -82,7 +82,7 @@ const racks = [
 // The wrapper stands north-east, 3 m in from the conveyor on the east wall; the packing stations
 // run north-south below it, lined up with its west side. A wrapped pallet heads west along the
 // north wall, down the ramp and into the basement's docks.
-const WRAP = { x: E - 6.6, z: -14 };
+const WRAP = { x: E - 6.6, z: -13 };
 const FRAME = 2.6; // the wrapper's posts, out from its centre
 
 // Loading docks in the basement's north-west corner, one on the west wall and one on the north
@@ -109,7 +109,7 @@ export const LAYOUT = {
   // Packing stations: two rows back to back, centred here and turned by yaw (π/2: running north-south)
   packing: { x: WRAP.x - FRAME + 0.95, z: -1.7, perRow: 3, yaw: Math.PI / 2 },
   // A powered conveyor along the east wall, carrying anything on it north (toward -z) at `speed`
-  conveyor: { x0: E - 1.0, x1: E - 0.05, z0: -15.3, z1: 6.8, height: 0.8, speed: 1.2 },
+  conveyor: { x0: E - 2.0, x1: E - 0.05, z0: -15.3, z1: 6.8, height: 0.8, speed: 1.2 },
   mezzanine,
   // Forklift bay: its back against a wall, `width` along it and `depth` out from it, the truck
   // parked nose-out. In the basement's north-west corner, facing east along the ramp, so each
@@ -173,7 +173,7 @@ export const LAYOUT = {
   // Named stretches of the main floor, for incident reports (first match wins; the basement, the
   // mezzanine and the break room are named separately)
   zones: [
-    { name: 'The conveyor', x0: E - 1.6, z0: -15.3, x1: E, z1: 6.8 },
+    { name: 'The conveyor', x0: E - 2.6, z0: -15.3, x1: E, z1: 6.8 },
     { name: 'The west lane', x0: W, z0: lower.z1, x1: WEST, z1: mezzanine.z0 },
     { name: 'South of the racks', x0: WEST, z0: 13.3, x1: RACKS_E, z1: mezzanine.z0 },
     { name: 'By the ramp', x0: lower.x1, z0: NORTH, x1: WRAP.x - FRAME, z1: lower.z1 },

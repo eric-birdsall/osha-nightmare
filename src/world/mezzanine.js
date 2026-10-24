@@ -201,7 +201,7 @@ function buildBreakRoom(game) {
       l.position.set(lx, 0.225, lz);
       chair.add(l);
     }
-    prop(game, 'chair', chair, [tx + s * 0.85, 0.005, tz], (s * Math.PI) / 2, [{ half: [0.21, 0.24, 0.21], pos: [0, 0.24, 0] }, { half: [0.21, 0.22, 0.02], pos: [0, 0.7, -0.2] }], 5);
+    prop(game, 'chair', chair, [tx + s * 0.85, 0.005, tz], (-s * Math.PI) / 2, [{ half: [0.21, 0.24, 0.21], pos: [0, 0.24, 0] }, { half: [0.21, 0.22, 0.02], pos: [0, 0.7, -0.2] }], 5);
   }
   // Counter with a microwave and a coffee maker
   const kx = x0 + 17;
