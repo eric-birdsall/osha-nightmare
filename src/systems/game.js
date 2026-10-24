@@ -198,7 +198,7 @@ export class Game {
   keyHint(role, action) {
     const kb = this.usesKeyboard(role);
     const pad = this.devices[role].some((d) => d.startsWith('pad'));
-    const map = { interact: ['E', 'X'], toss: ['Q', 'RB'] };
+    const map = { interact: ['E', 'X'], toss: ['R', 'RB'] };
     const [k, p] = map[action];
     if (kb && pad && this.mode === 'single') return `${k} / ${p}`;
     return kb ? k : p;
@@ -228,9 +228,26 @@ export class Game {
       const ralphMoved = driverOn && (d.throttle > 0.05 || d.brake > 0.05 || Math.abs(d.steer) > 0.1 || d.liftUp > 0 || d.liftDown > 0);
       this.started = daveMoved || ralphMoved;
     }
+    // Holding Q / Y for a full second sends that character back to the start (the forklift
+    // upright in its bay). Let go before holding again to do it again.
+    this.respawnHold ||= { climber: 0, driver: 0 };
+    for (const [role, on] of [['climber', climberOn], ['driver', driverOn]]) {
+      if (!(on && actions[role].respawnHeld)) {
+        this.respawnHold[role] = 0;
+        continue;
+      }
+      if (this.respawnHold[role] < 0) continue; // done: waiting for the button to come up
+      this.respawnHold[role] += dt;
+      if (this.respawnHold[role] >= CONFIG.input.respawnHoldTime) {
+        this.respawnHold[role] = -1;
+        (role === 'climber' ? this.climber : this.forklift).resetToStart();
+        this.toast(role === 'climber' ? 'Dave is back where he started' : 'The forklift is back in its bay', 2);
+      }
+    }
     this.forklift.preStep(actions.driver, dt, driverOn);
     this.forklift.look(actions.driver, driverOn);
     this.climber.preStep(actions.climber, dt, climberOn);
+    this.level.conveyor?.step(); // the belt carries whatever's on it
     this.world.step();
     this.climber.postStep(dt);
     this.watchRacks(dt);
@@ -380,7 +397,7 @@ export class Game {
         // capped so no hit can launch a rack
         const loadedMass = this.loadedMass(r);
         const impulse = Math.min((mass * loadedMass * kick * speed) / rack.mass, loadedMass * cfg.maxKickSpeed);
-        const top = new THREE.Vector3(0, 5.0, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
+        const top = new THREE.Vector3(0, r.uprightH - 0.2, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
         r.body.applyImpulseAtPoint(dir.clone().multiplyScalar(impulse), top, true);
       }
     };
@@ -392,6 +409,22 @@ export class Game {
         this.world.contactPairsWith(body.collider(i), (other) => {
           const ent = this.entityForCollider(other);
           if (ent?.kind === 'rack') hit(`fl:${ent.name}`, ent, v, ent.mass, cfg.tipKick, cfg.tipImpactSpeed);
+          // Top-heavy props (packing benches) get a push up high as well, so they topple
+          // rather than skid along in front of the forks
+          if (ent?.kind === 'prop' && ent.kickTop) {
+            const key = `fp:${ent.body.handle}`;
+            const speed = Math.hypot(v.x, v.z);
+            if (now.has(key)) return;
+            now.add(key);
+            if (this.rackContacts?.has(key) || speed < 1.0) return;
+            const dir = new THREE.Vector3(v.x, 0, v.z).normalize();
+            // Back-to-back benches brace each other, so the push goes to both
+            for (const p of [ent, ent.partner]) {
+              if (!p) continue;
+              const top = new THREE.Vector3(0, p.kickTop, 0).applyQuaternion(quatToThree(p.body.rotation())).add(p.body.translation());
+              p.body.applyImpulseAtPoint(dir.clone().multiplyScalar(p.mass * Math.min(speed, 4)), top, true);
+            }
+          }
         });
       }
     }
@@ -400,7 +433,7 @@ export class Game {
     // A falling rack hitting its neighbour (dominoes): use the speed of the falling rack's top
     for (const r of this.level.racks) {
       if (!this.rackTilted(r)) continue; // still standing
-      const top = new THREE.Vector3(0, 5.0, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
+      const top = new THREE.Vector3(0, r.uprightH - 0.2, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
       const tv = r.body.velocityAtPoint(top);
       for (let i = 0; i < r.body.numColliders(); i++) {
         this.world.contactPairsWith(r.body.collider(i), (other) => {
@@ -478,7 +511,7 @@ export class Game {
       if (e === exclude || e.removed || e.carried || !e.body.isDynamic()) continue;
       if (e.kind === 'rack') {
         // Rocks the whole rack: push up near its top so it goes over
-        const top = new THREE.Vector3(0, 3.5, 0).applyQuaternion(quatToThree(e.body.rotation())).add(e.body.translation());
+        const top = new THREE.Vector3(0, e.uprightH * 0.67, 0).applyQuaternion(quatToThree(e.body.rotation())).add(e.body.translation());
         push(e.body, this.loadedMass(e), 0.45, top);
       } else if (push(e.body, e.body.mass())) {
         const s = cfg.spin;
@@ -563,8 +596,8 @@ export class Game {
     const knocked = racks.filter((r) => this.rackKnocked(r));
     const world = this.world;
     const footprint = (r) => ({
-      center: { x: r.home.x, y: r.home.y + 2.6, z: r.home.z },
-      shape: new RAPIER.Cuboid((r.x1 - r.x0) / 2 + 0.1, 2.6, (r.z1 - r.z0) / 2 + 0.05),
+      center: { x: r.home.x, y: r.home.y + r.uprightH / 2, z: r.home.z },
+      shape: new RAPIER.Cuboid((r.x1 - r.x0) / 2 + 0.1, r.uprightH / 2, (r.z1 - r.z0) / 2 + 0.05),
     });
     const inside = (r, test) => {
       const { center, shape } = footprint(r);
@@ -722,6 +755,7 @@ export class Game {
     // Hazards spark and drip; the cameras in use hear the zaps
     const ears = this.mode === 'single' ? [this.active === 'driver' ? this.forklift.camera.position : this.climber.camera.position] : [this.forklift.camera.position, this.climber.camera.position];
     this.level.hazards?.update(dt, ears);
+    this.level.conveyor?.update(dt);
     this.forklift.updateVisuals(dt);
     this.climber.updateTarget();
     this.climber.updateVisuals(dt);

@@ -204,7 +204,7 @@ export class WorkerModel {
   }
 
   // speed: walking speed over the ground (m/s). Rotations about X: negative swings a limb forward.
-  update(dt, { yaw, pitch = 0, speed = 0, grounded = true, carrying = false, holdPitch = 0, holding = false }) {
+  update(dt, { yaw, pitch = 0, speed = 0, grounded = true, carrying = false, holdPitch = 0, holding = false, gripBehind = false }) {
     const P = this.pivots;
     this.body.rotation.y = yaw + Math.PI;
     const amp = grounded ? Math.min(1, speed / 3.5) * 0.65 : 0;
@@ -230,10 +230,16 @@ export class WorkerModel {
       armOut = 0.45;
     }
     if (holding) {
-      // Arms up, hanging on to the forklift carriage
+      // Arms up, hanging on to a ladder
       shL = shR = -2.1;
       elL = elR = -0.5;
       armOut = 0.05;
+    }
+    if (gripBehind) {
+      // Back to the forklift carriage, arms reaching behind to grip the backrest
+      shL = shR = 0.75;
+      elL = elR = -0.35;
+      armOut = 0.22;
     }
     if (carrying) {
       // Forearms reach forward to the box; raise/lower with the carry pitch

@@ -25,7 +25,8 @@ export const CONFIG = {
     reach: 1.5,
     maxCarry: 3, // boxes Dave can carry as a stack (pick up the bottom one)
     stackSpeed: [1, 0.85, 0.75], // walk speed factor carrying 1, 2, 3 boxes
-    tossSpeed: 6, // m/s along the crosshair when he throws a box (Q / RB)
+    throwSpeed: [3, 12], // m/s along the crosshair when he throws a box (R / RB): a tap, and fully wound up
+    throwChargeTime: 1.0, // s of holding R / RB to wind up all the way
     tossLift: 1.5, // plus a little upward lob // pick up: aimed box surface within this distance of the chest
     chestDrop: 0.45, // chest is this far below the eye
     placeReach: 2.2, // put down: how far the aim ray looks for a surface
@@ -149,6 +150,8 @@ export const CONFIG = {
     setupDistance: 1.05, // ladder centre this far in front of Dave when set up
     jumpKick: 2.5, // m/s at the top cap when Dave jumps off: always enough to send it over
     maxRideSpeed: 1.5, // m/s: a ladder moving faster than this with Dave on it throws him off
+    uprightRange: 1.8, // m: a fallen ladder this close can be stood back up...
+    uprightHoldTime: 1.0, // ...by holding R / RB this long
   },
 
   // A FRAGILE box going off (dropped or thrown by Dave)
@@ -197,6 +200,7 @@ export const CONFIG = {
   },
 
   input: {
+    respawnHoldTime: 1.0, // s of holding Q / Y to send your character back to the start
     deadZone: 0.15,
   },
 

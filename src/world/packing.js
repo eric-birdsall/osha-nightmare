@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
-import { COL } from '../physics.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { LAYOUT } from './layout.js';
+import { prop } from './props.js';
 
 // Packing stations: an island of workbenches back to back, each with bubble wrap and kraft paper
 // on a shelf overhead, a scale, a monitor, a half-packed box and a stack of flat cardboard.
-// Set dressing for now: the benches are solid, but nothing here has a job yet.
+// Set dressing for now: nothing here has a job yet. The benches, the bins and the pallet stack
+// are physics props, so the forklift or a blast can shove them about and knock them over.
 
 const BENCH_W = 2.4;
 const BENCH_D = 0.9;
@@ -15,28 +15,25 @@ const GAP = 0.8; // between benches in a row
 const CARDBOARD = 0xc49a6c;
 const STEEL = 0x6b7280;
 
-// Island size: [width along x, depth along z]
+// Island size before it's turned: [length along the rows, depth across them]
 export function packingSize() {
   const { perRow } = LAYOUT.packing;
   return [perRow * BENCH_W + (perRow - 1) * GAP, BENCH_D * 2 + 0.1];
 }
 
-function solidBox(game, size, pos, rotY = 0) {
-  game.world.createCollider(
-    RAPIER.ColliderDesc.cuboid(size[0] / 2, size[1] / 2, size[2] / 2)
-      .setTranslation(...pos)
-      .setRotation({ x: 0, y: Math.sin(rotY / 2), z: 0, w: Math.cos(rotY / 2) })
-      .setFriction(0.8)
-      .setCollisionGroups(COL.static),
-    game.staticBody,
-  );
+// The island's floor rectangle in world x/z, with `pad` round it: { x0, x1, z0, z1 }
+export function packingRect(pad = 0) {
+  const { x, z, yaw = 0 } = LAYOUT.packing;
+  const [w, d] = packingSize();
+  const across = Math.abs(Math.sin(yaw)) > 0.5; // turned a quarter: rows run along z
+  const [hx, hz] = across ? [d / 2, w / 2] : [w / 2, d / 2];
+  return { x0: x - hx - pad, x1: x + hx + pad, z0: z - hz - pad, z1: z + hz + pad };
 }
 
-// One station, built facing +z (the packer stands on the +z side) and turned by `yaw`.
+// One station, built facing +z (the packer stands on the +z side) and turned by `yaw`: a bench
+// (with everything on it, as one body), the floor mat in front of it and a bin at its end.
 function station(game, n, x, z, yaw) {
   const g = new THREE.Group();
-  g.position.set(x, 0, z);
-  g.rotation.y = yaw;
   const add = (mesh, px, py, pz) => {
     mesh.position.set(px, py, pz);
     g.add(mesh);
@@ -73,49 +70,65 @@ function station(game, n, x, z, yaw) {
   };
   flap(-0.27, 0.9);
   flap(0.37, -0.9);
-  // Anti-fatigue mat where the packer stands, and a bin at the end of the bench
+  // The bench and the upright behind it: about 90 kg, a fair bit of it up high, so a good shove
+  // tips it over
+  const bench = prop(game, `PACK ${n}`, g, [x, 0.005, z], yaw, [
+    { half: [BENCH_W / 2, BENCH_H / 2, BENCH_D / 2], pos: [0, BENCH_H / 2, 0] },
+    { half: [BENCH_W / 2, 0.65, 0.2], pos: [0, BENCH_H + 0.65, -BENCH_D / 2 + 0.2] },
+  ], 90, { grip: true, kickTop: 2.0 });
+  const at = (lx, lz) => new THREE.Vector3(lx, 0, lz).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).add(new THREE.Vector3(x, 0, z));
+  // Anti-fatigue mat where the packer stands (painted on, it stays put)
   const mat = new THREE.Mesh(new THREE.PlaneGeometry(BENCH_W - 0.2, 0.8), flatMat(0x1d1f23));
-  mat.rotation.x = -Math.PI / 2;
-  add(mat, 0, 0.006, BENCH_D / 2 + 0.45);
+  mat.rotation.set(-Math.PI / 2, 0, yaw);
+  mat.position.copy(at(0, BENCH_D / 2 + 0.45)).setY(0.006);
+  game.scene.add(mat);
+  // A bin at the end of the bench
   const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.7, 16), flatMat(0x2f5fb3));
-  add(bin, BENCH_W / 2 + 0.32, 0.35, 0.15);
-  game.scene.add(g);
-  // Solid: the bench and the upright, and the bin
-  solidBox(game, [BENCH_W, BENCH_H, BENCH_D], [x, BENCH_H / 2, z], yaw);
-  const bin2 = new THREE.Vector3(BENCH_W / 2 + 0.32, 0, 0.15).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-  solidBox(game, [0.5, 0.7, 0.5], [x + bin2.x, 0.35, z + bin2.z]);
+  bin.castShadow = true;
+  const b = at(BENCH_W / 2 + 0.32, 0.15);
+  prop(game, 'bin', bin, [b.x, 0.355, b.z], 0, [{ cyl: [0.35, 0.24] }], 6);
+  return bench;
 }
 
 export function buildPacking(game) {
-  const { x, z, perRow } = LAYOUT.packing;
+  const { x, z, perRow, yaw: turn = 0 } = LAYOUT.packing;
   const [w, d] = packingSize();
-  // Two rows back to back: the north row's packers face north, the south row's face south
+  // Laid out with the rows along local x, then the whole island is turned by `turn`
+  const at = (lx, lz) => new THREE.Vector3(lx, 0, lz).applyAxisAngle(new THREE.Vector3(0, 1, 0), turn).add(new THREE.Vector3(x, 0, z));
+  // Two rows back to back, the packers facing out
   let n = 1;
+  const rows = [];
   for (const [row, yaw] of [[-1, Math.PI], [1, 0]]) {
+    const benches = [];
     for (let i = 0; i < perRow; i++) {
-      const bx = x - w / 2 + BENCH_W / 2 + i * (BENCH_W + GAP);
-      station(game, n++, bx, z + row * (BENCH_D / 2 + 0.05), yaw);
+      const p = at(-w / 2 + BENCH_W / 2 + i * (BENCH_W + GAP), row * (BENCH_D / 2 + 0.05));
+      benches.push(station(game, n++, p.x, p.z, yaw + turn));
     }
+    rows.push(benches);
   }
-  // A stack of empty pallets and flat-packed boxes at the east end
+  // Back-to-back benches brace each other (a hit pushes both, see Game.rackImpacts)
+  rows[0].forEach((b, i) => {
+    b.partner = rows[1][i];
+    rows[1][i].partner = b;
+  });
+  // A stack of empty pallets at one end
   const stack = new THREE.Group();
-  stack.position.set(x + w / 2 + 1.2, 0, z);
   for (let k = 0; k < 6; k++) {
     const p = boxMesh(1.0, 0.13, 1.2, 0x9a7650, { edges: true });
     p.position.y = 0.065 + k * 0.14;
     p.rotation.y = (k % 2) * 0.05;
     stack.add(p);
   }
-  game.scene.add(stack);
-  solidBox(game, [1.0, 0.84, 1.2], [x + w / 2 + 1.2, 0.42, z]);
+  const sp = at(w / 2 + 1.2, 0);
+  prop(game, 'pallet stack', stack, [sp.x, 0.005, sp.z], turn, [{ half: [0.5, 0.42, 0.6], pos: [0, 0.42, 0] }], 120);
   // Painted work area round the island, and its name on the floor
   const pad = 1.6; // working room round the benches
   const area = new THREE.Mesh(new THREE.PlaneGeometry(w + 2 * pad + 1.6, d + 2 * pad), new THREE.MeshBasicMaterial({ color: 0x2f5fb3, transparent: true, opacity: 0.18, depthWrite: false }));
-  area.rotation.x = -Math.PI / 2;
-  area.position.set(x + 0.8, 0.004, z);
+  area.rotation.set(-Math.PI / 2, 0, turn);
+  area.position.copy(at(0.8, 0)).setY(0.004);
   game.scene.add(area);
   const label = labelPlane('PACKING', 3.2, 0.8, { bg: 'rgba(0,0,0,0)', fg: '#7fa8e8', transparent: true });
-  label.rotation.set(-Math.PI / 2, 0, 0);
-  label.position.set(x, 0.008, z + d / 2 + pad + 0.7);
+  label.rotation.set(-Math.PI / 2, 0, turn);
+  label.position.copy(at(0, d / 2 + pad + 0.7)).setY(0.008);
   game.scene.add(label);
 }

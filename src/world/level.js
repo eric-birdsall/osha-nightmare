@@ -6,11 +6,13 @@ import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { createBox } from '../entities/box.js';
 import { createPallet } from '../entities/pallet.js';
 import { createLadderStand } from '../entities/ladder.js';
-import { buildParking } from './parking.js';
+import { buildParking, parkingRect } from './parking.js';
 import { buildSpills } from './spills.js';
 import { LAYOUT, rackX1 } from './layout.js';
 import { buildWrapper } from './wrapper.js';
-import { buildPacking, packingSize } from './packing.js';
+import { buildPacking, packingRect } from './packing.js';
+import { buildMezzanine, mezzanineStairs } from './mezzanine.js';
+import { buildConveyor } from './conveyor.js';
 import { buildHazards, hazardZones } from './hazards.js';
 
 // The layout's numbers live in layout.js; these are the parts other modules use by name
@@ -63,9 +65,8 @@ export function floorHeightAt(x, z) {
   }
   return LOWER.y;
 }
-export const SHELF_LEVELS = LAYOUT.racking.shelves;
+export const SHELF_LEVELS = LAYOUT.racking.shelves; // the usual shelves (each rack has its own: rack.shelves)
 const BAY_W = LAYOUT.racking.bayW;
-const UPRIGHT_H = LAYOUT.racking.uprightH;
 const BEAM_H = 0.16; // shelf beam height (labels go on its face)
 const BEAM_D = 0.06; // beam depth
 
@@ -142,7 +143,7 @@ function labelRack(group, rack, cx, cz) {
   add(endCapSign(name, 1.0, 1.1), x1 + 0.05, 2.3, cz, Math.PI / 2);
   for (const [z, ry] of faces) {
     for (let b = 0; b < rack.bays; b++) {
-      SHELF_LEVELS.forEach((y, sh) => {
+      rack.shelves.forEach((y, sh) => {
         // Tag stuck on the beam face, a few mm proud of it
         add(tagPlane(locationCode(name, b, sh), 0.42, BEAM_H - 0.03), bayX(rack, b), y - BEAM_H / 2, z + (ry ? 0.008 : -0.008), ry);
       });
@@ -178,9 +179,9 @@ function buildRack(game, rack) {
   const parts = []; // [half, local pos, color, edges]
   const uprightZs = [z0 + 0.05, z1 - 0.05];
   for (let i = 0; i <= bays; i++) {
-    for (const z of uprightZs) parts.push([[0.045, UPRIGHT_H / 2, 0.045], [x0 + i * BAY_W - cx, UPRIGHT_H / 2, z - cz], blue, true]);
+    for (const z of uprightZs) parts.push([[0.045, rack.uprightH / 2, 0.045], [x0 + i * BAY_W - cx, rack.uprightH / 2, z - cz], blue, true]);
   }
-  for (const y of SHELF_LEVELS) {
+  for (const y of rack.shelves) {
     // Deck fits between the beams (no coplanar faces with them, so no z-fighting flicker)
     const deckHalfZ = (z1 - z0) / 2 - BEAM_D;
     parts.push([[len / 2, 0.02, deckHalfZ], [0, y - 0.02, 0], deckGrey, false]); // deck (walkable)
@@ -212,7 +213,7 @@ function buildRack(game, rack) {
   labelRack(group, rack, cx, cz);
   game.scene.add(group);
   // home: where it stands (for resetting the racking); x0/x1: its ends; face: its open side
-  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass, z0, z1, base, x0, x1, face: rack.face, home: { x: cx, y: base, z: cz }, stock: [] };
+  const ent = { kind: 'rack', name, body, mesh: group, mass: totalMass, z0, z1, base, x0, x1, face: rack.face, uprightH: rack.uprightH, home: { x: cx, y: base, z: cz }, stock: [] };
   game.addEntity(ent);
   return ent;
 }
@@ -343,7 +344,7 @@ function stockShelves(game, racks) {
   // A random slot { rack, bay, shelf } on one of these racks
   const slotIn = (names, shelf) => {
     const rack = pickOne(names);
-    return { rack, bay: bay(rack), shelf: shelf ?? Math.floor(Math.random() * SHELF_LEVELS.length) };
+    return { rack, bay: bay(rack), shelf: shelf ?? Math.floor(Math.random() * RACKS.find((r) => r.name === rack).shelves.length) };
   };
   const rackA = pickOne(upstairs);
   const qtyB = Math.random() < 0.5 ? 1 : 2;
@@ -392,7 +393,7 @@ function stockShelves(game, racks) {
     const { name, z0, z1, face, base } = rack;
     const ent = racks.find((r) => r.name === name);
     for (let b = 0; b < rack.bays; b++) {
-      for (let shelf = 0; shelf < SHELF_LEVELS.length; shelf++) {
+      for (let shelf = 0; shelf < rack.shelves.length; shelf++) {
         const slot = slots.find((o) => o.rack === name && o.bay === b && o.shelf === shelf);
         // What goes in each of the three spots: 'sku' (an order box), 'decoy', 'gap' or a random box
         const spots = [null, null, null];
@@ -417,7 +418,7 @@ function stockShelves(game, racks) {
             type,
             sku,
             item: isOrder ? slot.line : null, // null for other stock's backstock rows
-            pos: [bayX(rack, b) + dx + (Math.random() - 0.5) * 0.12, base + SHELF_LEVELS[shelf] + 0.005, z],
+            pos: [bayX(rack, b) + dx + (Math.random() - 0.5) * 0.12, base + rack.shelves[shelf] + 0.005, z],
           });
           if (isOrder && slot.line) orderBoxes[slot.line].push(box);
           // Where it was stocked, so resetting the racking can put it back
@@ -430,7 +431,7 @@ function stockShelves(game, racks) {
           // Hung under this shelf's beam, beside the location tag, so it moves with the rack
           const sign = backstockSign(slot.backstock);
           const fz = face === 'south' ? z1 + 0.016 : z0 - 0.016;
-          sign.position.set(bayX(rack, b) + 0.62 - (rack.x0 + rackX1(rack)) / 2, SHELF_LEVELS[shelf] - BEAM_H - 0.13, fz - (z0 + z1) / 2);
+          sign.position.set(bayX(rack, b) + 0.62 - (rack.x0 + rackX1(rack)) / 2, rack.shelves[shelf] - BEAM_H - 0.13, fz - (z0 + z1) / 2);
           sign.rotation.y = face === 'south' ? 0 : Math.PI;
           ent.mesh.add(sign);
         }
@@ -926,28 +927,34 @@ function buildFloors(game) {
 
 // Human-readable spot for incident reports: a rack, an aisle and bay, or a floor zone.
 export function describeLocation(p) {
-  const { parking } = LAYOUT;
-  if (p.z < -ROOM.halfZ + parking.depth + 0.4 && p.x > parking.x0 - 0.2 && p.x < parking.x1 + 0.2) return 'Forklift parking';
+  const bay = parkingRect();
+  if (p.x > bay.x0 - 0.3 && p.x < bay.x1 + 0.3 && p.z > bay.z0 - 0.3 && p.z < bay.z1 + 0.3) return 'Forklift parking';
   const wrap = LAYOUT.wrap;
   if (Math.abs(p.x - wrap.x) < wrap.size / 2 + 0.15 && Math.abs(p.z - wrap.z) < wrap.size / 2 + 0.15) return 'The WRAP square';
   if (Math.abs(p.x - wrap.x) < wrap.frame.half + 0.3 && Math.abs(p.z - wrap.z) < wrap.frame.half + 0.3) return 'The stretch wrapper';
   for (const h of hazardZones()) if (Math.hypot(p.x - h.x, p.z - h.z) < h.r) return h.name;
-  const [pw, pd] = packingSize();
-  if (Math.abs(p.x - LAYOUT.packing.x) < pw / 2 + 1.5 && Math.abs(p.z - LAYOUT.packing.z) < pd / 2 + 1.5) return 'The packing stations';
+  if (inRect(packingRect(1.5), p.x, p.z)) return 'The packing stations';
   for (const d of DOCKS) {
-    if (Math.abs(p.z - d.z) > 2.2) continue;
-    if (p.x > ROOM.halfX + 0.3) return `The truck at ${d.name}`;
-    if (p.x > ROOM.halfX - 4) return d.name;
+    const l = dockFrame(d).toLocal(p);
+    if (Math.abs(l.x) > 2.2) continue;
+    if (l.z < -0.3) return `The truck at ${d.name}`;
+    if (l.z < 4) return d.name;
   }
   if (inRect(RAMP, p.x, p.z)) return 'The forklift ramp';
   const lowerName = LAYOUT.lower.label.toLowerCase();
   if (p.x >= STAIRS.x0 - 0.3 && p.x <= STAIRS.x1 + 0.3 && p.z >= STAIRS.z0 - 0.3 && p.z <= STAIRS.z1 + 0.3) return `The stairs to the ${lowerName}`;
   const lower = inLowerLevel(p.x, p.z);
-  const h = p.y - floorHeightAt(p.x, p.z);
+  // The mezzanine: up on its deck, its stairs, or the break room underneath
+  const mz = LAYOUT.mezzanine;
+  const onMezz = inRect(mz, p.x, p.z) && p.y > mz.y - 0.5;
+  if (inRect(mezzanineStairs(), p.x, p.z)) return 'The mezzanine stairs';
+  const level = lower ? 'lower' : onMezz ? 'mezz' : 'main';
+  const levelOf = (r) => (r.base < 0 ? 'lower' : r.base > 1 ? 'mezz' : 'main');
+  const h = p.y - (onMezz ? mz.y : floorHeightAt(p.x, p.z));
   const up = h > 0.5 ? `, ${h.toFixed(1)} m up` : '';
   const bayOf = (r) => Math.min(r.bays, Math.max(1, Math.floor((p.x - r.x0) / BAY_W) + 1));
   const alongside = (r, m = 0) => p.x >= r.x0 - m && p.x <= rackX1(r) + m;
-  const rows = RACKS.filter((r) => !!r.base === lower).sort((a, b) => a.z0 - b.z0);
+  const rows = RACKS.filter((r) => levelOf(r) === level).sort((a, b) => a.z0 - b.z0);
   for (const r of rows) if (alongside(r, 0.2) && p.z >= r.z0 - 0.2 && p.z <= r.z1 + 0.2) return `Rack ${r.name}, bay ${bayOf(r)}${up}`;
   // Pick aisles: between a rack and the next one south of it in the same block (not its
   // back-to-back partner across the flue)
@@ -957,14 +964,15 @@ export function describeLocation(p) {
     if (alongside(a)) return `Aisle ${a.name}/${b.name}, by bay ${bayOf(a)}${up}`;
     if (alongside(a, 4)) return `End of aisle ${a.name}/${b.name}`;
   }
-  if (lower) {
-    // An aisle between the backstock racks and the basement's walls
+  if (level !== 'main') {
+    // A walkway beside the backstock racks, or open floor
     const by = rows.filter((o) => alongside(o));
     const gap = (o) => Math.max(o.z0 - p.z, p.z - o.z1);
     const r = by.sort((a, b) => gap(a) - gap(b))[0];
-    const name = lowerName[0].toUpperCase() + lowerName.slice(1);
-    return r ? `${name}, aisle by Rack ${r.name}, bay ${bayOf(r)}${up}` : `${name}, open floor`;
+    const name = lower ? lowerName[0].toUpperCase() + lowerName.slice(1) : 'The mezzanine';
+    return r ? `${name}, by Rack ${r.name}, bay ${bayOf(r)}${up}` : lower ? `${name}, open floor` : name;
   }
+  if (inRect(mz, p.x, p.z)) return 'The break room';
   const zone = LAYOUT.zones.find((zn) => p.x >= zn.x0 && p.x <= zn.x1 && p.z >= zn.z0 && p.z <= zn.z1);
   return zone ? zone.name : 'Open floor';
 }
@@ -1003,108 +1011,125 @@ function boardsMaterial(len) {
   return new THREE.MeshLambertMaterial({ map: tex });
 }
 
-// Three docks on the east wall, each with floor markings, bumpers, a sign and a lamp. The open
-// one (this order's) has its door rolled up, a dock plate, a black shelter round the opening and
-// a trailer backed up to it, floor level with the warehouse so the forklift can drive in.
-// Returns the sensor zone inside that trailer.
+const UP = new THREE.Vector3(0, 1, 0);
+const yawQ = (ry) => ({ x: 0, y: Math.sin(ry / 2), z: 0, w: Math.cos(ry / 2) });
+
+// A dock's frame on its wall: origin on the wall's inside face at the middle of the doorway, at
+// the floor's height there; local +z points into the room and local x runs along the wall.
+// toWorld(lx, ly, lz) turns a local point into a world one; toLocal does the reverse.
+function dockFrame(d) {
+  const { halfX, halfZ } = ROOM;
+  const f = {
+    north: { x: d.at, z: -halfZ, ry: 0 },
+    south: { x: d.at, z: halfZ, ry: Math.PI },
+    west: { x: -halfX, z: d.at, ry: Math.PI / 2 },
+    east: { x: halfX, z: d.at, ry: -Math.PI / 2 },
+  }[d.wall];
+  const inside = new THREE.Vector3(0, 0, 0.5).applyAxisAngle(UP, f.ry);
+  const y = floorHeightAt(f.x + inside.x, f.z + inside.z);
+  const origin = new THREE.Vector3(f.x, y, f.z);
+  return {
+    ...f,
+    y,
+    toWorld: (lx, ly, lz) => new THREE.Vector3(lx, ly, lz).applyAxisAngle(UP, f.ry).add(origin),
+    toLocal: (p) => new THREE.Vector3(p.x, p.y, p.z).sub(origin).applyAxisAngle(UP, -f.ry),
+  };
+}
+
+// The loading docks, each with floor markings, bumpers, a sign and a lamp. The open one (this
+// order's) has its door rolled up, a dock plate, a black shelter round the opening and a trailer
+// backed up to it, its floor level with the floor inside so the forklift can drive in. Returns the
+// sensor zone inside that trailer.
 function buildDocks(game) {
-  const { halfX } = ROOM;
   const scene = game.scene;
+  const { halfW, height, length: L } = TRAILER;
+  let zone = null;
   for (const d of DOCKS) {
     const open = d === openDock;
+    const f = dockFrame(d);
+    // Built in the dock's frame
+    const g = new THREE.Group();
+    g.position.set(f.x, f.y, f.z);
+    g.rotation.y = f.ry;
+    scene.add(g);
+    const put = (mesh, x, y, z) => {
+      mesh.position.set(x, y, z);
+      g.add(mesh);
+      return mesh;
+    };
+    const flat = (w, depth, x, z, mat, y = 0.006) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, depth), mat);
+      m.rotation.x = -Math.PI / 2;
+      return put(m, x, y, z);
+    };
+    // A solid box (local size and centre), drawn with `mat` (or not drawn, without one)
+    const part = (size, pos, mat) => {
+      const c = f.toWorld(...pos);
+      game.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(size[0] / 2, size[1] / 2, size[2] / 2).setTranslation(c.x, c.y, c.z).setRotation(yawQ(f.ry)).setFriction(0.8).setCollisionGroups(COL.static),
+        game.staticBody,
+      );
+      if (!mat) return null;
+      const m = put(new THREE.Mesh(new THREE.BoxGeometry(...size), mat), ...pos);
+      m.receiveShadow = true;
+      return m;
+    };
     const green = '#31d07a';
-    floorMarking(game, halfX - 1.9, d.z, 3.6, 4.0, open ? 0x31d07a : 0x9aa0a8, 0.15);
-    floorText(game, d.name.toUpperCase(), halfX - 2.8, d.z, 3.2, 0.9, Math.PI / 2, open ? green : '#9aa0a8');
+    // Floor marking: an outline 4 m along the wall and 3.6 m out, with the dock's name
+    const markMat = new THREE.MeshBasicMaterial({ color: open ? 0x31d07a : 0x9aa0a8 });
+    flat(4.0, 0.15, 0, 0.1, markMat);
+    flat(4.0, 0.15, 0, 3.7, markMat);
+    flat(0.15, 3.6, -2.0, 1.9, markMat);
+    flat(0.15, 3.6, 2.0, 1.9, markMat);
+    const tp = f.toWorld(0, 0, 2.8);
+    const into = new THREE.Vector3(0, 0, -1).applyAxisAngle(UP, f.ry); // heading for the door
+    floorText(game, d.name.toUpperCase(), tp.x, tp.z, 3.2, 0.9, Math.atan2(-into.x, -into.z), open ? green : '#9aa0a8', f.y);
     const sign = labelPlane(d.name.toUpperCase(), 2.6, 0.7, open ? { bg: green, fg: '#0b1f12' } : { bg: '#4a5058', fg: '#d9dde2' });
-    sign.position.set(halfX - 0.03, DOOR_H + 0.75, d.z);
-    sign.rotation.y = -Math.PI / 2;
-    scene.add(sign);
+    put(sign, 0, DOOR_H + 0.75, 0.03);
     // Dock lamp: green when it's the one to load
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ color: open ? 0x31ff7a : 0xd02020 }));
-    lamp.position.set(halfX - 0.1, DOOR_H + 0.2, d.z + DOOR_HALF + 0.35);
-    scene.add(lamp);
-    for (const z of [d.z - DOOR_HALF - 0.2, d.z + DOOR_HALF + 0.2]) addStatic(game, [0.1, 0.25, 0.15], [halfX - 0.1, 0.4, z], 0x111111);
+    put(new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ color: open ? 0x31ff7a : 0xd02020 })), DOOR_HALF + 0.35, DOOR_H + 0.2, 0.1);
+    // Rubber bumpers either side of the door
+    for (const sx of [-1, 1]) part([0.3, 0.5, 0.2], [sx * (DOOR_HALF + 0.2), 0.4, 0.1], flatMat(0x111111));
     if (!open) {
-      const door = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, DOOR_H), doorMaterial(DOOR_H));
-      door.position.set(halfX - 0.02, DOOR_H / 2, d.z);
-      door.rotation.y = -Math.PI / 2;
-      scene.add(door);
-      const closed = labelPlane('CLOSED', 1.6, 0.5, { bg: '#d0141b', fg: '#ffffff' });
-      closed.position.set(halfX - 0.04, 1.9, d.z);
-      closed.rotation.y = -Math.PI / 2;
-      scene.add(closed);
+      put(new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, DOOR_H), doorMaterial(DOOR_H)), 0, DOOR_H / 2, 0.02);
+      put(labelPlane('CLOSED', 1.6, 0.5, { bg: '#d0141b', fg: '#ffffff' }), 0, 1.9, 0.04);
       continue;
     }
     // Rolled-up door: just the bottom slats showing under the hood
-    const rolled = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, 0.35), doorMaterial(0.35));
-    rolled.position.set(halfX + 0.05, DOOR_H - 0.17, d.z);
-    rolled.rotation.y = -Math.PI / 2;
-    scene.add(rolled);
+    put(new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, 0.35), doorMaterial(0.35)), 0, DOOR_H - 0.17, -0.05);
     // Dock plate bridging into the trailer
-    const plate = boxMesh(0.9, 0.04, 2.4, 0x7d838a, { shadows: false });
-    plate.position.set(halfX + 0.05, 0.0, d.z);
-    scene.add(plate);
-    for (const z of [d.z - 1.22, d.z + 1.22]) {
-      const edge = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.08), new THREE.MeshBasicMaterial({ color: 0xf5c518 }));
-      edge.rotation.x = -Math.PI / 2;
-      edge.position.set(halfX + 0.05, 0.025, z);
-      scene.add(edge);
-    }
+    put(boxMesh(2.4, 0.04, 0.9, 0x7d838a, { shadows: false }), 0, 0, -0.05);
+    const yellow = new THREE.MeshBasicMaterial({ color: 0xf5c518 });
+    for (const sx of [-1, 1]) flat(0.08, 0.9, sx * 1.22, -0.05, yellow, 0.025);
     // Trailer, backed up to the outside of the wall (inside dimensions in TRAILER)
-    const x0 = halfX + 0.4;
-    const x1 = x0 + TRAILER.length;
-    const cx = (x0 + x1) / 2;
-    const { halfW, height } = TRAILER;
-    const part = (size, pos, mat) => {
-      game.world.createCollider(
-        RAPIER.ColliderDesc.cuboid(size[0] / 2, size[1] / 2, size[2] / 2).setTranslation(...pos).setFriction(0.8).setCollisionGroups(COL.static),
-        game.staticBody,
-      );
-      const m = new THREE.Mesh(new THREE.BoxGeometry(...size), mat);
-      m.position.set(...pos);
-      m.receiveShadow = true;
-      scene.add(m);
-    };
+    const zc = -(0.4 + L / 2);
     const inside = new THREE.MeshLambertMaterial({ color: 0xdfe3e8 });
-    part([TRAILER.length, 0.3, halfW * 2 + 0.16], [cx, -0.15, d.z], boardsMaterial(TRAILER.length)); // floor, level with the warehouse
-    part([TRAILER.length, height, 0.08], [cx, height / 2, d.z - halfW - 0.04], inside); // sides
-    part([TRAILER.length, height, 0.08], [cx, height / 2, d.z + halfW + 0.04], inside);
-    part([0.08, height, halfW * 2 + 0.16], [x1 + 0.04, height / 2, d.z], inside); // front (cab end)
-    part([TRAILER.length, 0.08, halfW * 2 + 0.16], [cx, height + 0.04, d.z], new THREE.MeshLambertMaterial({ color: 0xc9ced6, emissive: 0x3a3f46 })); // roof
+    part([halfW * 2 + 0.16, 0.3, L], [0, -0.15, zc], boardsMaterial(L)); // floor, level with the floor inside
+    part([0.08, height, L], [-halfW - 0.04, height / 2, zc], inside); // sides
+    part([0.08, height, L], [halfW + 0.04, height / 2, zc], inside);
+    part([halfW * 2 + 0.16, height, 0.08], [0, height / 2, -(0.4 + L + 0.04)], inside); // front (cab end)
+    part([halfW * 2 + 0.16, 0.08, L], [0, height + 0.04, zc], new THREE.MeshLambertMaterial({ color: 0xc9ced6, emissive: 0x3a3f46 })); // roof
     // Ribs down the inside walls, every 1.2 m
-    const ribs = [];
-    for (let x = x0 + 0.6; x < x1; x += 1.2) ribs.push([x, height / 2, d.z - halfW + 0.02], [x, height / 2, d.z + halfW - 0.02]);
-    instancedBoxes(game, [0.05, height, 0.04], flatMat(0xb9bec6), ribs);
+    const rib = flatMat(0xb9bec6);
+    for (let z = -1.0; z > -(0.4 + L); z -= 1.2) for (const sx of [-1, 1]) put(new THREE.Mesh(new THREE.BoxGeometry(0.04, height, 0.05), rib), sx * (halfW - 0.02), height / 2, z);
     // Black dock shelter round the trailer, closing the gaps in the doorway
     const shelter = flatMat(0x16171a);
-    const curtain = (size, pos) => {
-      game.world.createCollider(
-        RAPIER.ColliderDesc.cuboid(size[0] / 2, size[1] / 2, size[2] / 2).setTranslation(...pos).setCollisionGroups(COL.static),
-        game.staticBody,
-      );
-      const m = new THREE.Mesh(new THREE.BoxGeometry(...size), shelter);
-      m.position.set(...pos);
-      scene.add(m);
-    };
     const sideW = DOOR_HALF - halfW;
-    curtain([0.3, DOOR_H, sideW], [halfX + 0.25, DOOR_H / 2, d.z - halfW - sideW / 2]);
-    curtain([0.3, DOOR_H, sideW], [halfX + 0.25, DOOR_H / 2, d.z + halfW + sideW / 2]);
-    curtain([0.3, DOOR_H - height, DOOR_HALF * 2], [halfX + 0.25, (DOOR_H + height) / 2, d.z]);
+    part([sideW, DOOR_H, 0.3], [-halfW - sideW / 2, DOOR_H / 2, -0.25], shelter);
+    part([sideW, DOOR_H, 0.3], [halfW + sideW / 2, DOOR_H / 2, -0.25], shelter);
+    part([DOOR_HALF * 2, DOOR_H - height, 0.3], [0, (DOOR_H + height) / 2, -0.25], shelter);
     // Load here: green marking down the trailer floor
-    const mark = new THREE.Mesh(new THREE.PlaneGeometry(TRAILER.length - 0.6, 0.1), new THREE.MeshBasicMaterial({ color: 0x31d07a }));
-    for (const z of [d.z - halfW + 0.2, d.z + halfW - 0.2]) {
-      const m = mark.clone();
-      m.rotation.x = -Math.PI / 2;
-      m.position.set(cx, 0.006, z);
-      scene.add(m);
-    }
+    const mark = new THREE.MeshBasicMaterial({ color: 0x31d07a });
+    for (const sx of [-1, 1]) flat(0.1, L - 0.6, sx * (halfW - 0.2), zc, mark);
     // A light inside so the far end isn't a black hole
     const light = new THREE.PointLight(0xfff4e0, 8, 16);
-    light.position.set(cx, height - 0.3, d.z);
-    scene.add(light);
+    put(light, 0, height - 0.3, zc);
+    // The zone inside the trailer where a delivered load has to come to rest
+    const c = f.toWorld(0, 0, zc);
+    const alongX = d.wall === 'north' || d.wall === 'south';
+    zone = makeZone(game, 'dock', c.x, c.z, alongX ? halfW * 2 : L - 0.2, alongX ? L - 0.2 : halfW * 2);
   }
-  const x0 = halfX + 0.4;
-  return makeZone(game, 'dock', x0 + TRAILER.length / 2, openDock.z, TRAILER.length - 0.2, TRAILER.halfW * 2);
+  return zone;
 }
 
 export function buildLevel(game) {
@@ -1138,19 +1163,37 @@ export function buildLevel(game) {
   const t = 0.2;
   const wallHalfY = (wallH - FLOOR_BOTTOM) / 2;
   const wallY = (wallH + FLOOR_BOTTOM) / 2;
-  // This order's dock (the east wall gets a doorway there)
+  // This order's dock: its wall gets a doorway there
   openDock = DOCKS[Math.floor(Math.random() * DOCKS.length)];
-  const oz = openDock.z;
-  const eastWall = (z0, z1, y0, y1) => [[t, (y1 - y0) / 2, (z1 - z0) / 2], [halfX + t, (y0 + y1) / 2, (z0 + z1) / 2]];
-  for (const [half, pos] of [
-    [[halfX + t * 2, wallHalfY, t], [0, wallY, -halfZ - t]],
-    [[halfX + t * 2, wallHalfY, t], [0, wallY, halfZ + t]],
-    [[t, wallHalfY, halfZ], [-halfX - t, wallY, 0]],
-    eastWall(-halfZ, oz - DOOR_HALF, FLOOR_BOTTOM, wallH),
-    eastWall(oz + DOOR_HALF, halfZ, FLOOR_BOTTOM, wallH),
-    eastWall(oz - DOOR_HALF, oz + DOOR_HALF, DOOR_H, wallH), // over the door
-    eastWall(oz - DOOR_HALF, oz + DOOR_HALF, FLOOR_BOTTOM, 0), // under the threshold
-  ]) {
+  const doorFloor = dockFrame(openDock).y;
+  // Each wall as boxes along it ([half size, centre]); the north and south walls run past the
+  // corners to close them
+  const span = { north: halfX + t * 2, south: halfX + t * 2, west: halfZ, east: halfZ };
+  const wallBox = (wall, a0, a1, y0, y1) => {
+    const [len, mid, hy, cy] = [a1 - a0, (a0 + a1) / 2, (y1 - y0) / 2, (y0 + y1) / 2];
+    return {
+      north: [[len / 2, hy, t], [mid, cy, -halfZ - t]],
+      south: [[len / 2, hy, t], [mid, cy, halfZ + t]],
+      west: [[t, hy, len / 2], [-halfX - t, cy, mid]],
+      east: [[t, hy, len / 2], [halfX + t, cy, mid]],
+    }[wall];
+  };
+  const wallBoxes = [];
+  for (const wall of ['north', 'south', 'west', 'east']) {
+    const [a0, a1] = [-span[wall], span[wall]];
+    if (openDock.wall !== wall) {
+      wallBoxes.push(wallBox(wall, a0, a1, FLOOR_BOTTOM, wallH));
+      continue;
+    }
+    const [g0, g1] = [openDock.at - DOOR_HALF, openDock.at + DOOR_HALF];
+    wallBoxes.push(
+      wallBox(wall, a0, g0, FLOOR_BOTTOM, wallH),
+      wallBox(wall, g1, a1, FLOOR_BOTTOM, wallH),
+      wallBox(wall, g0, g1, doorFloor + DOOR_H, wallH), // over the door
+      wallBox(wall, g0, g1, FLOOR_BOTTOM, doorFloor), // under the threshold
+    );
+  }
+  for (const [half, pos] of wallBoxes) {
     // Tall walls would throw the (fake) sun's shadow across half the floor
     const wall = addStatic(game, half, pos, wallC, { edges: false });
     wall.castShadow = false;
@@ -1168,11 +1211,12 @@ export function buildLevel(game) {
     { y0: 1.0, h: 0.3, out: 0.01, mat: new THREE.MeshLambertMaterial({ color: 0xf5c518, emissive: 0x5c4808, side: THREE.DoubleSide }) },
   ];
   const v = new THREE.Vector3();
+  const doorGap = (wall) => (openDock.wall === wall ? [openDock.at - DOOR_HALF, openDock.at + DOOR_HALF] : null);
   for (const w of [
-    { on: (c) => c.z0 === -halfZ, z: -halfZ, ry: 0 },
-    { on: (c) => c.z1 === halfZ, z: halfZ, ry: Math.PI },
-    { on: (c) => c.x0 === -halfX, x: -halfX, ry: Math.PI / 2 },
-    { on: (c) => c.x1 === halfX, x: halfX, ry: -Math.PI / 2, gap: [oz - DOOR_HALF, oz + DOOR_HALF] },
+    { on: (c) => c.z0 === -halfZ, z: -halfZ, ry: 0, gap: doorGap('north') },
+    { on: (c) => c.z1 === halfZ, z: halfZ, ry: Math.PI, gap: doorGap('south') },
+    { on: (c) => c.x0 === -halfX, x: -halfX, ry: Math.PI / 2, gap: doorGap('west') },
+    { on: (c) => c.x1 === halfX, x: halfX, ry: -Math.PI / 2, gap: doorGap('east') },
   ]) {
     const alongX = w.z !== undefined;
     const [nx, nz] = [Math.round(Math.sin(w.ry)), Math.round(Math.cos(w.ry))]; // into the room
@@ -1217,29 +1261,16 @@ export function buildLevel(game) {
     line.position.set((r.x0 + rackX1(r)) / 2, r.base + 0.005, z);
     scene.add(line);
   }
-  // The highway: a painted lane along to the docks, its edge line and arrows pointing the way
-  const hw = LAYOUT.highway;
-  const edgeLine = new THREE.Mesh(new THREE.PlaneGeometry(hw.x1 - hw.x0, 0.15), new THREE.MeshBasicMaterial({ color: yellow }));
-  edgeLine.rotation.x = -Math.PI / 2;
-  edgeLine.position.set((hw.x0 + hw.x1) / 2, 0.005, hw.z0);
-  scene.add(edgeLine);
-  const dash = new THREE.MeshBasicMaterial({ color: 0xe8ecf0 });
-  for (let x = hw.x0 + 1; x < hw.x1 - 1; x += 4) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(2, 0.12), dash);
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(x + 1, 0.005, (hw.z0 + hw.z1) / 2);
-    scene.add(m);
-  }
-  for (let x = hw.x0 + 6; x < hw.x1 - 4; x += 14) floorText(game, 'DOCKS ▶', x, (hw.z0 + hw.z1) / 2 + 1.6, 3.2, 0.9, -Math.PI / 2, '#e8ecf0');
-
-  // Wrapper zone (open east half of the floor)
+  // Wrapper zone
   const { x: wx, z: wz, size: ws } = LAYOUT.wrap;
   const wrapZone = makeZone(game, 'wrap', wx, wz, ws, ws);
   floorMarking(game, wx, wz, ws, ws, 0xf5c518, 0.15);
   floorText(game, 'WRAP', wx, wz + ws / 2 + 0.4, 2.0, 0.6);
-  // The stretch wrapper's gantry over it, and the packing stations
+  // The stretch wrapper's gantry over it, the packing stations, the conveyor and the mezzanine
   const wrapper = buildWrapper(game);
   buildPacking(game);
+  const conveyor = buildConveyor(game);
+  buildMezzanine(game);
 
   // Loading docks: this order's is open with a trailer backed up to it
   const dockZone = buildDocks(game);
@@ -1293,6 +1324,7 @@ export function buildLevel(game) {
   return {
     wrapZone,
     wrapper, // the stretch wrapper's arm (the wrap system swings it)
+    conveyor, // the belt (the game drives things along it)
     hazards, // the hazards' per-frame update (sparks, drips, barrels gushing)
     dockZone, // inside the trailer at the open dock
     dock: openDock, // { name, z }: this order's dock

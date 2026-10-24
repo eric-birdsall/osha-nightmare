@@ -74,7 +74,7 @@ export class Forklift {
     const [ix, iy, iz] = cfg.inertia;
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(spawn.pos.x, 0.02, spawn.pos.z)
+        .setTranslation(spawn.pos.x, floorHeightAt(spawn.pos.x, spawn.pos.z) + 0.02, spawn.pos.z) // main floor or basement
         .setRotation(yawQuat(spawn.yaw))
         .setAdditionalMassProperties(cfg.mass, { x: cx, y: cy, z: cz }, { x: ix, y: iy, z: iz }, { x: 0, y: 0, z: 0, w: 1 })
         .setLinearDamping(0.05)
@@ -138,6 +138,19 @@ export class Forklift {
     this.buildMesh();
     this.camera = new THREE.PerspectiveCamera(FOV, 1, 0.05, 200);
     this.camera.layers.enable(1);
+  }
+
+  // Straight back to the parking bay, upright and at rest with the forks down (holding Q / Y).
+  resetToStart() {
+    const spawn = this.game.level.forkliftSpawn;
+    this.height = CONFIG.forklift.liftMin;
+    this.liftVel = 0;
+    this.tippedTime = 0;
+    this.tipReported = false;
+    this.drift = 0;
+    this.driftCharge = 0;
+    this.boostTime = 0;
+    this.teleport(spawn.pos, spawn.yaw);
   }
 
   // Move the truck (and its carriage) somewhere, at rest. Used by debug tools.

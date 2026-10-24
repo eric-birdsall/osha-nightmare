@@ -3,7 +3,9 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL } from '../physics.js';
 import { LAYOUT, rackX1 } from './layout.js';
-import { packingSize } from './packing.js';
+import { packingRect } from './packing.js';
+import { mezzanineStairs } from './mezzanine.js';
+import { parkingRect } from './parking.js';
 
 // Spills: a few slick puddles on the floor each order, with no warning sign and only a slight
 // tint and sheen on the concrete, so they're easy to run over by accident. On a spill Dave has
@@ -60,23 +62,32 @@ function spotOk(level, x, z, r, spills, floorHeightAt, blocked) {
 // Places the spills and returns them: [{ x, y, z, r, liquid }].
 export function buildSpills(game, { wrapZone, stairs, keepClear = [], spawns, floorHeightAt }) {
   const cfg = CONFIG.spill;
-  const { room, lower, ramp, parking } = LAYOUT;
+  const { room, lower, ramp } = LAYOUT;
   const level = { room };
   const grow = (r, m) => [r.x0 - m, r.z0 - m, r.x1 + m, r.z1 + m];
   // Rectangles [x0, z0, x1, z1] nothing may overlap
   const blocked = [
     ...LAYOUT.racks.map((r) => [r.x0 - 0.6, r.z0 - 0.6, rackX1(r) + 0.6, r.z1 + 0.6]),
-    ...LAYOUT.docks.map((d) => [room.halfX - 5, d.z - 3, room.halfX + 20, d.z + 3]),
+    // The docks: 3 m either side of each doorway and 5 m in from its wall
+    ...LAYOUT.docks.map((d) => {
+      const { halfX: hx, halfZ: hz } = room;
+      return {
+        north: [d.at - 3, -hz - 1, d.at + 3, -hz + 5],
+        south: [d.at - 3, hz - 5, d.at + 3, hz + 1],
+        west: [-hx - 1, d.at - 3, -hx + 5, d.at + 3],
+        east: [hx - 5, d.at - 3, hx + 1, d.at + 3],
+      }[d.wall];
+    }),
+    // The conveyor, the mezzanine (and the break room under it) and its stairs
+    grow(LAYOUT.conveyor, 1.0),
+    grow(LAYOUT.mezzanine, 0.8),
+    grow(mezzanineStairs(), 1.0),
     // The stretch wrapper (its frame and control panel)
     grow({ x0: wrapZone.center.x, x1: wrapZone.center.x, z0: wrapZone.center.z, z1: wrapZone.center.z }, LAYOUT.wrap.frame.half + 1.4),
     // The packing stations and their pallet stack
-    (() => {
-      const [w, d] = packingSize();
-      const { x, z } = LAYOUT.packing;
-      return [x - w / 2 - 1.5, z - d / 2 - 1.5, x + w / 2 + 2.4, z + d / 2 + 1.5];
-    })(),
+    grow(packingRect(), 2.4),
     // The parking bay
-    [parking.x0 - 0.8, -room.halfZ, parking.x1 + 0.8, -room.halfZ + parking.depth + 1.1],
+    grow(parkingRect(), 1.0),
     ...LAYOUT.ladderStands.map((st) => [st.x - 2, st.z - 2.2, st.x + 2, st.z + 2.2]), // LADDERS stands
     grow(stairs, 1.2),
     grow(ramp, 1.2),

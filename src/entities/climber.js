@@ -81,12 +81,17 @@ export class Climber {
     this.mantle = null;
     this.onBlades = false;
     this.holdingOn = false;
+    this.throwCharge = -1; // not winding up a throw
+    this.throwPhase = 0;
     this.lastOnLadder = -Infinity;
     this.ladderCarry = null; // folded ladder on the shoulder
     this.onLadder = null; // { ent, h: metres up the steps, heading }
     this.resetTimer = 0; // holding E/X near knocked-over racking
+    this.uprightTimer = 0; // holding R/RB near a fallen ladder (-1: done, waiting for release)
+    this.fallenLadder = null;
     this.nearKnockedRack = null;
     this.holdLocal = new THREE.Vector3();
+    this.holdSettleY = null; // after a mid-air grab: where the grip point eases down to
     this.ragdoll = null;
     this.ragdollTimer = 0;
     this.fade = 0;
@@ -154,7 +159,15 @@ export class Climber {
     this.jumpedThisStep = false;
     if (this.state === 'ragdoll') return this.ragdollStep(dt);
     if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt);
-    if (active) {
+    if (this.holdingOn) {
+      // Back to the carriage, hands behind him gripping the backrest: no looking round (in
+      // exchange he can't be thrown off). Eases round to face out along the forks, eyes level.
+      const out = new THREE.Vector3(0, 0, 1).applyQuaternion(quatToThree(this.game.forklift.carriage.rotation()));
+      const want = Math.atan2(-out.x, -out.z);
+      const d = Math.atan2(Math.sin(want - this.yaw), Math.cos(want - this.yaw));
+      this.yaw += d * Math.min(1, dt * 10);
+      this.pitch += (0 - this.pitch) * Math.min(1, dt * 8);
+    } else if (active) {
       this.yaw -= a.lookX;
       this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch - a.lookY));
     }
@@ -244,11 +257,13 @@ export class Climber {
     if (this.carried) this.holdCarried();
     if (this.ladderCarry) this.holdLadder();
     this.resetStep(a, dt, active);
-    if (active && a.toss && this.carried) this.toss();
+    this.uprightStep(a, dt, active);
+    this.throwStep(a, dt, active);
     if (active && a.interact) {
       if (this.holdingOn) this.letGo();
       else if (this.ladderCarry) this.setUpLadder();
       else if (this.carried) this.putDown();
+      else if (this.onBlades && !this.grounded) this.grab(); // mid-air, catching the forks comes first
       else if (this.target?.kind === 'ladder') this.pickUpLadder(this.target); // a set-up one folds onto the shoulder
       else if (this.target) this.pickUp(this.target);
       else if (this.onBlades) this.grab();
@@ -319,7 +334,7 @@ export class Climber {
     this.grounded = true;
     this.lastOnLadder = this.game.clock;
     if (this.carried) this.holdCarried();
-    if (active && a.toss && this.carried) this.toss();
+    this.throwStep(a, dt, active);
     if (active && a.interact) {
       if (this.carried) this.putDown();
       else if (this.target) this.pickUp(this.target);
@@ -422,8 +437,17 @@ export class Climber {
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const feet = this.feet;
     const c = feet.clone().addScaledVector(fwd, cfg.setupDistance);
+    // local +Z (the steps) = -fwd, back toward Dave
+    return this.ladderSpot(c, this.yaw, this.ladderCarry?.body.handle);
+  }
+
+  // Can a ladder stand at c (floor x/z) facing yaw? Flat floor at Dave's level, nothing in the way
+  // (ignoring the ladder's own body).
+  ladderSpot(c, yaw, ignore) {
+    const cfg = CONFIG.ladder;
+    const feet = this.feet;
     const y = floorHeightAt(c.x, c.z);
-    const q = yawQuat(this.yaw); // local +Z (the steps) = -fwd, back toward Dave
+    const q = yawQuat(yaw);
     const rot = quatToThree(q);
     const level = (x, z) => {
       const p = new THREE.Vector3(x, 0, z).applyQuaternion(rot).add(c);
@@ -435,7 +459,6 @@ export class Climber {
     if (ok) {
       const { half, centerZ } = ladderFootprint();
       const center = new THREE.Vector3(0, half[1] + 0.05, centerZ).applyQuaternion(rot).add(new THREE.Vector3(c.x, y, c.z));
-      const carried = this.ladderCarry?.body.handle;
       this.game.world.intersectionsWithShape(
         center,
         q,
@@ -448,10 +471,10 @@ export class Climber {
         COL.climberQuery,
         undefined,
         undefined,
-        (col) => col.handle !== this.collider.handle && col.parent()?.handle !== carried,
+        (col) => col.handle !== this.collider.handle && col.parent()?.handle !== ignore,
       );
     }
-    return { pos: { x: c.x, y: y + 0.005, z: c.z }, yaw: this.yaw, ok };
+    return { pos: { x: c.x, y: y + 0.005, z: c.z }, yaw, ok };
   }
 
   setUpLadder() {
@@ -496,6 +519,53 @@ export class Climber {
     sfx.putdown();
   }
 
+  // A ladder lying on the floor (knocked over, or dropped folded) within reach.
+  findFallenLadder() {
+    const feet = this.feet;
+    let best = null;
+    let bestD = CONFIG.ladder.uprightRange;
+    for (const lad of this.ladders()) {
+      if (lad.removed || !(lad.state === 'dropped' || (lad.state === 'open' && !lad.standing))) continue;
+      const t = lad.body.translation();
+      if (Math.abs(t.y - feet.y) > 1) continue;
+      const d = Math.hypot(t.x - feet.x, t.z - feet.z);
+      if (d < bestD) [best, bestD] = [lad, d];
+    }
+    return best;
+  }
+
+  // Holding R / RB (hands empty) near a fallen ladder for a second stands it back up where it
+  // lies, steps facing Dave.
+  uprightStep(a, dt, active) {
+    const free = !this.carried && !this.ladderCarry && !this.onLadder && !this.holdingOn;
+    this.fallenLadder = free ? this.findFallenLadder() : null;
+    const lad = this.fallenLadder;
+    if (!(active && lad && a.tossHeld)) {
+      this.uprightTimer = 0;
+      return;
+    }
+    if (this.uprightTimer < 0) return; // already tried this hold
+    this.uprightTimer += dt;
+    if (this.uprightTimer < CONFIG.ladder.uprightHoldTime) return;
+    this.uprightTimer = -1;
+    const t = lad.body.translation();
+    const feet = this.feet;
+    const away = new THREE.Vector3(t.x - feet.x, 0, t.z - feet.z);
+    if (away.lengthSq() < 1e-4) away.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    away.normalize();
+    // Not on top of Dave: at least a step away from him
+    const dist = Math.max(CONFIG.ladder.setupDistance, Math.hypot(t.x - feet.x, t.z - feet.z));
+    const c = feet.clone().addScaledVector(away, dist);
+    const p = this.ladderSpot(c, Math.atan2(-away.x, -away.z), lad.body.handle);
+    if (!p.ok) {
+      this.game.toast('No room to stand the ladder up here', 1.5);
+      return;
+    }
+    lad.setState('open', { pos: p.pos, yaw: p.yaw });
+    this.fallenLadder = null;
+    sfx.putdown();
+  }
+
   // A knocked-over (or shoved) rack, or one that's lost stock, within reach of a reset.
   findKnockedRack() {
     const reach = CONFIG.racks.resetRange;
@@ -525,8 +595,18 @@ export class Climber {
   // Grab the carriage: from now on we ride it rigidly and can't be thrown off.
   grab() {
     this.holdingOn = true;
-    this.holdLocal.copy(this.carriageLocal(this.feet));
+    const feet = this.feet;
+    this.holdLocal.copy(this.carriageLocal(feet));
     this.relVel.set(0, 0, 0);
+    this.airVel.set(0, 0, 0);
+    this.vy = 0;
+    // Caught them mid-air (jumped off a shelf, say): ease down onto whatever's under him (the
+    // blades, a load on them, or the floor in front) rather than hanging there
+    this.holdSettleY = null;
+    if (!this.grounded) {
+      const hit = castRay(this.game.world, { x: feet.x, y: feet.y + 0.05, z: feet.z }, { x: 0, y: -1, z: 0 }, 4, COL.climberQuery, (c) => c.handle !== this.collider.handle);
+      if (hit) this.holdSettleY = this.carriageLocal(new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z)).y + 0.01;
+    }
     sfx.pickup();
   }
 
@@ -678,6 +758,8 @@ export class Climber {
         ? fl.pointVelocity(this.support.point, this.support.collider)
         : this.support.body.velocityAtPoint(this.support.point);
       this.supportVel.set(v.x, v.y, v.z);
+    } else if (this.support && this.game.level.conveyor?.owns(this.support.collider)) {
+      this.supportVel.copy(this.game.level.conveyor.velocity); // riding the conveyor belt
     } else {
       this.supportVel.set(0, 0, 0);
     }
@@ -695,7 +777,7 @@ export class Climber {
     if (sb && this.game.entityForCollider(this.support.collider)?.kind === 'ladder') this.lastOnLadder = this.game.clock;
     // Scooped: the forks/truck slid under our feet while moving fast (we didn't step on)
     const nowOnTruck = !!(sb && this.game.forklift.ownsCollider(this.support.collider));
-    if (nowOnTruck && !this.wasOnTruck && !(this.graceTimer > 0)) {
+    if (nowOnTruck && !this.wasOnTruck && !(this.graceTimer > 0) && !this.holdingOn) {
       const sv = Math.hypot(this.supportVel.x, this.supportVel.z);
       if (sv > cfg.hitSpeed) {
         this.wasOnTruck = true;
@@ -704,14 +786,22 @@ export class Climber {
     }
     this.wasOnTruck = nowOnTruck;
 
-    // On the fork blades? (E/X there grabs the carriage.) While holding on, stay holding as
-    // long as our feet are over the blades: the ground rays can slip between them mid-turn.
+    // Close enough to grab the carriage (E/X)? Anywhere in a generous box round the forks:
+    // standing on the blades, on a pallet or boxes sitting on them, or right at their tips. Once
+    // holding, the grip only breaks if he somehow ends up well clear of the forks.
     const fl0 = this.game.forklift;
     const car = fl0.carriage;
     const local = this.carriageLocal(feet);
-    const overBlades = Math.abs(local.x) < 0.38 && local.z > 0 && local.z < 1.2 && Math.abs(local.y) < 0.12;
-    this.onBlades = !!(sb && sb.handle === car.handle) || (this.holdingOn && overBlades);
-    if (this.holdingOn && (!this.onBlades || this.carried || this.state !== 'walk')) this.holdingOn = false;
+    const nearForks = (m, up = 0) => Math.abs(local.x) < 0.85 + m && local.z > -0.5 - m && local.z < 1.9 + m && local.y > -0.3 - m && local.y < 1.6 + m + up;
+    // In the air (jumping or falling at the forks) the reach is bigger still, and higher up
+    const near = this.grounded || this.holdingOn ? nearForks(0) : nearForks(0.3, 0.8);
+    this.onBlades = this.state === 'walk' && !this.carried && !this.ladderCarry && near;
+    if (this.holdingOn && (!nearForks(0.6, 0.8) || this.carried || this.state !== 'walk')) this.holdingOn = false;
+    if (this.holdingOn) this.onBlades = true;
+    if (this.holdingOn && this.holdSettleY != null) {
+      this.holdLocal.y = Math.max(this.holdSettleY, this.holdLocal.y - 4 * dt);
+      if (this.holdLocal.y <= this.holdSettleY) this.holdSettleY = null;
+    }
     if (this.holdingOn) {
       if (!sb || sb.handle !== car.handle) {
         this.support = { body: car, collider: car.collider(0), point: feet.clone() };
@@ -1034,18 +1124,51 @@ export class Climber {
     if (this.ghost) this.ghost.visible = false;
   }
 
-  // Throw the top carried box along the crosshair.
-  toss() {
-    const boxes = this.carriedBoxes();
-    if (!boxes.length) return;
+  // Throwing: press R / RB to start winding up. The power meter climbs to the top, then falls
+  // back down; let go to throw at whatever it shows (an arc and a ghost show where it'll land).
+  // Hold on until it's back at the bottom and the throw's off. throwCharge is the power 0..1
+  // while winding up, -1 when not, and -2 after a called-off throw until the button comes up.
+  throwStep(a, dt, active) {
+    if (!this.carried || !active) {
+      this.throwCharge = -1;
+      return;
+    }
+    if (this.throwCharge === -2) {
+      if (!a.tossHeld) this.throwCharge = -1;
+      return;
+    }
+    if (a.toss && this.throwCharge < 0) {
+      this.throwCharge = 0;
+      this.throwPhase = 0;
+    } else if (this.throwCharge >= 0 && a.tossHeld) {
+      this.throwPhase += dt / CONFIG.climber.throwChargeTime; // 0..1 going up, 1..2 coming down
+      if (this.throwPhase >= 2) this.throwCharge = -2; // held too long: no throw
+      else this.throwCharge = this.throwPhase < 1 ? this.throwPhase : 2 - this.throwPhase;
+    } else if (this.throwCharge >= 0) {
+      this.toss(this.throwCharge);
+      this.throwCharge = -1;
+    }
+  }
+
+  // Where the top carried box starts and how fast it goes, thrown with `power` 0..1
+  throwStart(power) {
     const cfg = CONFIG.climber;
-    const top = boxes[boxes.length - 1];
-    const { pos } = this.holdPose(boxes.length - 1);
-    const v = this.viewDir().multiplyScalar(cfg.tossSpeed);
+    const { pos } = this.holdPose(this.carriedBoxes().length - 1);
+    const [slow, fast] = cfg.throwSpeed;
+    const v = this.viewDir().multiplyScalar(slow + (fast - slow) * power);
     v.y += cfg.tossLift;
     v.add(this.velocity);
+    return { pos, v };
+  }
+
+  // Throw the top carried box along the crosshair, with `power` 0..1 (how long it was wound up).
+  toss(power = 0) {
+    const boxes = this.carriedBoxes();
+    if (!boxes.length) return;
+    const top = boxes[boxes.length - 1];
+    const { pos, v } = this.throwStart(power);
     this.releaseBox(top, pos, yawQuat(this.yaw), { x: v.x, y: v.y, z: v.z });
-    top.body.setAngvel({ x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3, z: (Math.random() - 0.5) * 3 }, true);
+    top.body.setAngvel({ x: (Math.random() - 0.5) * 1.2, y: (Math.random() - 0.5) * 1.2, z: (Math.random() - 0.5) * 1.2 }, true); // a little tumble, not enough to stray far off the shown arc
     this.arm(top);
     if (this.stackAbove.length) this.stackAbove.pop();
     else this.carried = null;
@@ -1115,9 +1238,83 @@ export class Climber {
     this.game.scene.add(ghost);
   }
 
+  // While a throw winds up: dots along the flight path and a ghost box where it'll land (red
+  // for a FRAGILE box: that's where it goes off). Only Dave sees them (camera layer 2).
+  updateThrowGhost() {
+    if (!this.throwArc) {
+      const dot = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false });
+      this.throwArc = new THREE.InstancedMesh(new THREE.SphereGeometry(0.035, 8, 6), dot, 40);
+      this.throwArc.frustumCulled = false;
+      const ghost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffd400, transparent: true, opacity: 0.35, depthWrite: false }));
+      ghost.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0xffd400 })));
+      this.throwGhost = ghost;
+      for (const o of [this.throwArc, ghost, ghost.children[0]]) o.layers.set(2);
+      this.game.scene.add(this.throwArc, ghost);
+    }
+    const boxes = this.carriedBoxes();
+    const show = this.throwCharge >= 0 && boxes.length > 0 && this.state === 'walk';
+    this.throwArc.visible = this.throwGhost.visible = false;
+    if (!show) return;
+    // Fly it forward in small steps under gravity until the box (not just its centre) would
+    // touch something: a ray along each step for surfaces dead ahead, and a box-sized overlap
+    // test for edges the box would clip
+    const top = boxes[boxes.length - 1];
+    const [sx, sy, sz] = top.size;
+    const skip = new Set([this.collider.handle]);
+    for (const b of boxes) for (let i = 0; i < b.body.numColliders(); i++) skip.add(b.body.collider(i).handle);
+    const notUs = (c) => !skip.has(c.handle);
+    const shape = new RAPIER.Cuboid(sx * 0.68, sy * 0.68, sz * 0.68); // a bit over size: it tumbles a little in flight
+    const rot = yawQuat(this.yaw);
+    const { pos, v } = this.throwStart(this.throwCharge);
+    const p = pos.clone();
+    const vel = v.clone();
+    const g = CONFIG.physics.gravity;
+    const step = 1 / 60;
+    const m = new THREE.Matrix4();
+    const d = new THREE.Vector3();
+    let n = 0;
+    let land = null; // { point, normal } from the ray, or just where the box was when it clipped
+    for (let i = 0; i < 240 && !land; i++) {
+      d.copy(vel).multiplyScalar(step);
+      d.y += 0.5 * g * step * step;
+      vel.y += g * step;
+      const len = d.length();
+      const hit = castRay(this.game.world, p, d.clone().divideScalar(len), len, COL.climberQuery, notUs);
+      if (hit) {
+        land = { point: hit.point, normal: hit.normal };
+        break;
+      }
+      const next = p.clone().add(d);
+      let touches = false;
+      this.game.world.intersectionsWithShape(next, rot, shape, () => ((touches = true), false), RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, undefined, undefined, notUs);
+      if (touches) {
+        land = { center: p.clone() };
+        break;
+      }
+      p.copy(next);
+      if (i % 4 === 3 && n < 40) this.throwArc.setMatrixAt(n++, m.makeTranslation(p.x, p.y, p.z));
+    }
+    this.throwArc.count = n;
+    this.throwArc.instanceMatrix.needsUpdate = true;
+    this.throwArc.visible = true;
+    if (!land) return;
+    if (land.center) this.throwGhost.position.copy(land.center);
+    else {
+      const nrm = new THREE.Vector3(land.normal.x, land.normal.y, land.normal.z);
+      const ext = (Math.abs(nrm.x) * sx) / 2 + (Math.abs(nrm.y) * sy) / 2 + (Math.abs(nrm.z) * sz) / 2;
+      this.throwGhost.position.set(land.point.x, land.point.y, land.point.z).addScaledVector(nrm, ext);
+    }
+    this.throwGhost.scale.set(sx, sy, sz);
+    this.throwGhost.quaternion.setFromAxisAngle(UP, this.yaw);
+    const color = top.fragile ? 0xff3030 : 0xffd400;
+    this.throwGhost.material.color.setHex(color);
+    this.throwGhost.children[0].material.color.setHex(color);
+    this.throwGhost.visible = true;
+  }
+
   updateGhost() {
     if (!this.ghost) return;
-    if (!this.carried || this.state !== 'walk') {
+    if (!this.carried || this.state !== 'walk' || this.throwCharge >= 0) {
       this.ghost.visible = false;
       return;
     }
@@ -1270,6 +1467,37 @@ export class Climber {
     this.graceTimer = CONFIG.climber.respawnGrace;
   }
 
+  // Straight back to where he first spawned, whatever he was doing (holding Q / Y): drops what
+  // he's carrying, and gets him out of a ragdoll, a wrap or off a ladder.
+  resetToStart() {
+    if (this.carried) this.dropAll({ x: 0, y: 0, z: 0 });
+    this.dropLadder();
+    if (this.ragdoll) {
+      this.ragdoll.dispose();
+      this.ragdoll = null;
+    }
+    this.onLadder = null;
+    this.wrapped = null;
+    this.mantle = null;
+    this.holdingOn = this.onBlades = false;
+    this.support = null;
+    this.lostSupportTimer = -1;
+    const { pos, yaw } = this.game.level.climberSpawn;
+    this.body.setEnabled(true);
+    this.body.setTranslation({ x: pos.x, y: pos.y + this.centerOff + 0.05, z: pos.z }, true);
+    this.state = 'walk';
+    this.yaw = yaw;
+    this.pitch = 0;
+    for (const v of [this.relVel, this.airVel, this.launchVel, this.velocity, this.supportVel]) v.set(0, 0, 0);
+    this.vy = 0;
+    this.peakY = pos.y;
+    this.bodyMesh.visible = true;
+    this.hands.forEach((h) => (h.visible = true));
+    this.fade = 0;
+    this.fadeIn = 0.5;
+    this.graceTimer = CONFIG.climber.respawnGrace;
+  }
+
   // Distance from a floor point to the forklift, looking a little ahead along its motion.
   forkliftClearance(sp) {
     const fl = this.game.forklift;
@@ -1338,7 +1566,8 @@ export class Climber {
       speed: walkSpeed,
       grounded: this.grounded || !!this.mantle || this.state === 'wrapped',
       carrying: !!this.carried || !!this.ladderCarry,
-      holding: this.holdingOn || !!this.onLadder,
+      holding: !!this.onLadder,
+      gripBehind: this.holdingOn,
       holdPitch: this.holdPitch(),
     });
 
@@ -1356,6 +1585,7 @@ export class Climber {
     } else this.blob.visible = false;
 
     this.updateGhost();
+    this.updateThrowGhost();
     this.updateLadderGhost();
     if (this.ladderCarry) {
       const { pos, quat } = this.shoulderPose();
@@ -1363,6 +1593,8 @@ export class Climber {
       this.ladderCarry.mesh.quaternion.copy(quat);
     }
 
+    // Holding on to the forks, his hands are behind him on the backrest: out of his own view
+    for (const h of this.hands) h.visible = !this.holdingOn;
     // Carried box follows the camera smoothly (its physics body collides with nothing)
     this.armPhase += dt * walkSpeed * 2.2;
     const bob = Math.sin(this.armPhase * 2) * 0.008 * Math.min(1, walkSpeed / 3.5);
@@ -1383,8 +1615,8 @@ export class Climber {
         arm.rotation.set(0.1, side * 0.22, 0);
         arm.userData.glove.rotation.set(0, 0, -side * 1.25);
       });
-    } else if (this.holdingOn || this.onLadder || this.ladderCarry) {
-      // Both hands up, gripping the carriage backrest, the ladder or the one on our shoulder
+    } else if (this.onLadder || this.ladderCarry) {
+      // Both hands up, gripping the ladder or the one on our shoulder
       this.hands.forEach((arm, i) => {
         const side = i === 0 ? -1 : 1;
         arm.position.set(side * 0.22, -0.3, -0.2);

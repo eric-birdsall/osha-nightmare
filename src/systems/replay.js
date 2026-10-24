@@ -79,7 +79,7 @@ export class Recorder {
     const f = g.forklift.body.translation();
     const out = { climber: new THREE.Vector3(s.x, s.y, s.z), forklift: new THREE.Vector3(f.x, f.y + 1.2, f.z) };
     for (const r of g.level.racks) {
-      const mid = new THREE.Vector3(0, 2.6, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
+      const mid = new THREE.Vector3(0, r.uprightH / 2, 0).applyQuaternion(quatToThree(r.body.rotation())).add(r.body.translation());
       out[`rack:${r.name}`] = mid;
     }
     return out;

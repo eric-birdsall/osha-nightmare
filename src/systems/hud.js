@@ -13,11 +13,11 @@ const VIEW_HTML = (role) => `
   </div>
   ${
     role === 'climber'
-      ? `<div class="crosshair"></div><div class="prompt"></div>
-         <div class="holdring"><svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="18"/><circle class="fil" cx="22" cy="22" r="18"/></svg></div>`
+      ? `<div class="crosshair"></div><div class="prompt"></div><div class="throwmeter"><div class="fill"></div></div>`
       : /* speed, gear and fork height are on the forklift's dashboard */
         `<div class="driftmeter"><div class="bar"><div class="fill"></div></div><div class="label"></div></div>`
   }
+  <div class="holdring"><svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="18"/><circle class="fil" cx="22" cy="22" r="18"/></svg></div>
   <div class="rolelabel">${role === 'climber' ? 'DAVE · CLIMBER' : 'RALPH · DRIVER'}</div>
   <div class="toast"></div>
   <div class="banner"></div>
@@ -48,6 +48,8 @@ export class Hud {
         prompt: q('.prompt'),
         holdRing: q('.holdring'),
         holdFill: q('.holdring .fil'),
+        throwMeter: q('.throwmeter'),
+        throwFill: q('.throwmeter .fill'),
         crosshair: q('.crosshair'),
         toast: q('.toast'),
         banner: q('.banner'),
@@ -86,6 +88,8 @@ export class Hud {
 
   update(game) {
     const now = performance.now();
+    // How far through holding Q / Y to go back to the start (0..1)
+    const respawn = (role) => Math.min(1, Math.max(0, game.respawnHold?.[role] || 0) / CONFIG.input.respawnHoldTime);
     const single = game.mode === 'single';
     for (const [role, v] of Object.entries(this.views)) {
       const visible = !single || game.active === role;
@@ -122,7 +126,7 @@ export class Hud {
         else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
         else if (c.carried) {
           const n = c.carriedBoxes().length;
-          const toss = `Toss${n > 1 ? ' top box' : ''} <kbd>${game.keyHint(role, 'toss')}</kbd>`;
+          const toss = `Throw${n > 1 ? ' top box' : ''}: hold <kbd>${game.keyHint(role, 'toss')}</kbd>`;
           const fragile = c.carriedBoxes().some((b) => b.fragile) ? ' <b class="fragile">FRAGILE</b>' : '';
           p = (n > 1 ? `Put down ${n} boxes <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku} <kbd>${key}</kbd> · ${toss}`) + fragile;
         } else if (c.target) {
@@ -139,14 +143,38 @@ export class Hud {
           const r = resetting ? `Resetting the racking… ${Math.ceil(hold - c.resetTimer)}` : `Hold <kbd>${key}</kbd> ${hold} s to reset the racking`;
           p = p ? `${p}<br><small>${r}</small>` : r;
         }
-        v.holdRing.style.display = resetting ? '' : 'none';
-        if (resetting) v.holdFill.style.strokeDashoffset = String(113.1 * (1 - Math.min(1, c.resetTimer / hold)));
+        // A fallen ladder nearby (hands empty): hold R / RB to stand it back up
+        const upHold = CONFIG.ladder.uprightHoldTime;
+        const uprighting = c.uprightTimer > 0;
+        if (c.fallenLadder && c.state === 'walk') {
+          const r = uprighting ? 'Standing the ladder up…' : `Stand the ladder up: hold <kbd>${game.keyHint(role, 'toss')}</kbd>`;
+          p = p ? `${p}<br><small>${r}</small>` : r;
+        }
+        // Winding up a throw: the meter by the crosshair shows the power, up and back down
+        if (c.throwCharge >= 0) p = 'Let go to throw<br><small>Hold till it drops back to the bottom to call it off</small>';
+        else if (c.throwCharge === -2) p = 'Throw called off';
+        v.throwMeter.style.display = c.throwCharge >= 0 ? 'block' : 'none';
+        if (c.throwCharge >= 0) {
+          const k = c.throwCharge;
+          v.throwFill.style.height = `${Math.round(k * 100)}%`;
+          v.throwFill.style.background = k < 0.5 ? '#7cf0a0' : k < 0.85 ? '#f5c518' : '#ff5a3c';
+        }
+        // The same ring fills while Q / Y is held to go back to the start
+        if (respawn(role) > 0) p = p ? `${p}<br><small>Going back to the start…</small>` : 'Going back to the start…';
+        const back = respawn(role);
+        const ring = Math.min(1, Math.max(back, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0));
+        v.holdRing.style.display = ring > 0 ? '' : 'none';
+        if (ring > 0) v.holdFill.style.strokeDashoffset = String(113.1 * (1 - ring));
         v.prompt.innerHTML = p;
         v.prompt.style.display = p ? '' : 'none';
         v.crosshair.classList.toggle('hot', !!c.target);
         v.fade.style.opacity = Math.max(c.fade, c.fadeIn / 0.5);
       } else {
         v.fade.style.opacity = 0;
+        // Q / Y held: the ring fills on the way back to the parking bay
+        const back = respawn(role);
+        v.holdRing.style.display = back > 0 ? '' : 'none';
+        if (back > 0) v.holdFill.style.strokeDashoffset = String(113.1 * (1 - back));
         // Drift meter: fills orange while a drift charges, blue once the boost is earned,
         // then BOOST! while it fires (Ralph can't see the sparks from the seat)
         const f = game.forklift;
