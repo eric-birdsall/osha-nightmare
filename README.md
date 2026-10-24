@@ -44,6 +44,8 @@ The warehouse is 38 × 46.4 m and 12 m to the roof: corrugated steel on joists, 
 | Swap character (single player) | View | Tab |
 | Pause | Menu | Esc |
 
+New players: **How to Play** on the title and pause menus is a one-page guide (the job, who's who, the order step by step, reaching shelves, moving boxes, incidents, hazards, resets and tips). On a pad or keys, up and down scroll it.
+
 Co-op uses split screen, with the Climber on top. Gamepad 1 plays the Climber and gamepad 2 the Driver. If only one pad is connected, player 2 uses keyboard and mouse. Pause → Swap Roles trades characters. **Invert Look** (on the Controls screen, from the title or pause menu) flips up/down for the mouse, sticks and I/K; it's remembered in this browser. The pause menu also shows a floor plan of the warehouse with Dave and Ralph marked on it.
 
 ## Layout

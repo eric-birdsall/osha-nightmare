@@ -25,6 +25,7 @@
           <p class="fine">First playable build · Authorized personnel only</p>
           <button class="btn" data-act="single"><span class="osha-text osha-text--ivory" data-text="SINGLE PLAYER">SINGLE PLAYER</span></button>
           <button class="btn" data-act="coop"><span class="osha-text osha-text--ivory" data-text="COUCH CO-OP">COUCH CO-OP</span></button>
+          <button class="btn" data-act="howto"><span class="osha-text osha-text--ivory" data-text="HOW TO PLAY">HOW TO PLAY</span></button>
           <button class="btn" data-act="controls"><span class="osha-text osha-text--ivory" data-text="CONTROLS">CONTROLS</span></button>
           <p class="pads"></p>
         </div>
@@ -39,6 +40,7 @@
               <button class="btn" data-act="resume"><span class="osha-text osha-text--ivory" data-text="RESUME">RESUME</span></button>
               <button class="btn" data-act="restart"><span class="osha-text osha-text--ivory" data-text="RESTART">RESTART</span></button>
               <button class="btn coop-only" data-act="swaproles"><span class="osha-text osha-text--ivory" data-text="SWAP ROLES">SWAP ROLES</span></button>
+              <button class="btn" data-act="howto"><span class="osha-text osha-text--ivory" data-text="HOW TO PLAY">HOW TO PLAY</span></button>
               <button class="btn" data-act="controls"><span class="osha-text osha-text--ivory" data-text="CONTROLS">CONTROLS</span></button>
               <button class="btn" data-act="quit"><span class="osha-text osha-text--ivory" data-text="QUIT TO TITLE">QUIT TO TITLE</span></button>
             </div>
@@ -62,6 +64,78 @@
           <p class="tag" id="c-quip"></p>
           <button class="btn" data-act="restart"><span class="osha-text osha-text--ivory" data-text="RESTART">RESTART</span></button>
           <button class="btn" data-act="quit"><span class="osha-text osha-text--ivory" data-text="QUIT TO TITLE">QUIT TO TITLE</span></button>
+        </div>
+      </div>
+
+      <div id="howto" class="screen hidden">
+        <div class="panel wide">
+          <div class="screen-title osha-text osha-text--yellow" data-text="HOW TO PLAY">HOW TO PLAY</div>
+          <p class="fine">New hire orientation · Mandatory · Probably</p>
+          <div class="howto">
+            <section>
+              <h3>The job</h3>
+              <p>Ship one order as fast as you can, with as few incidents as you can manage. The clock runs from the moment the shift starts, and the Order Complete screen shows your time and your incident count.</p>
+              <h3>Who's who</h3>
+              <p><b>Ralph</b> drives the forklift. He has a cast on his leg and his crutches in the cab, so he never gets off the truck. He has the pick list, too: it's the clipboard in his cab.</p>
+              <p><b>Dave</b> is on foot. He walks, climbs, picks boxes off shelves, carries them, and punts them.</p>
+              <p>Single player: swap between them any time with <kbd>Tab</kbd> / <kbd>View</kbd>. Couch co-op: split screen, one player each.</p>
+              <h3>The order, step by step</h3>
+              <ol>
+                <li><b>Read the pick list</b> on Ralph's clipboard: two SKUs, how many of each, and where they live. A location like <b>C-4-2</b> is rack C, bay 4 (counting from the west end), shelf 2 (counting from the bottom).</li>
+                <li><b>Find the boxes.</b> Racks A to G are on the main floor. Every box has its SKU on all four sides, and neighbours can look alike, so check the number.</li>
+                <li><b>Short?</b> An orange BACKSTOCK sign under a shelf points to more of that SKU on racks H and I, up on the mezzanine. Not every sign is for your box.</li>
+                <li><b>Build one pallet</b> with the full quantity of both SKUs on it.</li>
+                <li><b>Wrap it.</b> Set the pallet in the WRAP square under the stretch wrapper (by the ramp), back the forklift out, and leave it still for a moment.</li>
+                <li><b>Ship it.</b> Drive the wrapped pallet down the ramp to the open dock in the basement (door up, green lamp; the clipboard says which) and into the trailer. Forks below 1 m, or the mast won't fit through the door.</li>
+              </ol>
+            </section>
+            <section>
+              <h3>Reaching the shelves</h3>
+              <p>Shelf 1 is in reach from the floor. Shelf 2 needs a ladder or the forks. Shelf 3 needs the forks raised high, or a ladder that Ralph lifts up on the forks with Dave on it.</p>
+              <p><b>Riding the forks:</b> Dave stands on the blades or a pallet and Ralph lifts him. Press <kbd>E</kbd> / <kbd>X</kbd> to hold on: then nothing Ralph does can throw him off, but he faces straight out and can't look round. From the forks he reaches a little further, and <kbd>E</kbd> on a box takes it (he lets go to grab it). He can even catch the forks mid-jump.</p>
+              <p><b>Ladders</b> hang on LADDERS stands in the basement and on the mezzanine landing. <kbd>E</kbd> shoulders one, <kbd>E</kbd> sets it up where the ghost turns green, then walk into the steps and climb with <kbd>W</kbd> / <kbd>S</kbd>. From the top step Dave reaches shelf 2. Jumping off works, but it always knocks the ladder over.</p>
+              <p><b>The mezzanine</b> (racks H and I): take the stairs at its east end, or ride a pallet up on the forks to the PALLET DROP gap in its railing.</p>
+              <h3>Moving boxes</h3>
+              <p><b>Pick up</b> with <kbd>E</kbd>: aim at the bottom box of a stack to take up to three. <kbd>E</kbd> again puts them down where the ghost shows.</p>
+              <p><b>Punt</b> with <kbd>R</kbd> / <kbd>RB</kbd>: hold to aim, and the ghost shows exactly where the box will land; aim higher to punt further. Let go and Dave boots it. Great for landing boxes on a pallet, or on raised forks.</p>
+              <p><b>Conveyors</b> carry anything on them north and drop it on the pallet at the end. The packing benches' tall back panels make a backboard: punt a box through a gap between benches at the far panel and it drops onto the packing line.</p>
+              <p><b>FRAGILE</b> boxes explode. Punt one, drop one, or get knocked flat holding one, and most of the warehouse goes up with it. Set them down gently.</p>
+            </section>
+            <section>
+              <h3>Incidents</h3>
+              <p>Every incident stops the shift for a CCTV replay and a Form 300 incident report, and counts against you. Classics include:</p>
+              <ul>
+                <li>Falling more than about 2.5 m, or riding a ladder over.</li>
+                <li>Racks toppling: a fast forklift hit sends them over, and they take their neighbours down like dominoes.</li>
+                <li>Getting hit by the forklift, or having the forks slammed into the floor while riding them (broken legs).</li>
+                <li>Tipping the forklift. It explodes. Ralph is somehow fine.</li>
+                <li>Standing in the wrapper while it wraps.</li>
+                <li>FRAGILE boxes, see above.</li>
+              </ul>
+              <h3>Hazards</h3>
+              <ul>
+                <li><b>Spills</b> are faint and slippery: Dave slides and the forklift skids.</li>
+                <li>The puddle under the <b>electrical panel</b> on the east wall is just as slippery.</li>
+                <li>A section of the basement's <b>railing is missing</b>, right beside the wrapper. The hazard tape stops nothing.</li>
+                <li><b>Mystery barrels</b> by the south wall leak something slippery, and gush when knocked over.</li>
+              </ul>
+              <h3>When it all goes wrong</h3>
+              <ul>
+                <li>Hold <kbd>E</kbd> / <kbd>X</kbd> for 3 s near knocked-over racking to put every rack and its stock back.</li>
+                <li>Hold <kbd>Q</kbd> / <kbd>Y</kbd> for 1 s to send your character back to the start (the forklift comes back upright).</li>
+                <li>Hold <kbd>E</kbd> / <kbd>X</kbd> near a tipped pallet to flip it flat, or <kbd>R</kbd> / <kbd>RB</kbd> near a fallen ladder to stand it up.</li>
+              </ul>
+              <h3>Tips</h3>
+              <ul>
+                <li>Ralph reads the pick list out. In single player, swap to Ralph to check it.</li>
+                <li>Park a pallet on the forks and punt boxes straight onto it.</li>
+                <li>Drive with the forks low. Raised forks make the truck tippy.</li>
+              </ul>
+            </section>
+          </div>
+          <div class="ctl-btns">
+            <button class="btn" data-act="back"><span class="osha-text osha-text--ivory" data-text="BACK">BACK</span></button>
+          </div>
         </div>
       </div>
 
@@ -100,7 +174,7 @@
           <p class="tag">
             The order: read the clipboard in the forklift cab, then find each SKU at its Rack-Bay-Shelf location (check the label,
             some neighbours look similar). If a slot is short, its orange BACKSTOCK sign says where
-            the rest is downstairs. Get the full quantity of both onto one pallet, set it down in the WRAP square
+            the rest is, up on the mezzanine. Get the full quantity of both onto one pallet, set it down in the WRAP square
             and back the forklift out, then drive the wrapped pallet into the truck at the open dock
             (the clipboard says which: its door is up and its lamp is green).
           </p>

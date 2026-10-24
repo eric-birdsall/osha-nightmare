@@ -24,7 +24,7 @@ document.getElementById('loading').remove();
 
 let game = null;
 let state = 'title'; // 'title' | 'playing' | 'paused' | 'complete'
-let overlay = null; // controls panel on top of a menu
+let overlay = null; // Controls or How to Play, on top of a menu
 let pausedAt = 0;
 let acc = 0;
 let last = performance.now();
@@ -36,6 +36,7 @@ const screens = {
   pause: document.getElementById('pause'),
   complete: document.getElementById('complete'),
   controls: document.getElementById('controls'),
+  howto: document.getElementById('howto'),
 };
 let focusIdx = 0;
 
@@ -73,13 +74,18 @@ function menuNav() {
   const vis = visibleScreen();
   if (!vis) return;
   const m = input.menu();
-  if (m.up) {
-    setFocus(focusIdx - 1);
-    sfx.menu();
-  }
-  if (m.down) {
-    setFocus(focusIdx + 1);
-    sfx.menu();
+  // How to Play is one long page with a single button: up and down scroll it instead
+  if (overlay === 'howto' && (m.up || m.down)) {
+    vis.querySelector('.panel').scrollBy({ top: m.up ? -160 : 160, behavior: 'smooth' });
+  } else {
+    if (m.up) {
+      setFocus(focusIdx - 1);
+      sfx.menu();
+    }
+    if (m.down) {
+      setFocus(focusIdx + 1);
+      sfx.menu();
+    }
   }
   if (m.confirm) buttons(vis)[focusIdx]?.click();
   if ((m.back || m.pause) && performance.now() - pausedAt > 300) {
@@ -107,8 +113,9 @@ document.addEventListener('click', (e) => {
   unlockAudio();
   const act = b.dataset.act;
   if (act === 'single' || act === 'coop') startGame(act);
-  else if (act === 'controls') {
-    overlay = 'controls';
+  else if (act === 'controls' || act === 'howto') {
+    overlay = act;
+    screens[act].querySelector('.panel').scrollTop = 0; // always from the top
     refreshScreens();
   } else if (act === 'back') closeOverlay();
   else if (act === 'invert') {

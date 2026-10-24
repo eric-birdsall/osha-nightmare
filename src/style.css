@@ -199,6 +199,49 @@ body {
 .btn.focus .osha-text::after {
   display: none; /* no chipped paint on the dark-on-yellow label: it would read as noise */
 }
+/* How to Play: one long page in three columns (stacking on narrow screens), section headings as
+   yellow placards like the Controls tables */
+.howto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 6px 28px;
+  max-width: 1180px;
+  margin: 6px auto 14px;
+  text-align: left;
+  color: #d5dbe1;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.howto h3 {
+  margin: 14px 0 6px;
+  padding: 5px 8px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--hazard-k);
+  background: var(--hazard-y);
+}
+.howto section > h3:first-child {
+  margin-top: 0;
+}
+.howto p {
+  margin: 0 0 8px;
+}
+.howto ol,
+.howto ul {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.howto li {
+  margin-bottom: 5px;
+}
+.howto b {
+  color: #fff;
+}
+.howto kbd {
+  margin-left: 0;
+}
 .pads {
   color: #8b96a3;
   font-size: 14px;
