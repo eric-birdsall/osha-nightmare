@@ -27,6 +27,9 @@ const FORK_W = 0.15;
 const STEER_R = 0.17;
 const FORK_T = 0.035;
 const FORK_Z = PLATE_Z + 0.03 + FORK_LEN / 2;
+// The middle of the blades in the carriage's frame (between the two, halfway along): where Dave
+// is drawn to when he holds on, so letting go leaves him standing on them
+export const BLADE_CENTRE = { x: 0, y: 0, z: FORK_Z - PLATE_Z, blades: [-FORK_X, FORK_X] };
 
 // An underarm crutch, standing on its rubber tip at the origin: aluminium side rails from a padded
 // top down to a hand grip and on to a single shaft
@@ -668,7 +671,7 @@ export class Forklift {
     const order = game.level?.order;
     if (!order || !this.clipboard) return;
     const status = game.itemStatus || {};
-    const key = order.map((o) => `${o.sku}:${o.qty}:${status[o.line] || 0}`).join('|');
+    const key = `${game.orderId}#` + order.map((o) => `${o.sku}:${o.qty}:${status[o.line] || 0}`).join('|');
     if (key === this.clipboard.key) return;
     this.clipboard.key = key;
     const { canvas, tex } = this.clipboard;

@@ -8,6 +8,7 @@ import { collectStack } from '../systems/wrapping.js';
 import { flatMat } from '../util/meshes.js';
 import { spawnRagdoll } from '../systems/ragdoll.js';
 import { WorkerModel, firstPersonArm } from './worker.js';
+import { BLADE_CENTRE } from './forklift.js';
 import { sfx } from '../systems/audio.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -94,7 +95,7 @@ export class Climber {
     this.fallenLadder = null;
     this.nearKnockedRack = null;
     this.holdLocal = new THREE.Vector3();
-    this.holdSettleY = null; // after a mid-air grab: where the grip point eases down to
+    this.holdTarget = null; // after grabbing on: where the grip point slides to (the middle of the blades)
     this.ragdoll = null;
     this.ragdollTimer = 0;
     this.fade = 0;
@@ -714,13 +715,22 @@ export class Climber {
     this.relVel.set(0, 0, 0);
     this.airVel.set(0, 0, 0);
     this.vy = 0;
-    // Caught them mid-air (jumped off a shelf, say): ease down onto whatever's under him (the
-    // blades, a load on them, or the floor in front) rather than hanging there
-    this.holdSettleY = null;
-    if (!this.grounded) {
-      const hit = castRay(this.game.world, { x: feet.x, y: feet.y + 0.05, z: feet.z }, { x: 0, y: -1, z: 0 }, 4, COL.climberQuery, (c) => c.handle !== this.collider.handle);
-      if (hit) this.holdSettleY = this.carriageLocal(new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z)).y + 0.01;
+    // Draw him to the middle of the blades, standing on whatever's there (the blades themselves, or
+    // a load on them), so letting go always leaves him on the forks. Caught mid-air (jumped off a
+    // shelf, say), that also eases him down rather than leaving him hanging.
+    const car = this.game.forklift.carriage;
+    const q = quatToThree(car.rotation());
+    const ct = car.translation();
+    const toWorld = (l) => new THREE.Vector3(l.x, l.y, l.z).applyQuaternion(q).add(new THREE.Vector3(ct.x, ct.y, ct.z));
+    // The highest surface under him there: down the middle, and down each blade (the middle is the
+    // gap between the blades, so on bare forks only the blade rays find them)
+    let y = BLADE_CENTRE.y + 0.01;
+    for (const x of [BLADE_CENTRE.x, ...BLADE_CENTRE.blades]) {
+      const above = toWorld({ x, y: Math.max(this.holdLocal.y, BLADE_CENTRE.y) + 0.6, z: BLADE_CENTRE.z });
+      const hit = castRay(this.game.world, above, { x: 0, y: -1, z: 0 }, 2.5, COL.climberQuery, (c) => c.handle !== this.collider.handle);
+      if (hit) y = Math.max(y, this.carriageLocal(new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z)).y + 0.01);
     }
+    this.holdTarget = new THREE.Vector3(BLADE_CENTRE.x, y, BLADE_CENTRE.z);
     sfx.pickup();
   }
 
@@ -912,9 +922,14 @@ export class Climber {
     this.onBlades = this.state === 'walk' && !this.carried && !this.ladderCarry && near;
     if (this.holdingOn && (!nearForks(0.6, 0.8) || this.carried || this.state !== 'walk')) this.holdingOn = false;
     if (this.holdingOn) this.onBlades = true;
-    if (this.holdingOn && this.holdSettleY != null) {
-      this.holdLocal.y = Math.max(this.holdSettleY, this.holdLocal.y - 4 * dt);
-      if (this.holdLocal.y <= this.holdSettleY) this.holdSettleY = null;
+    // Just grabbed on: slide the grip point to the middle of the blades (quickly, not a snap)
+    if (this.holdingOn && this.holdTarget) {
+      const step = this.holdTarget.clone().sub(this.holdLocal);
+      const len = step.length();
+      if (len <= 4 * dt) {
+        this.holdLocal.copy(this.holdTarget);
+        this.holdTarget = null;
+      } else this.holdLocal.addScaledVector(step, (4 * dt) / len);
     }
     if (this.holdingOn) {
       if (!sb || sb.handle !== car.handle) {

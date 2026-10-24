@@ -231,7 +231,7 @@ function buildWrapped(game, pallet, set) {
   const group = new THREE.Group();
   group.position.copy(pPos);
   group.quaternion.copy(pRot);
-  const items = {}; // order line -> boxes of it wrapped into this load
+  const skus = {}; // SKU -> boxes of it wrapped into this load
   const shapes = [];
   const min = new THREE.Vector3(Infinity, Infinity, Infinity);
   const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
@@ -265,8 +265,8 @@ function buildWrapped(game, pallet, set) {
             max.max(c);
           }
     }
-    if (ent.item) items[ent.item] = (items[ent.item] || 0) + 1;
-    if (ent.items) for (const [line, n] of Object.entries(ent.items)) items[line] = (items[line] || 0) + n;
+    if (ent.kind === 'box') skus[ent.sku] = (skus[ent.sku] || 0) + 1;
+    if (ent.skus) for (const [sku, n] of Object.entries(ent.skus)) skus[sku] = (skus[sku] || 0) + n;
     // Re-wrapping: the old film comes off, a new one goes round everything
     const oldFilm = ent.mesh.children.find((c) => c.userData.film);
     if (oldFilm) ent.mesh.remove(oldFilm);
@@ -302,7 +302,7 @@ function buildWrapped(game, pallet, set) {
   game.scene.add(group);
 
   // bounds: its extent in its own frame (origin under the pallet's middle), for flipping it upright
-  const ent = { kind: 'wrapped', body, mesh: group, items, shapes, mass: totalMass, bounds: { min: min.clone(), max: max.clone() } };
+  const ent = { kind: 'wrapped', body, mesh: group, skus, shapes, mass: totalMass, bounds: { min: min.clone(), max: max.clone() } };
   game.addEntity(ent);
   return ent;
 }

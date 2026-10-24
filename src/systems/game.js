@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { syncMesh } from '../physics.js';
-import { buildLevel } from '../world/level.js';
+import { buildLevel, ORDERS } from '../world/level.js';
 import { Forklift } from '../entities/forklift.js';
 import { Climber } from '../entities/climber.js';
 import { WrapSystem, collectStack } from './wrapping.js';
@@ -114,8 +114,12 @@ function rackDownLine(rows, byRalph, again) {
 
 // Owns one playthrough: physics world, scene, entities, order state, swap logic.
 export class Game {
+  // order: one of the fixed orders (its id in orders.json), or 'shift' for a Full Shift (all five
+  // back to back in the same warehouse, one clock)
   constructor({ mode, hud, order = 1 }) {
-    this.orderId = order; // which of the fixed orders (orders.json) this level is
+    this.levelId = order; // what was picked on the level screen: an order id or 'shift'
+    this.shift = order === 'shift';
+    this.orderId = this.shift ? ORDERS[0].id : order; // the order being picked now
     this.mode = mode; // 'single' | 'coop'
     this.hud = hud;
     this.world = new RAPIER.World({ x: 0, y: CONFIG.physics.gravity, z: 0 });
@@ -310,13 +314,13 @@ export class Game {
       this.dockRest.set(ent, r);
       if (r < cfg.restTime) continue;
       if (ent.kind === 'wrapped') {
-        const wrapped = ent.items;
+        const wrapped = ent.skus;
         const total = this.lineCounts(ent);
-        if (this.level.order.every((o) => (wrapped[o.line] || 0) >= o.qty)) {
-          this.finishOrder();
+        if (this.level.order.every((o) => (wrapped[o.sku] || 0) >= o.qty)) {
+          this.finishOrder(ent);
           return;
         }
-        const unwrapped = this.level.order.filter((o) => (wrapped[o.line] || 0) < o.qty && total[o.line] >= o.qty);
+        const unwrapped = this.level.order.filter((o) => (wrapped[o.sku] || 0) < o.qty && total[o.line] >= o.qty);
         if (unwrapped.length) {
           this.hint(`SKU ${unwrapped.map((o) => o.sku).join(' & ')} isn't all wrapped. Take it back to the wrapper.`);
           continue;
@@ -331,10 +335,13 @@ export class Game {
     }
   }
 
-  // Order boxes of each line on a pallet or wrapped load: wrapped in, plus loose on top.
+  // Boxes of each order line (by SKU) on a pallet or wrapped load: wrapped in, plus loose on top.
   lineCounts(ent) {
-    const n = Object.fromEntries(this.level.order.map((o) => [o.line, ent.items?.[o.line] || 0]));
-    for (const e of collectStack(this, ent)) if (e.item) n[e.item]++;
+    const n = Object.fromEntries(this.level.order.map((o) => [o.line, ent.skus?.[o.sku] || 0]));
+    for (const e of collectStack(this, ent)) {
+      const o = e.kind === 'box' && this.level.order.find((x) => x.sku === e.sku);
+      if (o) n[o.line]++;
+    }
     return n;
   }
 
@@ -349,10 +356,34 @@ export class Game {
     this.hud?.toast(text, secs);
   }
 
-  finishOrder() {
-    this.complete = true;
+  // The load at the dock is the whole order. In a Full Shift, the truck leaves with it and the next
+  // order's pick list comes in (same warehouse, mess and all; the clock keeps running); otherwise,
+  // or after the last order, the level's done.
+  finishOrder(load) {
     sfx.complete();
-    this.onComplete?.({ time: this.time, falls: this.falls });
+    const next = this.shift && ORDERS[ORDERS.findIndex((o) => o.id === this.orderId) + 1];
+    if (!next) {
+      this.complete = true;
+      this.onComplete?.({ time: this.time, falls: this.falls });
+      return;
+    }
+    if (load) this.shipLoad(load);
+    this.orderId = next.id;
+    this.level.setOrder(next);
+    this.itemStatus = Object.fromEntries(this.level.order.map((o) => [o.line, 0]));
+    this.dockRest = new Map();
+    this.hud?.banner(
+      `<span class="osha-text osha-text--yellow" data-text="ORDER ${next.id}">ORDER ${next.id}</span><small>Shipped! Next up: ${next.title} · ${next.dock}</small>`,
+      3.5,
+    );
+  }
+
+  // The truck pulls away with a delivered load: it's gone from the warehouse
+  shipLoad(load) {
+    this.world.removeRigidBody(load.body);
+    this.scene.remove(load.mesh);
+    this.removeEntity(load);
+    this.climber.forgetBodies(new Set([load.body.handle]));
   }
 
   incidentLine(reason) {

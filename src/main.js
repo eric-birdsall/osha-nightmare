@@ -7,7 +7,7 @@ import { Game } from './systems/game.js';
 import { unlockAudio, sfx } from './systems/audio.js';
 import { DOCKS, ORDERS } from './world/level.js';
 import { drawFloorPlan } from './world/floorplan.js';
-import { best, submit, medalFor, nextMedal, fmtTime } from './systems/records.js';
+import { best, submit, medalFor, nextMedal, fmtTime, FULL_SHIFT, levelDef } from './systems/records.js';
 import { settings } from './systems/settings.js';
 
 await RAPIER.init();
@@ -127,7 +127,7 @@ document.addEventListener('click', (e) => {
   if (act === 'single' || act === 'coop') {
     pickMode = act;
     showLevels();
-  } else if (act === 'level') startGame(pickMode, Number(b.dataset.level));
+  } else if (act === 'level') startGame(pickMode, b.dataset.level === 'shift' ? 'shift' : Number(b.dataset.level));
   else if (act === 'next') startGame(game.mode, game.orderId + 1);
   else if (act === 'levels') {
     pickMode = game.mode;
@@ -145,7 +145,7 @@ document.addEventListener('click', (e) => {
     input.setInvertY(!input.invertY);
     refreshInvert();
   } else if (act === 'resume') resume();
-  else if (act === 'restart') startGame(game.mode, game.orderId);
+  else if (act === 'restart') startGame(game.mode, game.levelId);
   else if (act === 'swaproles') {
     game.swapRoles();
     resume();
@@ -164,14 +164,13 @@ function quitToTitle() {
 function showLevels() {
   document.getElementById('lv-mode').textContent = pickMode === 'coop' ? 'Couch co-op · split screen' : 'Single player · swap with Tab / View';
   const tag = (m) => (m ? `<i class="medal ${m}">${m}</i>` : '');
+  const row = (id, label, name) => {
+    const b = best(pickMode, id);
+    const right = b ? `${fmtTime(b.total)} ${tag(medalFor(id, b.total))}` : '<span class="none">No time yet</span>';
+    return `<button class="btn level" data-act="level" data-level="${id}"><span class="osha-text osha-text--ivory" data-text="${label}">${label}</span><span class="lv-name">${name}</span><span class="lv-best">${right}</span></button>`;
+  };
   document.querySelector('#levels .level-list').innerHTML =
-    ORDERS.map((o) => {
-      const b = best(pickMode, o.id);
-      const right = b ? `${fmtTime(b.total)} ${tag(medalFor(o.id, b.total))}` : '<span class="none">No time yet</span>';
-      const label = `ORDER ${o.id}`;
-      return `<button class="btn level" data-act="level" data-level="${o.id}"><span class="osha-text osha-text--ivory" data-text="${label}">${label}</span><span class="lv-name">${o.title}</span><span class="lv-best">${right}</span></button>`;
-    }).join('') +
-    `<button class="btn level" disabled><span class="osha-text osha-text--ivory" data-text="FULL SHIFT">FULL SHIFT</span><span class="lv-name">All five, back to back</span><span class="lv-best"><span class="none">Coming soon</span></span></button>`;
+    ORDERS.map((o) => row(o.id, `ORDER ${o.id}`, o.title)).join('') + row(FULL_SHIFT.id, 'FULL SHIFT', 'All five, back to back');
   overlay = 'levels';
   refreshScreens();
 }
@@ -236,11 +235,13 @@ const QUIPS = [
 
 function showComplete({ time, falls }) {
   state = 'complete';
-  const id = game.orderId;
-  const order = ORDERS.find((o) => o.id === id);
+  const id = game.levelId;
+  const order = levelDef(id);
   const run = submit(game.mode, id, { time, incidents: falls });
   const $ = (x) => document.getElementById(x);
-  $('c-order').textContent = `Order ${id} · ${order?.title ?? ''} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
+  const head = document.querySelector('#complete .screen-title');
+  head.textContent = head.dataset.text = id === 'shift' ? 'SHIFT COMPLETE' : 'ORDER COMPLETE';
+  $('c-order').textContent = `${id === 'shift' ? 'Full Shift · all five orders' : `Order ${id} · ${order?.title ?? ''}`} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
   $('c-time').textContent = fmtTime(time);
   $('c-falls').textContent = falls;
   $('c-penalty').textContent = falls ? `+${fmtTime(run.total - time)}` : '';
@@ -253,7 +254,7 @@ function showComplete({ time, falls }) {
     (medal ? `<i class="medal ${medal}">${medal}</i> ` : '') + (next ? `${next.medal[0].toUpperCase() + next.medal.slice(1)} at ${fmtTime(next.at)}` : 'Top marks.');
   $('c-quip').textContent = QUIPS[Math.min(falls, 3)];
   // No order after the last one
-  document.querySelector('#complete [data-act="next"]').style.display = ORDERS.some((o) => o.id === id + 1) ? '' : 'none';
+  document.querySelector('#complete [data-act="next"]').style.display = id !== 'shift' && ORDERS.some((o) => o.id === id + 1) ? '' : 'none';
   if (input.pointerLocked) document.exitPointerLock();
   refreshScreens();
 }

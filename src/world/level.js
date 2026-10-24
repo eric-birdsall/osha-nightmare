@@ -43,7 +43,7 @@ export const DOCKS = LAYOUT.docks;
 const DOOR_HALF = LAYOUT.door.half; // half the door width
 const DOOR_H = LAYOUT.door.h;
 const TRAILER = LAYOUT.trailer; // inside dimensions
-let openDock = DOCKS[1]; // this order's dock (set when the level is built)
+let openDocks = [DOCKS[1]]; // the docks this run ships from (built with a door that rolls up; set when the level is built)
 
 const inRect = (r, x, z) => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1;
 export const inLowerLevel = (x, z) => inRect(LOWER, x, z);
@@ -245,6 +245,7 @@ function floorText(game, text, x, z, w, h, rotY = 0, color = '#f5c518', y = 0) {
   p.rotation.set(-Math.PI / 2, 0, rotY);
   p.position.set(x, y + 0.008, z);
   game.scene.add(p);
+  return p;
 }
 
 function makeZone(game, name, cx, cz, w, d) {
@@ -300,15 +301,11 @@ function backstockSign(location) {
 }
 
 // Three boxes per shelf along the open face, in every bay of every rack, exactly as the planogram
-// has them (a null is a gap). Boxes of this order's SKUs know which line they're for. The order's
-// locations come from where its SKUs sit on the main floor; a short face's BACKSTOCK sign says
-// where the rest is, on the mezzanine.
-function stockShelves(game, racks, spec) {
+// has them (a null is a gap), plus the BACKSTOCK signs.
+function stockShelves(game, racks) {
   const looks = new Map();
   for (const spots of Object.values(WAREHOUSE.faces)) for (const sp of spots) if (sp) looks.set(sp[0], sp[1]);
   game.skus = { look: (sku) => looks.get(sku) ?? sku };
-  const lineOf = new Map(spec.lines.map((l, i) => [l.sku, 'ABC'[i]]));
-  const orderBoxes = Object.fromEntries(spec.lines.map((l, i) => ['ABC'[i], []]));
   for (const rack of RACKS) {
     const { name, z0, z1, face, base } = rack;
     const ent = racks.find((r) => r.name === name);
@@ -320,9 +317,7 @@ function stockShelves(game, racks, spec) {
           const [sku, , type, jitter] = sp;
           const half = CONFIG.objects[type].size[2] / 2;
           const z = face === 'south' ? z1 - BEAM_D - 0.03 - half : z0 + BEAM_D + 0.03 + half;
-          const item = lineOf.get(sku) ?? null;
-          const box = createBox(game, { type, sku, item, pos: [bayX(rack, b) + (i - 1) * 0.85 + jitter, base + rack.shelves[shelf] + 0.005, z] });
-          if (item) orderBoxes[item].push(box);
+          const box = createBox(game, { type, sku, pos: [bayX(rack, b) + (i - 1) * 0.85 + jitter, base + rack.shelves[shelf] + 0.005, z] });
           // Where it was stocked, so resetting the racking can put it back
           const t = box.body.translation();
           const r = box.body.rotation();
@@ -341,9 +336,13 @@ function stockShelves(game, racks, spec) {
       }
     }
   }
-  // Each line's pick face: the main-floor face holding most of its SKU
+}
+
+// An order's pick list: each line's SKU and quantity, its pick face (the main-floor face holding
+// most of that SKU) and, if that face is short, where the BACKSTOCK sign says the rest is.
+export function orderLines(spec) {
   const mainFloor = new Set(RACKS.filter((r) => !r.base).map((r) => r.name));
-  const order = spec.lines.map((l, i) => {
+  return spec.lines.map((l, i) => {
     let best = null;
     let most = 0;
     for (const [at, spots] of Object.entries(WAREHOUSE.faces)) {
@@ -353,7 +352,6 @@ function stockShelves(game, racks, spec) {
     if (!best) console.warn(`Order ${spec.id}: SKU ${l.sku} isn't on any main-floor shelf`);
     return { line: 'ABC'[i], sku: l.sku, qty: l.qty, location: best, backstock: WAREHOUSE.signs[best] ?? null };
   });
-  return { order, orderBoxes };
 }
 
 // ---------------------------------------------------------------- ceiling
@@ -952,16 +950,18 @@ function dockFrame(d) {
   };
 }
 
-// The loading docks, each with floor markings, bumpers, a sign and a lamp. The open one (this
-// order's) has its door rolled up, a dock plate, a black shelter round the opening and a trailer
-// backed up to it, its floor level with the floor inside so the forklift can drive in. Returns the
-// sensor zone inside that trailer.
+// The loading docks, each with floor markings, bumpers, a sign and a lamp. The ones this run ships
+// from have a trailer backed up to the doorway, its floor level with the floor inside so the
+// forklift can drive in, behind a roll-up door: up (green lamp, dock plate) for the order being
+// shipped, down (CLOSED, red lamp) otherwise. Docks the run never uses are plain shut doors.
+// Returns { name: { zone, setOpen(on) } } for the run's docks.
 function buildDocks(game) {
   const scene = game.scene;
   const { halfW, height, length: L } = TRAILER;
-  let zone = null;
+  const docks = {};
   for (const d of DOCKS) {
-    const open = d === openDock;
+    const usable = openDocks.includes(d);
+    const open = usable; // built open; setOpen() rolls the door down if it isn't this order's
     const f = dockFrame(d);
     // Built in the dock's frame
     const g = new THREE.Group();
@@ -993,26 +993,46 @@ function buildDocks(game) {
     const green = '#31d07a';
     // Floor marking: an outline 4 m along the wall and 3.6 m out, with the dock's name
     const markMat = new THREE.MeshBasicMaterial({ color: open ? 0x31d07a : 0x9aa0a8 });
+    const greenSign = { bg: green, fg: '#0b1f12' };
+    const greySign = { bg: '#4a5058', fg: '#d9dde2' };
     flat(4.0, 0.15, 0, 0.1, markMat);
     flat(4.0, 0.15, 0, 3.7, markMat);
     flat(0.15, 3.6, -2.0, 1.9, markMat);
     flat(0.15, 3.6, 2.0, 1.9, markMat);
     const tp = f.toWorld(0, 0, 2.8);
     const into = new THREE.Vector3(0, 0, -1).applyAxisAngle(UP, f.ry); // heading for the door
-    floorText(game, d.name.toUpperCase(), tp.x, tp.z, 3.2, 0.9, Math.atan2(-into.x, -into.z), open ? green : '#9aa0a8', f.y);
-    const sign = labelPlane(d.name.toUpperCase(), 2.6, 0.7, open ? { bg: green, fg: '#0b1f12' } : { bg: '#4a5058', fg: '#d9dde2' });
-    put(sign, 0, DOOR_H + 0.75, 0.03);
+    const words = [green, '#9aa0a8'].map((col) => floorText(game, d.name.toUpperCase(), tp.x, tp.z, 3.2, 0.9, Math.atan2(-into.x, -into.z), col, f.y));
+    words[0].visible = open;
+    words[1].visible = !open;
+    const signs = [labelPlane(d.name.toUpperCase(), 2.6, 0.7, greenSign), labelPlane(d.name.toUpperCase(), 2.6, 0.7, greySign)];
+    for (const sg of signs) put(sg, 0, DOOR_H + 0.75, 0.03);
+    signs[1].visible = !open;
+    signs[0].visible = open;
     // Dock lamp: green when it's the one to load
-    put(new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ color: open ? 0x31ff7a : 0xd02020 })), DOOR_HALF + 0.35, DOOR_H + 0.2, 0.1);
+    const lampMat = new THREE.MeshBasicMaterial({ color: open ? 0x31ff7a : 0xd02020 });
+    put(new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), lampMat), DOOR_HALF + 0.35, DOOR_H + 0.2, 0.1);
     // Rubber bumpers either side of the door
     for (const sx of [-1, 1]) part([0.3, 0.5, 0.2], [sx * (DOOR_HALF + 0.2), 0.4, 0.1], flatMat(0x111111));
-    if (!open) {
+    if (!usable) {
       put(new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, DOOR_H), doorMaterial(DOOR_H)), 0, DOOR_H / 2, 0.02);
       put(labelPlane('CLOSED', 1.6, 0.5, { bg: '#d0141b', fg: '#ffffff' }), 0, 1.9, 0.04);
       continue;
     }
-    // Rolled-up door: just the bottom slats showing under the hood
-    put(new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, 0.35), doorMaterial(0.35)), 0, DOOR_H - 0.17, -0.05);
+    // The roll-up door, down: a full door (solid) with CLOSED on it. Up: just the bottom slats
+    // showing under the hood
+    const shut = new THREE.Group();
+    put(shut, 0, 0, 0);
+    shut.add(new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, DOOR_H), doorMaterial(DOOR_H)));
+    shut.children[0].position.set(0, DOOR_H / 2, 0.02);
+    const closedSign = labelPlane('CLOSED', 1.6, 0.5, { bg: '#d0141b', fg: '#ffffff' });
+    closedSign.position.set(0, 1.9, 0.04);
+    shut.add(closedSign);
+    const dc = f.toWorld(0, DOOR_H / 2, -0.06);
+    const doorCollider = game.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(DOOR_HALF, DOOR_H / 2, 0.05).setTranslation(dc.x, dc.y, dc.z).setRotation(yawQ(f.ry)).setCollisionGroups(COL.static),
+      game.staticBody,
+    );
+    const rolled = put(new THREE.Mesh(new THREE.PlaneGeometry(DOOR_HALF * 2, 0.35), doorMaterial(0.35)), 0, DOOR_H - 0.17, -0.05);
     // Dock plate bridging into the trailer
     put(boxMesh(2.4, 0.04, 0.9, 0x7d838a, { shadows: false }), 0, 0, -0.05);
     const yellow = new THREE.MeshBasicMaterial({ color: 0xf5c518 });
@@ -1043,14 +1063,27 @@ function buildDocks(game) {
     // The zone inside the trailer where a delivered load has to come to rest
     const c = f.toWorld(0, 0, zc);
     const alongX = d.wall === 'north' || d.wall === 'south';
-    zone = makeZone(game, 'dock', c.x, c.z, alongX ? halfW * 2 : L - 0.2, alongX ? L - 0.2 : halfW * 2);
+    const zone = makeZone(game, 'dock', c.x, c.z, alongX ? halfW * 2 : L - 0.2, alongX ? L - 0.2 : halfW * 2);
+    docks[d.name] = {
+      dock: d,
+      zone,
+      setOpen(on) {
+        shut.visible = !on;
+        rolled.visible = on;
+        doorCollider.setEnabled(!on);
+        signs[0].visible = words[0].visible = on;
+        signs[1].visible = words[1].visible = !on;
+        markMat.color.setHex(on ? 0x31d07a : 0x9aa0a8);
+        lampMat.color.setHex(on ? 0x31ff7a : 0xd02020);
+      },
+    };
   }
-  return zone;
+  return docks;
 }
 
 export function buildLevel(game) {
-  // This level's order (orders.json): which SKUs, how many, and which dock
-  const spec = ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0];
+  // The orders this run ships (orders.json): one level's, or all five in a Full Shift
+  const run = game.shift ? ORDERS : [ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0]];
   const { scene } = game;
   const { halfX, halfZ, wallH } = ROOM;
 
@@ -1081,9 +1114,10 @@ export function buildLevel(game) {
   const t = 0.2;
   const wallHalfY = (wallH - FLOOR_BOTTOM) / 2;
   const wallY = (wallH + FLOOR_BOTTOM) / 2;
-  // This order's dock: its wall gets a doorway there
-  openDock = DOCKS.find((d) => d.name === spec.dock) ?? DOCKS[0];
-  const doorFloor = dockFrame(openDock).y;
+  // The run's docks: each one's wall gets a doorway (a wall has at most one dock)
+  openDocks = DOCKS.filter((d) => run.some((o) => o.dock === d.name));
+  if (!openDocks.length) openDocks = [DOCKS[0]];
+  const dockOn = (wall) => openDocks.find((d) => d.wall === wall);
   // Each wall as boxes along it ([half size, centre]); the north and south walls run past the
   // corners to close them
   const span = { north: halfX + t * 2, south: halfX + t * 2, west: halfZ, east: halfZ };
@@ -1099,11 +1133,13 @@ export function buildLevel(game) {
   const wallBoxes = [];
   for (const wall of ['north', 'south', 'west', 'east']) {
     const [a0, a1] = [-span[wall], span[wall]];
-    if (openDock.wall !== wall) {
+    const gd = dockOn(wall);
+    if (!gd) {
       wallBoxes.push(wallBox(wall, a0, a1, FLOOR_BOTTOM, wallH));
       continue;
     }
-    const [g0, g1] = [openDock.at - DOOR_HALF, openDock.at + DOOR_HALF];
+    const doorFloor = dockFrame(gd).y;
+    const [g0, g1] = [gd.at - DOOR_HALF, gd.at + DOOR_HALF];
     wallBoxes.push(
       wallBox(wall, a0, g0, FLOOR_BOTTOM, wallH),
       wallBox(wall, g1, a1, FLOOR_BOTTOM, wallH),
@@ -1129,7 +1165,10 @@ export function buildLevel(game) {
     { y0: 1.0, h: 0.3, out: 0.01, mat: new THREE.MeshLambertMaterial({ color: 0xf5c518, emissive: 0x5c4808, side: THREE.DoubleSide }) },
   ];
   const v = new THREE.Vector3();
-  const doorGap = (wall) => (openDock.wall === wall ? [openDock.at - DOOR_HALF, openDock.at + DOOR_HALF] : null);
+  const doorGap = (wall) => {
+    const gd = dockOn(wall);
+    return gd ? [gd.at - DOOR_HALF, gd.at + DOOR_HALF] : null;
+  };
   for (const w of [
     { on: (c) => c.z0 === -halfZ, z: -halfZ, ry: 0, gap: doorGap('north') },
     { on: (c) => c.z1 === halfZ, z: halfZ, ry: Math.PI, gap: doorGap('south') },
@@ -1191,7 +1230,7 @@ export function buildLevel(game) {
   buildMezzanine(game);
 
   // Loading docks: this order's is open with a trailer backed up to it
-  const dockZone = buildDocks(game);
+  const docks = buildDocks(game);
 
   // Wall-mounted incident sign (updated by the game)
   game.incidentSign = makeIncidentSign(scene);
@@ -1213,7 +1252,7 @@ export function buildLevel(game) {
   const parking = buildParking(game);
 
   // Stock every shelf and pick this shift's order
-  const { order, orderBoxes } = stockShelves(game, racks, spec);
+  stockShelves(game, racks);
 
   // Loose boxes on the open floor for stacking
   LAYOUT.looseBoxes.forEach(([type, x, y, z], i) => {
@@ -1235,21 +1274,36 @@ export function buildLevel(game) {
   // Empty pallets (fork pockets open toward ±local Z)
   for (const [x, y, z, yaw] of LAYOUT.pallets) createPallet(game, { pos: [x, y, z], yaw });
 
-  return {
+  const level = {
     wrapZone,
     wrapper, // the stretch wrapper's arm (the wrap system swings it)
     conveyors, // the belts (the game drives things along them)
     hazards, // the hazards' per-frame update (sparks, drips, barrels gushing)
-    dockZone, // inside the trailer at the open dock
-    dock: openDock, // { name, z }: this order's dock
-    items: orderBoxes, // { A: [...], B: [...] }: the boxes each order line wants (for debugging/tests)
-    order, // [{ line, sku, location }]
+    docks, // { name: { dock, zone, setOpen } }: the docks this run ships from
+    dock: null, // this order's dock ({ name, wall, at }) and the zone inside its trailer: set by setOrder
+    dockZone: null,
+    order: null, // this order's pick list: [{ line, sku, qty, location, backstock }]
+    // Switch to an order (orders.json entry): its pick list, and its dock's door up (the rest down)
+    setOrder(spec) {
+      this.spec = spec;
+      this.order = orderLines(spec);
+      const name = this.docks[spec.dock] ? spec.dock : Object.keys(this.docks)[0];
+      for (const [n, d] of Object.entries(this.docks)) d.setOpen(n === name);
+      this.dock = this.docks[name].dock;
+      this.dockZone = this.docks[name].zone;
+    },
+    // The boxes of each line in the warehouse (for tests): { A: [...], ... }
+    get items() {
+      return Object.fromEntries(this.order.map((o) => [o.line, game.entities.filter((e) => e.kind === 'box' && e.sku === o.sku)]));
+    },
     racks,
     fans, // giant ceiling fans (the game turns them)
     climberSpawn: { pos: climberStart, yaw: LAYOUT.climberSpawn.yaw },
     spawnPoints: LAYOUT.spawnPoints.map((p) => new THREE.Vector3(...p)),
     forkliftSpawn: parking, // the parking bay
   };
+  level.setOrder(run[0]);
+  return level;
 }
 
 // A yellow disc with a black ring and a big black letter on it.

@@ -14,11 +14,17 @@ function hash(text) {
   return (h >>> 0).toString(36);
 }
 
-// What a run of the level depends on: the warehouse, and the order's lines and dock (not its
+// A level: one order, or 'shift' (Full Shift: all five back to back, with medal targets that are
+// the five orders' added up)
+const sum = (k) => ORDERS.reduce((t, o) => t + (o.medals?.[k] ?? 0), 0);
+export const FULL_SHIFT = { id: 'shift', title: 'Full Shift', medals: { gold: sum('gold'), silver: sum('silver'), bronze: sum('bronze') } };
+export const levelDef = (id) => (id === 'shift' ? FULL_SHIFT : ORDERS.find((o) => o.id === id));
+
+// What a run of the level depends on: the warehouse, and the orders' lines and docks (not the
 // medal targets, which can be retuned without making old times incomparable)
 function levelVersion(id) {
-  const o = ORDERS.find((x) => x.id === id);
-  return `${WAREHOUSE_VERSION}:${hash(JSON.stringify([o?.lines, o?.dock]))}`;
+  const orders = id === 'shift' ? ORDERS : ORDERS.filter((x) => x.id === id);
+  return `${WAREHOUSE_VERSION}:${hash(JSON.stringify(orders.map((o) => [o.lines, o.dock])))}`;
 }
 
 function load() {
@@ -61,14 +67,14 @@ export function submit(mode, id, run) {
 
 // 'gold' | 'silver' | 'bronze' | null for a total on this level (targets in orders.json)
 export function medalFor(id, total) {
-  const m = ORDERS.find((o) => o.id === id)?.medals;
+  const m = levelDef(id)?.medals;
   if (!m) return null;
   return ['gold', 'silver', 'bronze'].find((k) => total <= m[k]) ?? null;
 }
 
 // The next medal up and its target, for "Silver at 2:30"
 export function nextMedal(id, total) {
-  const m = ORDERS.find((o) => o.id === id)?.medals;
+  const m = levelDef(id)?.medals;
   if (!m) return null;
   const k = ['bronze', 'silver', 'gold'].find((k) => total > m[k]);
   return k ? { medal: k, at: m[k] } : null;
