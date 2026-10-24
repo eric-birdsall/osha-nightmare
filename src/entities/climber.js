@@ -261,7 +261,11 @@ export class Climber {
     this.uprightStep(a, dt, active);
     this.puntStep(a, dt, active);
     if (active && a.interact) {
-      if (this.holdingOn) this.letGo();
+      // A box in reach comes first, even from the forks: he lets go of the carriage to take it
+      if (this.holdingOn && this.target?.kind === 'box') {
+        this.letGo();
+        this.pickUp(this.target);
+      } else if (this.holdingOn) this.letGo();
       else if (this.ladderCarry) this.setUpLadder();
       else if (this.carried) this.putDown();
       else if (this.onBlades && !this.grounded) this.grab(); // mid-air, catching the forks comes first
@@ -980,9 +984,11 @@ export class Climber {
     const eye = this.eye;
     const dir = this.viewDir();
     const hit = castRay(this.game.world, eye, dir, cfg.reach + 1, COL.climberQuery, (c) => c.handle !== this.collider.handle);
-    // Arm's reach, measured from the chest so boxes at your feet are grabbable
+    // Arm's reach, measured from the chest so boxes at your feet are grabbable. Up on the forks
+    // (or a pallet on them) he leans out further: the truck can't get any closer to the shelf.
     const chest = eye.clone().setY(eye.y - cfg.chestDrop);
-    if (hit && chest.distanceTo(tmp.set(hit.point.x, hit.point.y, hit.point.z)) <= cfg.reach) {
+    const reach = cfg.reach + (this.onBlades ? cfg.forkReachBonus : 0);
+    if (hit && chest.distanceTo(tmp.set(hit.point.x, hit.point.y, hit.point.z)) <= reach) {
       const ent = this.game.entityForCollider(hit.collider);
       if (ent && ent.kind === 'box') {
         this.target = ent;

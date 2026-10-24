@@ -112,7 +112,7 @@ export class Hud {
         let p = '';
         const key = game.keyHint(role, 'interact');
         if (c.state === 'wrapped') p = 'You are wrapped. Wait for it…';
-        else if (c.holdingOn) p = `Holding on · Let go <kbd>${key}</kbd>`;
+        else if (c.holdingOn && c.target?.kind !== 'box') p = `Holding on · Let go <kbd>${key}</kbd>`;
         else if (c.onLadder && !c.carried && !c.target) {
           const climb = game.usesKeyboard(role) ? '<kbd>W</kbd> <kbd>S</kbd> climb' : 'Stick up / down to climb';
           p = `On the ladder · ${climb}<br><small>Jumping off knocks it over</small>`;
@@ -133,6 +133,7 @@ export class Hud {
             ? `Pick up ${n} boxes <kbd>${key}</kbd> · bottom SKU ${c.target.sku}`
             : `Pick up SKU ${c.target.sku} <kbd>${key}</kbd>${c.target.fragile ? ' <b class="fragile">FRAGILE</b>' : ''}`;
         }
+        if (c.holdingOn && c.target?.kind === 'box') p += '<br><small>Lets go of the forks</small>';
         // Knocked-over racking nearby: offer the reset (alongside any box prompt), and fill a
         // ring round the crosshair while E/X is held
         const hold = CONFIG.racks.resetHoldTime;

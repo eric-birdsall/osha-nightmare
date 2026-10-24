@@ -23,6 +23,7 @@ export const CONFIG = {
     characterMass: 70, // used when the climber shoves boxes and pallets
     pushStrength: 2.5, // how hard walking into a box shoves it
     reach: 1.5,
+    forkReachBonus: 0.4, // extra reach standing on the forks, leaning out to a shelf
     maxCarry: 3, // boxes Dave can carry as a stack (pick up the bottom one)
     stackSpeed: [1, 0.85, 0.75], // walk speed factor carrying 1, 2, 3 boxes
     // Up from 8 and 1.5: the longest punt goes half as far again (shorter, flatter ones a bit less)
