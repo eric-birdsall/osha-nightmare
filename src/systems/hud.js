@@ -13,7 +13,7 @@ const VIEW_HTML = (role) => `
   </div>
   ${
     role === 'climber'
-      ? `<div class="crosshair"></div><div class="prompt"></div><div class="throwmeter"><div class="fill"></div></div>`
+      ? `<div class="crosshair"></div><div class="prompt"></div>`
       : /* speed, gear and fork height are on the forklift's dashboard */
         `<div class="driftmeter"><div class="bar"><div class="fill"></div></div><div class="label"></div></div>`
   }
@@ -48,8 +48,6 @@ export class Hud {
         prompt: q('.prompt'),
         holdRing: q('.holdring'),
         holdFill: q('.holdring .fil'),
-        throwMeter: q('.throwmeter'),
-        throwFill: q('.throwmeter .fill'),
         crosshair: q('.crosshair'),
         toast: q('.toast'),
         banner: q('.banner'),
@@ -117,7 +115,7 @@ export class Hud {
         else if (c.holdingOn) p = `Holding on · Let go <kbd>${key}</kbd>`;
         else if (c.onLadder && !c.carried && !c.target) {
           const climb = game.usesKeyboard(role) ? '<kbd>W</kbd> <kbd>S</kbd> climb' : 'Stick up / down to climb';
-          p = `On the ladder · ${climb} · No jumping!`;
+          p = `On the ladder · ${climb}<br><small>Jumping off knocks it over</small>`;
         } else if (c.ladderCarry) p = c.ladderPlaceOk ? `Set up ladder <kbd>${key}</kbd>` : 'Find flat, clear floor for the ladder';
         else if (c.target?.kind === 'ladder') {
           if (!c.target.standing) p = `Pick up ladder <kbd>${key}</kbd>`;
@@ -126,7 +124,7 @@ export class Hud {
         else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
         else if (c.carried) {
           const n = c.carriedBoxes().length;
-          const toss = `Throw${n > 1 ? ' top box' : ''}: hold <kbd>${game.keyHint(role, 'toss')}</kbd>`;
+          const toss = `Throw${n > 1 ? ' top box' : ''} <kbd>${game.keyHint(role, 'toss')}</kbd>`;
           const fragile = c.carriedBoxes().some((b) => b.fragile) ? ' <b class="fragile">FRAGILE</b>' : '';
           p = (n > 1 ? `Put down ${n} boxes <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku} <kbd>${key}</kbd> · ${toss}`) + fragile;
         } else if (c.target) {
@@ -150,15 +148,8 @@ export class Hud {
           const r = uprighting ? 'Standing the ladder up…' : `Stand the ladder up: hold <kbd>${game.keyHint(role, 'toss')}</kbd>`;
           p = p ? `${p}<br><small>${r}</small>` : r;
         }
-        // Winding up a throw: the meter by the crosshair shows the power, up and back down
-        if (c.throwCharge >= 0) p = 'Let go to throw<br><small>Hold till it drops back to the bottom to call it off</small>';
-        else if (c.throwCharge === -2) p = 'Throw called off';
-        v.throwMeter.style.display = c.throwCharge >= 0 ? 'block' : 'none';
-        if (c.throwCharge >= 0) {
-          const k = c.throwCharge;
-          v.throwFill.style.height = `${Math.round(k * 100)}%`;
-          v.throwFill.style.background = k < 0.5 ? '#7cf0a0' : k < 0.85 ? '#f5c518' : '#ff5a3c';
-        }
+        // Aiming a throw: the arc and ghost show where it'll land
+        if (c.aimingThrow) p = 'Let go to throw<br><small>Aim higher to throw further</small>';
         // The same ring fills while Q / Y is held to go back to the start
         if (respawn(role) > 0) p = p ? `${p}<br><small>Going back to the start…</small>` : 'Going back to the start…';
         const back = respawn(role);

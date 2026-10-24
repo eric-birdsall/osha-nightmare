@@ -65,6 +65,13 @@ export function floorHeightAt(x, z) {
   }
   return LOWER.y;
 }
+// The floor at (x, z) for something at height y: the mezzanine deck if it's up there, else the
+// floor below.
+export function floorHeightNear(x, z, y) {
+  const m = LAYOUT.mezzanine;
+  if (y > m.y - 1 && inRect(m, x, z)) return m.y;
+  return floorHeightAt(x, z);
+}
 export const SHELF_LEVELS = LAYOUT.racking.shelves; // the usual shelves (each rack has its own: rack.shelves)
 const BAY_W = LAYOUT.racking.bayW;
 const BEAM_H = 0.16; // shelf beam height (labels go on its face)

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL, G, groups, castRay, yawQuat, quatToThree } from '../physics.js';
-import { floorHeightAt, ROOM } from '../world/level.js';
+import { floorHeightAt, floorHeightNear, ROOM } from '../world/level.js';
 import { buildLadderGhost, ladderFootprint } from './ladder.js';
 import { collectStack } from '../systems/wrapping.js';
 import { onSpill } from '../world/spills.js';
@@ -81,8 +81,7 @@ export class Climber {
     this.mantle = null;
     this.onBlades = false;
     this.holdingOn = false;
-    this.throwCharge = -1; // not winding up a throw
-    this.throwPhase = 0;
+    this.aimingThrow = false; // R / RB held with a box: showing where it'll land
     this.lastOnLadder = -Infinity;
     this.ladderCarry = null; // folded ladder on the shoulder
     this.onLadder = null; // { ent, h: metres up the steps, heading }
@@ -232,7 +231,9 @@ export class Climber {
     disp.addScaledVector(this.pushVel, dt);
     this.pushVel.set(0, 0, 0);
 
-    this.kcc.computeColliderMovement(this.collider, disp, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery);
+    // Just jumped off a ladder: pass through it for a moment (he starts inside its frame)
+    const clear = this.clearOfLadder && this.game.clock < this.clearOfLadder.until ? this.clearOfLadder.body : null;
+    this.kcc.computeColliderMovement(this.collider, disp, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, clear && ((c) => c.parent()?.handle !== clear.handle));
     const mv = this.kcc.computedMovement();
     this.pushLoose();
     const wasGrounded = this.grounded;
@@ -310,8 +311,8 @@ export class Climber {
     sfx.pickup();
   }
 
-  // On the ladder: W/S climbs, the view is free, E/X still picks and places boxes. Any jump
-  // sends the ladder over. Dave's feet are pinned to the steps, so he rides along if the
+  // On the ladder: W/S climbs, the view is free, E/X still picks and places boxes. Jumping off
+  // is allowed, but the push sends the ladder over. Dave's feet are pinned to the steps, so he rides along if the
   // forklift shoves or lifts the ladder.
   ladderStep(a, dt, active) {
     const L = this.onLadder;
@@ -353,17 +354,27 @@ export class Climber {
     this.velocity.set(0, 0, 0);
   }
 
-  // Jumping on a ladder: Dave pushes off backwards and the ladder kicks over the other way.
+  // Jumping off a ladder: a normal jump the way Dave's looking (onto a shelf, the forks, a
+  // pallet...), but pushing off kicks the ladder over, so there's no landing back on it.
   jumpOffLadder() {
+    const cfg = CONFIG.climber;
     const lad = this.onLadder.ent;
-    const back = lad.front; // out of the step side, toward where Dave came from
-    // Over sideways (across its narrow width), a little away from Dave
-    const side = new THREE.Vector3(back.z, 0, -back.x).multiplyScalar(Math.random() < 0.5 ? -1 : 1);
-    const kick = side.addScaledVector(back, -0.3).normalize().multiplyScalar(lad.mass * CONFIG.ladder.jumpKick);
+    const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    // Over sideways (across its narrow width), and back away from where he jumped
+    const side = new THREE.Vector3(lad.front.z, 0, -lad.front.x).multiplyScalar(Math.random() < 0.5 ? -1 : 1);
+    const kick = side.addScaledVector(fwd, -0.6).normalize().multiplyScalar(lad.mass * CONFIG.ladder.jumpKick);
     lad.body.applyImpulseAtPoint(kick, lad.topPoint(), true);
     this.onLadder = null;
+    this.grounded = false;
+    this.jumpedThisStep = true;
+    this.vy = Math.sqrt(2 * cfg.gravity * cfg.jumpHeight);
+    this.airVel.copy(fwd).multiplyScalar(cfg.walkSpeed);
+    this.launchVel.set(0, 0, 0);
+    this.relVel.set(0, 0, 0);
+    this.clearOfLadder = { body: lad.body, until: this.game.clock + 0.5 };
+    this.ladderJumped = true; // the fall allowance counts from the step, not the jump's top (see the fall check)
+    this.lastOnLadder = -Infinity; // landing hard after this is his own fall, not the ladder's
     sfx.jump();
-    this.goRagdoll('ladderJump', back.multiplyScalar(2.2).add(new THREE.Vector3(0, 2.5, 0)));
   }
 
   // While on a ladder: it going over (or being knocked out from under him) ends in an incident.
@@ -446,12 +457,12 @@ export class Climber {
   ladderSpot(c, yaw, ignore) {
     const cfg = CONFIG.ladder;
     const feet = this.feet;
-    const y = floorHeightAt(c.x, c.z);
+    const y = floorHeightNear(c.x, c.z, feet.y);
     const q = yawQuat(yaw);
     const rot = quatToThree(q);
     const level = (x, z) => {
       const p = new THREE.Vector3(x, 0, z).applyQuaternion(rot).add(c);
-      return Math.abs(floorHeightAt(p.x, p.z) - y) < 0.01;
+      return Math.abs(floorHeightNear(p.x, p.z, feet.y) - y) < 0.01;
     };
     const w = cfg.width / 2 + 0.05;
     let ok = level(-w, cfg.baseBack) && level(w, cfg.baseBack) && level(-w, cfg.baseFront) && level(w, cfg.baseFront);
@@ -852,10 +863,14 @@ export class Climber {
     }
 
     // Fall distance
-    if (this.grounded) this.peakY = feet.y;
-    else {
+    if (this.grounded) {
+      this.peakY = feet.y;
+      this.ladderJumped = false;
+    } else {
       this.peakY = Math.max(this.peakY, feet.y);
-      if (this.peakY - feet.y > cfg.fallRagdollHeight) return this.goRagdoll('fell');
+      // Off the top of a ladder down to the floor is fine: the jump's own height doesn't count
+      const allow = cfg.fallRagdollHeight + (this.ladderJumped ? cfg.jumpHeight : 0);
+      if (this.peakY - feet.y > allow) return this.goRagdoll('fell');
     }
 
     // Something coming down on our head: lowered forks, or a falling box/pallet
@@ -1124,49 +1139,36 @@ export class Climber {
     if (this.ghost) this.ghost.visible = false;
   }
 
-  // Throwing: press R / RB to start winding up. The power meter climbs to the top, then falls
-  // back down; let go to throw at whatever it shows (an arc and a ghost show where it'll land).
-  // Hold on until it's back at the bottom and the throw's off. throwCharge is the power 0..1
-  // while winding up, -1 when not, and -2 after a called-off throw until the button comes up.
+  // Throwing: hold R / RB to aim (an arc and a ghost show where it'll land), let go to throw.
+  // Always the same speed: aim higher to throw further.
   throwStep(a, dt, active) {
     if (!this.carried || !active) {
-      this.throwCharge = -1;
+      this.aimingThrow = false;
       return;
     }
-    if (this.throwCharge === -2) {
-      if (!a.tossHeld) this.throwCharge = -1;
-      return;
-    }
-    if (a.toss && this.throwCharge < 0) {
-      this.throwCharge = 0;
-      this.throwPhase = 0;
-    } else if (this.throwCharge >= 0 && a.tossHeld) {
-      this.throwPhase += dt / CONFIG.climber.throwChargeTime; // 0..1 going up, 1..2 coming down
-      if (this.throwPhase >= 2) this.throwCharge = -2; // held too long: no throw
-      else this.throwCharge = this.throwPhase < 1 ? this.throwPhase : 2 - this.throwPhase;
-    } else if (this.throwCharge >= 0) {
-      this.toss(this.throwCharge);
-      this.throwCharge = -1;
+    if (a.toss) this.aimingThrow = true;
+    else if (this.aimingThrow && !a.tossHeld) {
+      this.toss();
+      this.aimingThrow = false;
     }
   }
 
-  // Where the top carried box starts and how fast it goes, thrown with `power` 0..1
-  throwStart(power) {
+  // Where the top carried box starts and how fast it goes
+  throwStart() {
     const cfg = CONFIG.climber;
     const { pos } = this.holdPose(this.carriedBoxes().length - 1);
-    const [slow, fast] = cfg.throwSpeed;
-    const v = this.viewDir().multiplyScalar(slow + (fast - slow) * power);
+    const v = this.viewDir().multiplyScalar(cfg.throwSpeed);
     v.y += cfg.tossLift;
     v.add(this.velocity);
     return { pos, v };
   }
 
-  // Throw the top carried box along the crosshair, with `power` 0..1 (how long it was wound up).
-  toss(power = 0) {
+  // Throw the top carried box along the crosshair.
+  toss() {
     const boxes = this.carriedBoxes();
     if (!boxes.length) return;
     const top = boxes[boxes.length - 1];
-    const { pos, v } = this.throwStart(power);
+    const { pos, v } = this.throwStart();
     this.releaseBox(top, pos, yawQuat(this.yaw), { x: v.x, y: v.y, z: v.z });
     top.body.setAngvel({ x: (Math.random() - 0.5) * 1.2, y: (Math.random() - 0.5) * 1.2, z: (Math.random() - 0.5) * 1.2 }, true); // a little tumble, not enough to stray far off the shown arc
     this.arm(top);
@@ -1252,7 +1254,7 @@ export class Climber {
       this.game.scene.add(this.throwArc, ghost);
     }
     const boxes = this.carriedBoxes();
-    const show = this.throwCharge >= 0 && boxes.length > 0 && this.state === 'walk';
+    const show = this.aimingThrow && boxes.length > 0 && this.state === 'walk';
     this.throwArc.visible = this.throwGhost.visible = false;
     if (!show) return;
     // Fly it forward in small steps under gravity until the box (not just its centre) would
@@ -1265,7 +1267,7 @@ export class Climber {
     const notUs = (c) => !skip.has(c.handle);
     const shape = new RAPIER.Cuboid(sx * 0.68, sy * 0.68, sz * 0.68); // a bit over size: it tumbles a little in flight
     const rot = yawQuat(this.yaw);
-    const { pos, v } = this.throwStart(this.throwCharge);
+    const { pos, v } = this.throwStart();
     const p = pos.clone();
     const vel = v.clone();
     const g = CONFIG.physics.gravity;
@@ -1314,7 +1316,7 @@ export class Climber {
 
   updateGhost() {
     if (!this.ghost) return;
-    if (!this.carried || this.state !== 'walk' || this.throwCharge >= 0) {
+    if (!this.carried || this.state !== 'walk' || this.aimingThrow) {
       this.ghost.visible = false;
       return;
     }

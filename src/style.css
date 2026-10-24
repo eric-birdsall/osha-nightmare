@@ -669,27 +669,6 @@ td + td {
     transform: scale(1.8);
   }
 }
-/* Dave's throw power: a slim bar right of the crosshair, filling up and back down */
-.throwmeter {
-  position: absolute;
-  left: calc(50% + 34px);
-  top: calc(50% - 50px);
-  width: 12px;
-  height: 100px;
-  border-radius: 6px;
-  background: rgba(17, 18, 20, 0.6);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
-  overflow: hidden;
-  display: none;
-}
-.throwmeter .fill {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 0;
-  background: #7cf0a0;
-}
 /* Hold-to-reset progress ring round the crosshair */
 .holdring {
   position: absolute;

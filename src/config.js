@@ -25,8 +25,7 @@ export const CONFIG = {
     reach: 1.5,
     maxCarry: 3, // boxes Dave can carry as a stack (pick up the bottom one)
     stackSpeed: [1, 0.85, 0.75], // walk speed factor carrying 1, 2, 3 boxes
-    throwSpeed: [3, 12], // m/s along the crosshair when he throws a box (R / RB): a tap, and fully wound up
-    throwChargeTime: 1.0, // s of holding R / RB to wind up all the way
+    throwSpeed: 8, // m/s along the crosshair when he throws a box (R / RB): aim higher to throw further
     tossLift: 1.5, // plus a little upward lob // pick up: aimed box surface within this distance of the chest
     chestDrop: 0.45, // chest is this far below the eye
     placeReach: 2.2, // put down: how far the aim ray looks for a surface

@@ -12,14 +12,14 @@
 //    │       ├─── B/C ────┤  lane              C          E│
 //    │       ├─── D/E ────┤                    K          Y│
 //    │       ├─── F/G ────┘                               O│
-//    │ MEZZANINE (H/I) over the break room │stairs     PANEL│
+//    │ MEZZANINE (H aisle I) over break rm │stairs     PANEL│
 //  S └──────────────────────────────────────────────────┘
 
 // The building is centred on x = 0, so changing its width moves both walls. Everything below is
 // placed from the wall it belongs with: the west side (basement, docks, ramp, racks, mezzanine)
 // from the west wall W, and the east side (wrapper, packing, conveyor) from the east wall E, so
 // narrowing the building only moves the east side in.
-const room = { halfX: 19.2, halfZ: 22, wallH: 12 }; // wallH: up to the roof
+const room = { halfX: 19.2, halfZ: 23.2, wallH: 12 }; // wallH: up to the roof
 const NORTH = -room.halfZ; // inside face of the north wall
 const W = -room.halfX; // inside face of the west wall
 const E = room.halfX; // inside face of the east wall
@@ -53,9 +53,11 @@ const pair = (north, south, x0, z0, base = 0, size = {}) => [rack(north, x0, z0,
 const LOW = { shelves: [1.5, 3.0], uprightH: 3.7 };
 
 // The mezzanine: a steel deck `y` up along the south wall from the west wall, holding the
-// backstock racks H/I. Dave gets up by the stairs at its east end; the forklift can lift a pallet
-// (or Dave) up to the gap in its front railing. Under it is the break room.
-const mezzanine = { x0: W, x1: W + 20, z0: SOUTH - 4.4, z1: SOUTH, y: 3.0, gate: { from: W + 15.4, to: W + 18.6 } };
+// backstock racks H/I facing each other across an aisle wide enough to walk and set up a ladder.
+// Dave gets up by the stairs at its east end; the forklift can lift a pallet (or Dave) up to the
+// gap in its front railing, past the racks' east end. Under it is the break room.
+const MEZZ_AISLE = 2.6;
+const mezzanine = { x0: W, x1: W + 20, z0: SOUTH - 5.6, z1: SOUTH, y: 3.0, gate: { from: W + 16.8, to: W + 19.6 } };
 
 // One block of racks with a narrow lane (about 3.8 m) down its west side. Rack A stands with its
 // back to the basement's railing; below it B/C, D/E and F/G are back-to-back pairs, every row 4.4 m
@@ -71,7 +73,10 @@ const racks = [
   ...pair('B', 'C', WEST, A + racking.depth + AISLE),
   ...pair('D', 'E', WEST, A + racking.depth + AISLE + PAIR + AISLE),
   ...pair('F', 'G', WEST, A + racking.depth + 2 * (AISLE + PAIR) + AISLE),
-  ...pair('H', 'I', W + 2, mezzanine.z0 + 1.0, mezzanine.y, LOW), // on the mezzanine, 1 m back from its front edge
+  // On the mezzanine, from just off the west wall: H along the front railing, I against the south
+  // wall, open to the aisle between them
+  rack('H', W + 0.3, mezzanine.z0 + 0.3, 'south', mezzanine.y, LOW),
+  rack('I', W + 0.3, mezzanine.z0 + 0.3 + racking.depth + MEZZ_AISLE, 'north', mezzanine.y, LOW),
 ];
 
 // The wrapper stands north-east, 3 m in from the conveyor on the east wall; the packing stations
@@ -117,7 +122,7 @@ export const LAYOUT = {
     panel: { wall: 'east', at: 8 }, // electrical panel with a leaking pipe dripping on it, just past the conveyor
     // A section of the basement's railing that isn't there: on its east edge, by the ramp
     railingGap: { along: 'z', line: lower.x1, from: -17.5, to: -15.5 },
-    barrels: { x: W + 27.6, z: 20, y: 0 }, // unlabelled barrels by the south wall, east of the mezzanine
+    barrels: { x: W + 27.6, z: SOUTH - 2, y: 0 }, // unlabelled barrels by the south wall, east of the mezzanine
     fireExits: [
       { wall: 'west', at: 2.3, y: 0 }, // on the west lane
       { wall: 'south', at: E - 4.1, y: 0 }, // south-east corner
@@ -127,6 +132,7 @@ export const LAYOUT = {
   ladderStands: [
     { x: RACKS_E + 2.5, z: -15, y: 0, yaw: 0 }, // just north of the top of the stairs, out of the way
     { x: RACKS_E - 3.5, z: lower.z1 - 0.3, y: lower.y, yaw: Math.PI }, // basement, by the foot of the stairs
+    { x: mezzanine.x1 + 0.9, z: SOUTH - 0.3, y: mezzanine.y, yaw: Math.PI }, // top landing of the mezzanine stairs, against the south wall
   ],
   incidentSign: { x: E - 3.5, y: 3.6 }, // on the north wall
   climberSpawn: { pos: [RACKS_E + 1.5, 0, A + racking.depth + AISLE / 2], yaw: Math.PI / 2 }, // east end of aisle A/B, looking down it
@@ -141,7 +147,7 @@ export const LAYOUT = {
     [RACKS_E - 3, 0, 15.2],
     [RACKS_E + 4, 0, -15],
     [E - 5, 0, 10],
-    [W + 10, mezzanine.y, mezzanine.z0 + 0.5],
+    [W + 10, mezzanine.y, mezzanine.z0 + 0.3 + racking.depth + MEZZ_AISLE / 2], // the mezzanine aisle
     [E - 6, 0, 18],
     [E - 3, 0, -9],
   ],
