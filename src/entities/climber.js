@@ -80,13 +80,16 @@ export class Climber {
     this.mantle = null;
     this.onBlades = false;
     this.holdingOn = false;
-    this.aimingPunt = false; // R / RB held with a box: showing where it'll land
+    this.aimingPunt = false; // E / X held with a box: showing where the punt will land
+    this.eHold = null; // s E / X has been held since it went down with a box in hand (null: not pressed)
     this.lastOnLadder = -Infinity;
     this.ladderCarry = null; // folded ladder on the shoulder
     this.onLadder = null; // { ent, h: metres up the steps, heading }
-    this.resetTimer = 0; // holding E/X near knocked-over racking
+    this.resetTimer = 0; // holding R/RB near knocked-over racking
     this.uprightTimer = 0; // holding R/RB near a fallen ladder (-1: done, waiting for release)
     this.flipTimer = 0; // holding E/X near a tipped-over pallet (-1: done, waiting for release)
+    this.rightTimer = 0; // holding E/X near a tipped forklift (-1: done, waiting for release)
+    this.nearTippedForklift = false;
     this.tippedPallet = null;
     this.fallenLadder = null;
     this.nearKnockedRack = null;
@@ -184,9 +187,9 @@ export class Climber {
     const my = free ? a.moveY : 0;
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    // Slower with a ladder on the shoulder, or with a stack of boxes in his arms
+    // Slower with a stack of boxes in his arms (a ladder on his shoulder doesn't slow him)
     const stackFactor = cfg.stackSpeed[Math.max(0, this.carriedBoxes().length - 1)] ?? 1;
-    const speed = cfg.walkSpeed * (this.ladderCarry ? CONFIG.ladder.carrySpeedFactor : stackFactor);
+    const speed = cfg.walkSpeed * stackFactor;
     const wish = fwd.multiplyScalar(my * speed).addScaledVector(right, mx * speed);
 
     // Walking into the steps of a set-up ladder: climb on
@@ -259,6 +262,7 @@ export class Climber {
     this.resetStep(a, dt, active);
     this.uprightStep(a, dt, active);
     this.palletFlipStep(a, dt, active);
+    this.rightForkliftStep(a, dt, active);
     this.puntStep(a, dt, active);
     if (active && a.interact) {
       // A box in reach comes first, even from the forks: he lets go of the carriage to take it
@@ -267,7 +271,9 @@ export class Climber {
         this.pickUp(this.target);
       } else if (this.holdingOn) this.letGo();
       else if (this.ladderCarry) this.setUpLadder();
-      else if (this.carried) this.putDown();
+      else if (this.carried) {
+        // tap to put down, hold to punt: see puntStep
+      }
       else if (this.onBlades && !this.grounded) this.grab(); // mid-air, catching the forks comes first
       else if (this.target?.kind === 'ladder') this.pickUpLadder(this.target); // a set-up one folds onto the shoulder
       else if (this.target) this.pickUp(this.target);
@@ -340,10 +346,7 @@ export class Climber {
     this.lastOnLadder = this.game.clock;
     if (this.carried) this.holdCarried();
     this.puntStep(a, dt, active);
-    if (active && a.interact) {
-      if (this.carried) this.putDown();
-      else if (this.target) this.pickUp(this.target);
-    }
+    if (active && a.interact && !this.carried && this.target) this.pickUp(this.target); // putting down / punting: puntStep
   }
 
   stepOffLadder() {
@@ -517,11 +520,10 @@ export class Climber {
     if (this.ladderGhost) this.ladderGhost.visible = false;
   }
 
-  // Holding E/X for a few seconds near knocked-over racking sets it all back up. (A tap still
-  // picks up or puts down a box as usual; keep holding and the reset happens anyway.)
+  // Holding R / RB for a few seconds near knocked-over racking sets it all back up.
   resetStep(a, dt, active) {
-    const can = this.nearKnockedRack && !this.ladderCarry && !this.onLadder && !(this.target?.kind === 'ladder' && this.target.standing);
-    if (!(active && a.interactHeld && can)) {
+    const can = this.nearKnockedRack && !this.ladderCarry && !this.onLadder;
+    if (!(active && a.tossHeld && can)) {
       this.resetTimer = 0;
       return;
     }
@@ -555,10 +557,12 @@ export class Climber {
     let best = null;
     let bestD = CONFIG.climber.palletFlipRange;
     for (const p of this.game.entities) {
-      if (p.kind !== 'pallet' || p.removed || p.carried) continue;
-      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(p.body.rotation()));
-      if (up.y > 0.9) continue;
-      const t = p.body.translation();
+      if ((p.kind !== 'pallet' && p.kind !== 'wrapped') || p.removed || p.carried) continue;
+      const q = quatToThree(p.body.rotation());
+      if (new THREE.Vector3(0, 1, 0).applyQuaternion(q).y > 0.9) continue;
+      // Measured from its middle (a tall wrapped load lying down is long)
+      const c = p.bounds ? p.bounds.min.clone().add(p.bounds.max).multiplyScalar(0.5) : new THREE.Vector3();
+      const t = c.applyQuaternion(q).add(p.body.translation());
       if (Math.abs(t.y - feet.y) > 1.2) continue;
       const d = Math.hypot(t.x - feet.x, t.z - feet.z);
       if (d < bestD) [best, bestD] = [p, d];
@@ -566,8 +570,8 @@ export class Climber {
     return best;
   }
 
-  // Holding E / X (hands empty) near a tipped-over pallet for a second drops it back flat where it
-  // lies, keeping its heading. (A tap of E / X still picks things up as usual.)
+  // Holding E / X (hands empty) near a tipped-over pallet or wrapped load for a second sets it back
+  // the right way up where it lies, keeping its heading. (A tap of E / X still picks things up.)
   palletFlipStep(a, dt, active) {
     const free = !this.carried && !this.ladderCarry && !this.onLadder && !this.holdingOn;
     this.tippedPallet = free ? this.findTippedPallet() : null;
@@ -580,25 +584,33 @@ export class Climber {
     this.flipTimer += dt;
     if (this.flipTimer < CONFIG.climber.palletFlipHoldTime) return;
     this.flipTimer = -1;
+    // Its extent in its own frame (origin on the floor under the pallet's middle): a bare pallet,
+    // or a wrapped load with its boxes
     const [w, h, l] = CONFIG.objects.pallet.size;
+    const lo = pal.bounds?.min ?? new THREE.Vector3(-w / 2, 0, -l / 2);
+    const hi = pal.bounds?.max ?? new THREE.Vector3(w / 2, h, l / 2);
+    const centre = lo.clone().add(hi).multiplyScalar(0.5);
+    const half = hi.clone().sub(lo).multiplyScalar(0.5);
     const q = quatToThree(pal.body.rotation());
-    // Where it is now (the middle of the pallet, whichever way up) and which way it was pointing
-    const mid = new THREE.Vector3(0, h / 2, 0).applyQuaternion(q).add(pal.body.translation());
+    // Where it is now (its middle, whichever way up) and which way it was pointing
+    const mid = centre.clone().applyQuaternion(q).add(pal.body.translation());
     const along = new THREE.Vector3(0, 0, 1).applyQuaternion(q).setY(0);
     if (along.lengthSq() < 0.04) along.set(1, 0, 0).applyQuaternion(q).setY(0); // stood on its end
     const yaw = Math.atan2(along.x, along.z);
-    const floor = floorHeightNear(mid.x, mid.z, mid.y - 0.5);
-    const pos = { x: mid.x, y: floor + 0.02, z: mid.z };
+    const floor = floorHeightNear(mid.x, mid.z, mid.y - half.y - 0.5);
+    // Upright with its middle where its middle was, standing on the floor
+    const off = new THREE.Vector3(centre.x, 0, centre.z).applyQuaternion(quatToThree(yawQuat(yaw)));
+    const pos = { x: mid.x - off.x, y: floor + 0.02 - lo.y, z: mid.z - off.z };
     // Room for it lying flat? (not counting itself or Dave's hands)
     const skip = new Set([this.collider.handle]);
     for (let i = 0; i < pal.body.numColliders(); i++) skip.add(pal.body.collider(i).handle);
     let blocked = false;
     this.game.world.intersectionsWithShape(
-      { x: pos.x, y: pos.y + h / 2 + 0.01, z: pos.z }, yawQuat(yaw), new RAPIER.Cuboid(w / 2 - 0.02, h / 2 - 0.01, l / 2 - 0.02),
+      { x: mid.x, y: floor + 0.03 + half.y, z: mid.z }, yawQuat(yaw), new RAPIER.Cuboid(half.x - 0.02, half.y - 0.01, half.z - 0.02),
       () => ((blocked = true), false), RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, undefined, undefined, (c) => !skip.has(c.handle),
     );
     if (blocked) {
-      this.game.toast('No room to flip the pallet here', 1.5);
+      this.game.toast(`No room to flip the ${pal.kind === 'wrapped' ? 'load' : 'pallet'} here`, 1.5);
       return;
     }
     pal.body.setTranslation(pos, true);
@@ -606,6 +618,33 @@ export class Climber {
     pal.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     pal.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.tippedPallet = null;
+    sfx.putdown();
+  }
+
+  // A tipped forklift only comes back on its wheels when Dave heaves it over: hands empty, near it,
+  // holding E / X for a couple of seconds. It's righted where it lies.
+  rightForkliftStep(a, dt, active) {
+    const cfg = CONFIG.climber;
+    const fl = this.game.forklift;
+    const free = !this.carried && !this.ladderCarry && !this.onLadder && !this.holdingOn;
+    let near = false;
+    if (free && fl.tipped) {
+      const c = fl.body.worldCom();
+      const feet = this.feet;
+      near = Math.hypot(c.x - feet.x, c.z - feet.z) < cfg.forkliftRightRange && Math.abs(c.y - feet.y) < 2;
+    }
+    this.nearTippedForklift = near;
+    if (!(active && near && a.interactHeld)) {
+      this.rightTimer = 0;
+      return;
+    }
+    if (this.rightTimer < 0) return;
+    this.rightTimer += dt;
+    if (this.rightTimer < cfg.forkliftRightHoldTime) return;
+    this.rightTimer = -1;
+    fl.rightInPlace();
+    this.nearTippedForklift = false;
+    this.game.toast('Dave heaved the forklift back on its wheels', 2.5);
     sfx.putdown();
   }
 
@@ -1040,6 +1079,8 @@ export class Climber {
     this.targetStack = 1;
     this.nearKnockedRack = this.state === 'walk' && !this.onLadder ? this.findKnockedRack() : null;
     if (this.state !== 'walk' || this.carried || this.ladderCarry) return;
+    // Feet on something to grab anything: no jumping up to snatch a box off shelf 2
+    if (!this.grounded) return;
     const cfg = CONFIG.climber;
     const eye = this.eye;
     const dir = this.viewDir();
@@ -1205,18 +1246,29 @@ export class Climber {
     if (this.ghost) this.ghost.visible = false;
   }
 
-  // Punting: hold R / RB to aim (an arc and a ghost show exactly where it'll land), let go and
-  // Dave drops the box onto his foot and boots it. Always the same speed: aim higher to punt further.
+  // While carrying, E / X does two things: a tap puts the load down where the ghost shows; held,
+  // the punt arc and ghost come up, and letting go boots the top box. The ghost shows exactly where
+  // it'll land; it always flies at the same speed, so aim higher to punt further. (The press that
+  // picked the box up doesn't count: E has to go down again while he's holding it.)
   puntStep(a, dt, active) {
     if (!this.carried || !active) {
       this.aimingPunt = false;
+      this.eHold = null;
       return;
     }
-    if (a.toss) this.aimingPunt = true;
-    else if (this.aimingPunt && !a.tossHeld) {
-      this.punt();
-      this.aimingPunt = false;
+    if (this.eHold == null) {
+      if (a.interact) this.eHold = 0;
+      return;
     }
+    if (a.interactHeld) {
+      this.eHold += dt;
+      if (this.eHold >= CONFIG.climber.puntHoldDelay) this.aimingPunt = true;
+      return;
+    }
+    if (this.aimingPunt) this.punt();
+    else this.putDown();
+    this.aimingPunt = false;
+    this.eHold = null;
   }
 
   // Where the punted box starts (at his boot, just in front of his feet) and how fast it goes
@@ -1229,8 +1281,9 @@ export class Climber {
     pos.y += cfg.puntHeight + sy / 2;
     // Something low right in front of him (the belt, a pallet): he kicks it from higher up
     for (let k = 0; k < 10 && this.boxBlocked(pos, boxes); k++) pos.y += 0.1;
-    const v = this.viewDir().multiplyScalar(cfg.puntSpeed);
-    v.y += cfg.puntLift;
+    // The boot sends it up a bit steeper than he's looking, so a level look lobs it well up and out
+    const pitch = Math.min(this.pitch + cfg.puntAngle, 1.4);
+    const v = new THREE.Vector3(-Math.sin(this.yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(this.yaw) * Math.cos(pitch)).multiplyScalar(cfg.puntSpeed);
     v.add(this.velocity);
     return { pos, v };
   }

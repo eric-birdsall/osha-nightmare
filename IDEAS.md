@@ -155,3 +155,26 @@ another wall (a cheap joke that reacts to incidents).
 **Suggested pick:** packing stations plus a conveyor along the wall feeding them. It fills the
 space, sets up idea 3, gives Dave a reason to visit the corner, and adds a new hazard. Runner-up:
 the returns cage, if lost boxes should matter.
+
+## 5. Putaway mode
+
+The reverse of picking. A purchase order arrives: a truck at a dock delivers pallets of new stock,
+and the crew has to put every box away on the shelves.
+
+- The paperwork lists each SKU and the Rack-Bay-Shelf it belongs in (empty slots in the fixed
+  warehouse, or short pick faces that need topping up).
+- Ralph unloads the trailer and drives pallets to the right aisle; Dave takes the boxes off and
+  puts each one on its shelf (by hand, from the forks, from a ladder, or by punting it up).
+- Done when every box is in its slot; scored on time plus incident penalties like the orders, with
+  its own best times. Could be its own level list, or alternate with orders in a Full Shift.
+
+## 6. Pallets with bottom boards
+
+Real pallets have boards underneath as well as on top. Add them, so the fork pockets are a gap
+between two decks:
+
+- Forks flat on the floor can't get into the pockets: they hit the bottom boards and shove the
+  pallet along instead. Ralph has to lift the blades slightly off the ground to slide them in.
+- Once the pallet is on the forks, the bottom boards hold it there, so it's harder to tip it off
+  the blades in a turn or a sudden stop.
+- A bit more skill for picking up, a bit more forgiving once loaded.

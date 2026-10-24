@@ -26,9 +26,11 @@ export const CONFIG = {
     forkReachBonus: 0.4, // extra reach standing on the forks, leaning out to a shelf
     maxCarry: 3, // boxes Dave can carry as a stack (pick up the bottom one)
     stackSpeed: [1, 0.85, 0.75], // walk speed factor carrying 1, 2, 3 boxes
-    // Up from 8 and 1.5: the longest punt goes half as far again (shorter, flatter ones a bit less)
-    puntSpeed: 10.0, // m/s along the crosshair when he punts a box (R / RB): aim higher to punt further
-    puntLift: 1.88, // plus a little upward lob
+    puntHoldDelay: 0.25, // s: holding E / X with a box this long brings up the punt aim (shorter is a tap: put down)
+    puntSpeed: 11.5, // m/s off his boot when he punts a box (R / RB): aim higher to punt further
+    puntAngle: 0.4, // rad (~23 deg) the kick goes above where he's looking: looking level lobs it well up
+    forkliftRightRange: 3.2, // m from the truck's middle: Dave can heave a tipped forklift back on its wheels...
+    forkliftRightHoldTime: 2.0, // ...by holding E / X this long
     palletFlipRange: 1.8, // m: a tipped-over pallet this close can be flipped back flat...
     palletFlipHoldTime: 1.0, // ...by holding E / X this long
     puntHeight: 0.25, // the box's bottom when his boot meets it (it's dropped from his hands onto his foot)
@@ -108,7 +110,6 @@ export const CONFIG = {
     stickLookSpeed: 2.4,
     seatEye: [0, 1.85, -0.25],
     leanOffset: [0, 0.08, 0.45], // eye shift when looking down at the forks
-    rightAfter: 4, // seconds tipped over before it's reset upright
   },
 
   objects: {
@@ -148,7 +149,6 @@ export const CONFIG = {
     friction: 0.8,
     climbSpeed: 0.9, // m/s up or down the steps
     lookDownPitch: 0.5, // rad (~30°): looking further down than this, forward climbs down
-    carrySpeedFactor: 0.7, // Dave walks this much slower with a ladder on his shoulder
     climbableUp: 0.95, // upright enough to climb (cos of lean)
     fallUp: 0.85, // leaning further than this with Dave on it = it's going over
     setupDistance: 1.05, // ladder centre this far in front of Dave when set up

@@ -5,6 +5,7 @@ import { CONFIG } from '../config.js';
 const VIEW_HTML = (role) => `
   <div class="topright">
     <div class="timer card">00:00</div>
+    <div class="timer-pen">+15 s</div>
   </div>
   <div class="roles card">
     <span data-r="driver">Ralph</span>
@@ -15,7 +16,7 @@ const VIEW_HTML = (role) => `
     role === 'climber'
       ? `<div class="crosshair"></div><div class="prompt"></div>`
       : /* speed, gear and fork height are on the forklift's dashboard */
-        `<div class="driftmeter"><div class="bar"><div class="fill"></div></div><div class="label"></div></div>`
+        `<div class="driftmeter"><div class="bar"><div class="fill"></div></div><div class="label"></div></div><div class="prompt"></div>`
   }
   <div class="holdring"><svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="18"/><circle class="fil" cx="22" cy="22" r="18"/></svg></div>
   <div class="rolelabel">${role === 'climber' ? 'DAVE · CLIMBER' : 'RALPH · DRIVER'}</div>
@@ -44,6 +45,7 @@ export class Hud {
       this.views[role] = {
         el,
         timer: q('.timer'),
+        timerPen: q('.timer-pen'),
         roles: q('.roles'),
         prompt: q('.prompt'),
         holdRing: q('.holdring'),
@@ -60,6 +62,8 @@ export class Hud {
     }
     this.toastUntil = 0;
     this.bannerUntil = 0;
+    this.penaltyUntil = 0; // the timer flashes red with "+15 s" for a moment after an incident
+    this.seenFalls = 0;
   }
 
   show(on) {
@@ -89,6 +93,9 @@ export class Hud {
     // How far through holding Q / Y to go back to the start (0..1)
     const respawn = (role) => Math.min(1, Math.max(0, game.respawnHold?.[role] || 0) / CONFIG.input.respawnHoldTime);
     const single = game.mode === 'single';
+    if (game.falls > this.seenFalls) this.penaltyUntil = performance.now() + 1600;
+    this.seenFalls = game.falls;
+    const flashing = performance.now() < this.penaltyUntil;
     for (const [role, v] of Object.entries(this.views)) {
       const visible = !single || game.active === role;
       v.el.style.display = visible ? '' : 'none';
@@ -97,7 +104,11 @@ export class Hud {
       v.el.classList.toggle('bottom', !single && role === 'driver');
       if (!visible) continue;
       // The pick list isn't on the HUD: it's a clipboard in the forklift cab
-      v.timer.textContent = fmt(game.time);
+      // The time on the clock is the score: the shift so far plus the incident penalties
+      v.timer.textContent = fmt(game.time + game.falls * CONFIG.score.incidentPenalty);
+      v.timer.classList.toggle('hit', flashing);
+      v.timerPen.textContent = `+${CONFIG.score.incidentPenalty} s`;
+      v.timerPen.classList.toggle('on', flashing);
       v.roles.style.display = single ? '' : 'none';
       if (single) {
         for (const s of v.roles.querySelectorAll('[data-r]')) s.classList.toggle('on', s.dataset.r === game.active);
@@ -124,9 +135,9 @@ export class Hud {
         else if (c.onBlades && !c.carried && !c.target) p = `Hold on <kbd>${key}</kbd>`;
         else if (c.carried) {
           const n = c.carriedBoxes().length;
-          const toss = `Punt${n > 1 ? ' top box' : ''} <kbd>${game.keyHint(role, 'toss')}</kbd>`;
+          const toss = `Punt${n > 1 ? ' top box' : ''}: hold <kbd>${key}</kbd>`;
           const fragile = c.carriedBoxes().some((b) => b.fragile) ? ' <b class="fragile">FRAGILE</b>' : '';
-          p = (n > 1 ? `Put down ${n} boxes <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku} <kbd>${key}</kbd> · ${toss}`) + fragile;
+          p = (n > 1 ? `Put down ${n} boxes: tap <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku}: tap <kbd>${key}</kbd> · ${toss}`) + fragile;
         } else if (c.target) {
           const n = c.targetStack;
           p = n > 1 && n <= CONFIG.climber.maxCarry
@@ -135,18 +146,26 @@ export class Hud {
         }
         if (c.holdingOn && c.target?.kind === 'box') p += '<br><small>Lets go of the forks</small>';
         // Knocked-over racking nearby: offer the reset (alongside any box prompt), and fill a
-        // ring round the crosshair while E/X is held
+        // ring round the crosshair while R/RB is held
         const hold = CONFIG.racks.resetHoldTime;
         const resetting = c.resetTimer > 0;
         if (c.nearKnockedRack && !c.onLadder && !c.ladderCarry && c.state === 'walk') {
-          const r = resetting ? `Resetting the racking… ${Math.ceil(hold - c.resetTimer)}` : `Hold <kbd>${key}</kbd> ${hold} s to reset the racking`;
+          const r = resetting ? `Resetting the racking… ${Math.ceil(hold - c.resetTimer)}` : `Hold <kbd>${game.keyHint(role, 'toss')}</kbd> ${hold} s to reset the racking`;
           p = p ? `${p}<br><small>${r}</small>` : r;
         }
         // A tipped-over pallet nearby (hands empty): hold E / X to flip it flat
         const flipHold = CONFIG.climber.palletFlipHoldTime;
         const flipping = c.flipTimer > 0;
         if (c.tippedPallet && c.state === 'walk') {
-          const r = flipping ? 'Flipping the pallet…' : `Flip the pallet flat: hold <kbd>${key}</kbd>`;
+          const what = c.tippedPallet.kind === 'wrapped' ? 'load' : 'pallet';
+          const r = flipping ? `Flipping the ${what}…` : `Flip the ${what} upright: hold <kbd>${key}</kbd>`;
+          p = p ? `${p}<br><small>${r}</small>` : r;
+        }
+        // The forklift on its side nearby (hands empty): hold E / X to heave it back over
+        const rightHold = CONFIG.climber.forkliftRightHoldTime;
+        const righting = c.rightTimer > 0;
+        if (c.nearTippedForklift && c.state === 'walk') {
+          const r = righting ? 'Heave!…' : `Set the forklift back on its wheels: hold <kbd>${key}</kbd>`;
           p = p ? `${p}<br><small>${r}</small>` : r;
         }
         // A fallen ladder nearby (hands empty): hold R / RB to stand it back up
@@ -161,7 +180,7 @@ export class Hud {
         // The same ring fills while Q / Y is held to go back to the start
         if (respawn(role) > 0) p = p ? `${p}<br><small>Going back to the start…</small>` : 'Going back to the start…';
         const back = respawn(role);
-        const ring = Math.min(1, Math.max(back, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0, flipping ? c.flipTimer / flipHold : 0));
+        const ring = Math.min(1, Math.max(back, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0, flipping ? c.flipTimer / flipHold : 0, righting ? c.rightTimer / rightHold : 0));
         v.holdRing.style.display = ring > 0 ? '' : 'none';
         if (ring > 0) v.holdFill.style.strokeDashoffset = String(113.1 * (1 - ring));
         v.prompt.innerHTML = p;
@@ -177,6 +196,10 @@ export class Hud {
         // Drift meter: fills orange while a drift charges, blue once the boost is earned,
         // then BOOST! while it fires (Ralph can't see the sparks from the seat)
         const f = game.forklift;
+        // On its side: Ralph can't fix that from the seat
+        const tip = f.tipped ? `The forklift is on its side<br><small>Dave has to heave it back over: hold <kbd>${game.keyHint('climber', 'interact')}</kbd> beside it${single ? ' (swap to Dave)' : ''}</small>` : '';
+        v.prompt.innerHTML = tip;
+        v.prompt.style.display = tip ? '' : 'none';
         const need = CONFIG.forklift.drift.boostCharge;
         const charge = f.driftCharge || 0;
         const state = f.boostTime > 0 ? 'boost' : charge >= need ? 'ready' : (f.drift || 0) > 0.5 ? 'charging' : '';

@@ -40,8 +40,9 @@ function railing(game, x0, z0, x1, z1, y) {
   const ry = Math.atan2(-(z1 - z0), x1 - x0);
   const [mx, mz] = [(x0 + x1) / 2, (z0 + z1) / 2];
   game.world.createCollider(
-    RAPIER.ColliderDesc.cuboid(len / 2, 0.75, 0.05)
-      .setTranslation(mx, y + 0.75, mz)
+    // As tall as it looks (1.1 m): Dave can jump and scramble over it; the forklift can't
+    RAPIER.ColliderDesc.cuboid(len / 2, 0.55, 0.05)
+      .setTranslation(mx, y + 0.55, mz)
       .setRotation({ x: 0, y: Math.sin(ry / 2), z: 0, w: Math.cos(ry / 2) })
       .setCollisionGroups(COL.static),
     game.staticBody,

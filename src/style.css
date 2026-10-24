@@ -341,6 +341,9 @@ body {
 .ctl-btns .btn {
   flex: 1;
 }
+.ctl-btns .btn .osha-text {
+  font-size: 19px; /* three to a row: room for the focus arrow */
+}
 /* Pause screen floor plan: a blueprint pinned to the panel */
 .map {
   flex: 1;
@@ -616,6 +619,30 @@ td + td {
   font-size: 22px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+/* An incident just added its penalty: the timer flashes red with "+15 s" under it */
+.timer.hit {
+  color: #ff5a4a;
+  border-color: #ff5a4a;
+}
+.timer-pen {
+  margin-top: 4px;
+  text-align: right;
+  color: #ff5a4a;
+  font-weight: 800;
+  font-size: 18px;
+  text-shadow: 0 2px 0 #000;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.timer-pen.on {
+  opacity: 1;
+  transform: none;
+}
+.banner .penalty {
+  color: #ff8a7a;
+  font-size: 18px;
 }
 .roles {
   position: absolute;
@@ -1009,143 +1036,6 @@ kbd {
   justify-content: space-between;
   font-size: 12px;
   opacity: 0.85;
-}
-
-/* ---------- Incident report (Form 300) ---------- */
-#report {
-  position: fixed;
-  inset: 0;
-  z-index: 16;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(10, 12, 15, 0.55);
-  pointer-events: none;
-}
-#report.on {
-  display: flex;
-}
-.rf-paper {
-  position: relative;
-  width: min(620px, 92vw);
-  max-height: 92vh;
-  overflow: hidden;
-  background: #fbfaf3;
-  color: #222;
-  border-radius: 4px;
-  padding: 20px 24px 14px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
-  transform: rotate(-1.2deg);
-  animation: rf-in 0.25s ease-out;
-}
-@keyframes rf-in {
-  from {
-    transform: translateY(30px) rotate(-3deg);
-    opacity: 0;
-  }
-}
-.rf-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  border-bottom: 3px double #333;
-  padding-bottom: 8px;
-  margin-bottom: 10px;
-}
-.rf-title {
-  font-weight: 900;
-  font-size: 20px;
-  letter-spacing: 1px;
-}
-.rf-sub {
-  font-size: 11px;
-  color: #666;
-}
-.rf-case {
-  font-size: 11px;
-  text-align: right;
-  color: #666;
-}
-.rf-case b {
-  display: block;
-  font-family: ui-monospace, 'Courier New', monospace;
-  font-size: 22px;
-  color: #c62828;
-}
-.rf-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 16px;
-}
-.rf-f {
-  border-bottom: 1px solid #cfcab8;
-  padding: 5px 0 4px;
-}
-.rf-f span {
-  display: block;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #777;
-}
-.rf-f b {
-  font-family: ui-monospace, 'Courier New', monospace;
-  font-weight: 700;
-  font-size: 14px;
-  color: #1b3a8a;
-}
-.rf-what {
-  font-size: 17px !important;
-}
-.rf-boxes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  font-size: 14px;
-  margin-top: 2px;
-}
-.rf-box {
-  white-space: nowrap;
-}
-.rf-sign {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-top: 12px;
-}
-.rf-sign span {
-  display: block;
-  font-size: 10px;
-  text-transform: uppercase;
-  color: #777;
-  border-top: 1px solid #555;
-  padding-top: 2px;
-  width: 200px;
-}
-.rf-sig {
-  font-family: 'Brush Script MT', 'Segoe Script', 'Snell Roundhand', cursive;
-  font-size: 38px;
-  color: #1b3a8a;
-  line-height: 1;
-  transform: rotate(-2deg);
-  margin-left: 10px;
-}
-.rf-stamp {
-  border: 4px solid #c62828;
-  color: #c62828;
-  font-weight: 900;
-  font-size: 28px;
-  letter-spacing: 3px;
-  padding: 2px 12px;
-  transform: rotate(-12deg);
-  opacity: 0.8;
-  margin-right: 10px;
-}
-.rf-foot {
-  text-align: center;
-  font-size: 12px;
-  color: #888;
-  margin-top: 10px;
 }
 
 /* ---------- HUD branding ---------- */

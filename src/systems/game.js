@@ -7,16 +7,18 @@ import { Forklift } from '../entities/forklift.js';
 import { Climber } from '../entities/climber.js';
 import { WrapSystem, collectStack } from './wrapping.js';
 import { Recorder, ReplayDirector, buildCctvFixtures } from './replay.js';
-import { IncidentReport } from './report.js';
+import { settings } from './settings.js';
 import { describeLocation } from '../world/level.js';
 import { quatToThree } from '../physics.js';
 import { disposeTree } from '../util/meshes.js';
 import { sfx } from './audio.js';
 
 // The in-game incident banner: INCIDENT in the UI kit's red block lettering (src/ui/osha-ui.css), on its
-// metal plate, with what happened underneath
-const INCIDENT_BANNER = (line) =>
-  `<span class="osha-text osha-text--red" data-text="INCIDENT">INCIDENT</span><small>${line}</small>`;
+// metal plate, with what happened underneath and the time it costs (not when a domino run of racks
+// just grows: that's still the one incident)
+const INCIDENT_BANNER = (line, penalty = true) =>
+  `<span class="osha-text osha-text--red" data-text="INCIDENT">INCIDENT</span><small>${line}</small>` +
+  (penalty ? `<small class="penalty">+${CONFIG.score.incidentPenalty} s</small>` : '');
 
 // The crew: Dave climbs, Ralph drives. Each incident type has a few lines picked at random;
 // 'again' lines are used once that same thing has already happened this shift.
@@ -234,8 +236,8 @@ export class Game {
       const ralphMoved = driverOn && (d.throttle > 0.05 || d.brake > 0.05 || Math.abs(d.steer) > 0.1 || d.liftUp > 0 || d.liftDown > 0);
       this.started = daveMoved || ralphMoved;
     }
-    // Holding Q / Y for a full second sends that character back to the start (the forklift
-    // upright in its bay). Let go before holding again to do it again.
+    // Holding Q / Y for a full second sends that character back to the start (the forklift to its
+    // bay, if it isn't lying on its side). Let go before holding again to do it again.
     this.respawnHold ||= { climber: 0, driver: 0 };
     for (const [role, on] of [['climber', climberOn], ['driver', driverOn]]) {
       if (!(on && actions[role].respawnHeld)) {
@@ -243,6 +245,12 @@ export class Game {
         continue;
       }
       if (this.respawnHold[role] < 0) continue; // done: waiting for the button to come up
+      // A tipped forklift stays put: only Dave can get it back on its wheels
+      if (role === 'driver' && this.forklift.tipped) {
+        this.respawnHold[role] = -1;
+        this.toast('Tipped over: Dave has to set the forklift back on its wheels', 3);
+        continue;
+      }
       this.respawnHold[role] += dt;
       if (this.respawnHold[role] >= CONFIG.input.respawnHoldTime) {
         this.respawnHold[role] = -1;
@@ -375,8 +383,8 @@ export class Game {
     };
     this.lastIncident = incident;
     this.hud?.banner(INCIDENT_BANNER(incident.line));
-    // Queue the CCTV replay once things have had a moment to fall over
-    if (!this.replay && !this.pendingReplay && !this.report) {
+    // Queue the CCTV replay once things have had a moment to fall over (if replays are switched on)
+    if (settings.cctvReplays && !this.replay && !this.pendingReplay) {
       this.pendingReplay = { incidentTime: this.clock, at: this.clock + CONFIG.replay.delay, incident };
     }
     return incident;
@@ -774,7 +782,7 @@ export class Game {
         run.byRalph ||= byRalph;
         run.incident.line = rackDownLine(run.rows, run.byRalph, false);
         run.incident.culprit = run.byRalph ? 'Ralph' : undefined;
-        this.hud?.banner(INCIDENT_BANNER(run.incident.line));
+        this.hud?.banner(INCIDENT_BANNER(run.incident.line, false));
         continue;
       }
       const again = (this.incidentCounts.rackDown = (this.incidentCounts.rackDown || 0) + 1) > 1;
@@ -790,18 +798,11 @@ export class Game {
     }
   }
 
-  // Advance the replay, then the incident report after it. Returns true while either is showing.
+  // Advance the CCTV replay (the world and the clock stay frozen meanwhile). Returns true while
+  // it's showing.
   updateReplay(dt, skip) {
-    if (this.replay) {
-      if (!this.replay.update(dt, skip)) {
-        const incident = this.replay.incident;
-        this.replay = null;
-        this.report = new IncidentReport(this, incident);
-      }
-      return true;
-    }
-    if (this.report && !this.report.update(skip)) this.report = null;
-    return !!this.report;
+    if (this.replay && !this.replay.update(dt, skip)) this.replay = null;
+    return !!this.replay;
   }
 
   // ---------------------------------------------------------------- per frame
@@ -854,7 +855,6 @@ export class Game {
 
   dispose() {
     this.replay?.finish();
-    this.report?.close();
     disposeTree(this.scene);
     this.world.free();
   }

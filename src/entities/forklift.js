@@ -181,6 +181,18 @@ export class Forklift {
     this.teleport(spawn.pos, spawn.yaw);
   }
 
+  // Back on its wheels where it lies, pointing the way it was (Dave heaving it over), at rest.
+  rightInPlace() {
+    const t = this.body.translation();
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(quatToThree(this.body.rotation())).setY(0);
+    if (fwd.lengthSq() < 0.04) fwd.set(0, 0, 1); // nose straight up or down: any heading will do
+    this.tippedTime = 0;
+    this.tipped = false;
+    this.drift = 0;
+    this.boostTime = 0;
+    this.teleport({ x: t.x, z: t.z }, Math.atan2(fwd.x, fwd.z));
+  }
+
   // Move the truck (and its carriage) somewhere, at rest. Used by debug tools.
   teleport(pos, yaw) {
     const q = yawQuat(yaw);
@@ -463,9 +475,10 @@ export class Forklift {
     const vl = vel.dot(right);
     this.speed = vf;
 
-    // Tipped over: after a few seconds the night shift sets it back on its wheels
+    // Tipped over: it stays that way until Dave sets it back on its wheels (see Climber.rightForklift)
     const upY = new THREE.Vector3(0, 1, 0).applyQuaternion(q).y;
-    this.tippedTime = upY < 0.5 ? (this.tippedTime || 0) + dt : 0;
+    this.tipped = upY < 0.5;
+    this.tippedTime = this.tipped ? (this.tippedTime || 0) + dt : 0;
     // Tipped over (and it isn't just bouncing back from the last one): incident, and it explodes
     if (this.tippedTime > 0.6 && !this.tipReported && this.game.clock - (this.lastTipAt ?? -99) > 5) {
       this.tipReported = true;
@@ -476,16 +489,6 @@ export class Forklift {
       this.game.blast(new THREE.Vector3(c.x, c.y, c.z), { skipForklift: true, daveReason: 'forkliftBlast' });
     }
     if (upY > 0.9) this.tipReported = false;
-    if (this.tippedTime > cfg.rightAfter) {
-      this.tippedTime = 0;
-      // The night shift drives it back to the parking bay
-      const spawn = this.game.level.forkliftSpawn;
-      this.height = CONFIG.forklift.liftMin;
-      this.liftVel = 0;
-      this.teleport(spawn.pos, spawn.yaw);
-      this.game.toast('The night shift put the forklift back in its parking bay', 3);
-      return;
-    }
     if (this.groundFrac === 0) return;
 
     // Longitudinal

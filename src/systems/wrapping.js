@@ -301,7 +301,8 @@ function buildWrapped(game, pallet, set) {
   group.add(film);
   game.scene.add(group);
 
-  const ent = { kind: 'wrapped', body, mesh: group, items, shapes, mass: totalMass };
+  // bounds: its extent in its own frame (origin under the pallet's middle), for flipping it upright
+  const ent = { kind: 'wrapped', body, mesh: group, items, shapes, mass: totalMass, bounds: { min: min.clone(), max: max.clone() } };
   game.addEntity(ent);
   return ent;
 }

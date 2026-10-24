@@ -8,6 +8,7 @@ import { unlockAudio, sfx } from './systems/audio.js';
 import { DOCKS, ORDERS } from './world/level.js';
 import { drawFloorPlan } from './world/floorplan.js';
 import { best, submit, medalFor, nextMedal, fmtTime } from './systems/records.js';
+import { settings } from './systems/settings.js';
 
 await RAPIER.init();
 
@@ -105,6 +106,14 @@ function refreshInvert() {
 }
 refreshInvert();
 
+// CCTV Replays: On/Off (after an incident, with the clock stopped while it plays)
+function refreshCctv() {
+  for (const b of document.querySelectorAll('[data-act="cctv"] .osha-text')) {
+    b.textContent = b.dataset.text = `CCTV REPLAYS: ${settings.cctvReplays ? 'ON' : 'OFF'}`;
+  }
+}
+refreshCctv();
+
 function closeOverlay() {
   overlay = null;
   refreshScreens();
@@ -129,7 +138,10 @@ document.addEventListener('click', (e) => {
     screens[act].querySelector('.panel').scrollTop = 0; // always from the top
     refreshScreens();
   } else if (act === 'back') closeOverlay();
-  else if (act === 'invert') {
+  else if (act === 'cctv') {
+    settings.setCctvReplays(!settings.cctvReplays);
+    refreshCctv();
+  } else if (act === 'invert') {
     input.setInvertY(!input.invertY);
     refreshInvert();
   } else if (act === 'resume') resume();
@@ -319,8 +331,8 @@ function tick(now) {
       Object.assign(actions.driver, window.osha.override.driver);
     }
     const kbPause = input.pressed.has('Escape');
-    if (game.replay || game.report) {
-      // Incident replay, then the incident report: the world is frozen; any button moves on
+    if (game.replay) {
+      // Incident replay: the world (and the clock) is frozen; any button skips it
       const m = input.menu();
       const skip =
         actions.climber.jump || actions.climber.interact || actions.climber.pause || actions.driver.pause ||
@@ -359,7 +371,7 @@ function tick(now) {
       input.lockFailed && !input.pointerLocked ? 'Mouse lock unavailable: drag with a mouse button held, or use IJKL, to look' : '';
     game.render(renderer, innerWidth, innerHeight); // CSS pixels: setViewport applies the pixel ratio
     hud.update(game);
-    hud.show(!game.replay && !game.report);
+    hud.show(!game.replay);
     canvas.classList.toggle('cctv', !!game.replay);
   } else {
     canvas.classList.remove('cctv');
