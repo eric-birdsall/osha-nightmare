@@ -239,9 +239,9 @@ export function ladderFootprint() {
   };
 }
 
-// Yellow LADDERS stand with two folded ladders hanging on it. (x, z) is the middle of the stand,
+// Yellow ladder stand with one or two folded ladders hanging on it. (x, z) is the middle of the stand,
 // against a wall; the ladders face +Z rotated by `yaw`.
-export function createLadderStand(game, { pos, yaw = 0 }) {
+export function createLadderStand(game, { pos, yaw = 0, count = 2, showLabel = true }) {
   const [x, y, z] = pos;
   const q = yawQuat(yaw);
   const rot = quatToThree(q);
@@ -249,43 +249,46 @@ export function createLadderStand(game, { pos, yaw = 0 }) {
   const g = new THREE.Group();
   g.position.set(x, y, z);
   g.quaternion.copy(rot);
-  for (const lx of [-1.0, 0, 1.0]) {
+  const halfWidth = count / 2;
+  for (const lx of count === 1 ? [-halfWidth, halfWidth] : [-halfWidth, 0, halfWidth]) {
     const post = boxMesh(0.08, 2.3, 0.08, YELLOW);
     post.position.set(lx, 1.15, -0.12);
     g.add(post);
   }
-  const bar = boxMesh(2.1, 0.08, 0.1, 0x16171a);
+  const bar = boxMesh(count + 0.1, 0.08, 0.1, 0x16171a);
   bar.position.set(0, 1.7, -0.08);
   g.add(bar);
-  // Sign across the top
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 64;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#f5c518';
-  ctx.fillRect(0, 0, 256, 64);
-  ctx.strokeStyle = '#16171a';
-  ctx.lineWidth = 6;
-  ctx.strokeRect(3, 3, 250, 58);
-  ctx.fillStyle = '#16171a';
-  ctx.font = 'bold 40px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('LADDERS', 128, 34);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.4), new THREE.MeshBasicMaterial({ map: tex }));
-  sign.position.set(0, 2.5, -0.07);
-  g.add(sign);
+  if (showLabel) {
+    // Sign across the top
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#f5c518';
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.strokeStyle = '#16171a';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 250, 58);
+    ctx.fillStyle = '#16171a';
+    ctx.font = 'bold 40px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(count === 1 ? 'LADDER' : 'LADDERS', 128, 34);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(count === 1 ? 1.0 : 1.6, 0.4), new THREE.MeshBasicMaterial({ map: tex }));
+    sign.position.set(0, 2.5, -0.07);
+    g.add(sign);
+  }
   game.scene.add(g);
   // Posts are solid
   const p0 = at(0, 1.15, -0.12);
   game.world.createCollider(
-    RAPIER.ColliderDesc.cuboid(1.05, 1.15, 0.05).setTranslation(p0.x, p0.y, p0.z).setRotation(q).setCollisionGroups(COL.static),
+    RAPIER.ColliderDesc.cuboid(halfWidth + 0.05, 1.15, 0.05).setTranslation(p0.x, p0.y, p0.z).setRotation(q).setCollisionGroups(COL.static),
     game.staticBody,
   );
   const yawOf = Math.atan2(new THREE.Vector3(0, 0, 1).applyQuaternion(rot).x, new THREE.Vector3(0, 0, 1).applyQuaternion(rot).z);
-  return [-0.5, 0.5].map((lx) => {
+  return (count === 1 ? [0] : [-0.5, 0.5]).map((lx) => {
     const p = at(lx, 0.01, 0.0);
     return new Ladder(game, { pos: [p.x, p.y, p.z], yaw: yawOf, state: 'stored' });
   });

@@ -19,6 +19,7 @@
       <div id="hud" style="display: none"></div>
 
       <div id="title" class="screen">
+        <div class="title-layout">
         <div class="panel title-panel">
           <img class="logo" src="/src/logo-menu.png" alt="Ralph &amp; Dave's OSHA Nightmare" width="960" height="480" />
           <p class="subtitle">Warehouse safety simulator</p>
@@ -28,6 +29,13 @@
           <button class="btn" data-act="howto"><span class="osha-text osha-text--ivory" data-text="HOW TO PLAY">HOW TO PLAY</span></button>
           <button class="btn" data-act="controls"><span class="osha-text osha-text--ivory" data-text="CONTROLS">CONTROLS</span></button>
           <p class="pads"></p>
+        </div>
+
+          <aside class="map title-map" aria-label="Warehouse blueprint">
+            <div class="map-head">FLOOR PLAN · BUILDING 1</div>
+            <svg aria-label="Warehouse layout blueprint"></svg>
+            <div class="blueprint-footer"><span>WAREHOUSE OPERATIONS</span><span>PLAN VIEW</span></div>
+          </aside>
         </div>
       </div>
 
@@ -73,13 +81,21 @@
       </div>
 
       <div id="levels" class="screen hidden">
-        <div class="panel wide">
-          <div class="screen-title osha-text osha-text--yellow" data-text="SELECT ORDER">SELECT ORDER</div>
+        <div class="title-layout">
+        <div class="panel wide selection-panel">
+          <h1 class="selection-title">SELECT ORDER</h1>
           <p class="fine" id="lv-mode">Single player</p>
           <div class="level-list"><!-- one button per order, built from orders.json by main.js --></div>
           <div class="ctl-btns">
             <button class="btn" data-act="back"><span class="osha-text osha-text--ivory" data-text="BACK">BACK</span></button>
           </div>
+        </div>
+
+          <aside class="map title-map" aria-label="Warehouse blueprint">
+            <div class="map-head">FLOOR PLAN · BUILDING 1</div>
+            <svg aria-label="Warehouse layout blueprint"></svg>
+            <div class="blueprint-footer"><span>WAREHOUSE OPERATIONS</span><span>PLAN VIEW</span></div>
+          </aside>
         </div>
       </div>
 
@@ -94,7 +110,7 @@
               <h3>Who's who</h3>
               <p><b>Ralph</b> drives the forklift. He has a cast on his leg and his crutches in the cab, so he never gets off the truck. He has the pick list, too: it's the clipboard in his cab.</p>
               <p><b>Dave</b> is on foot. He walks, climbs, picks boxes off shelves, carries them, and punts them.</p>
-              <p>Single player: swap between them any time with <kbd>Tab</kbd> / <kbd>View</kbd>. Couch co-op: split screen, one player each.</p>
+              <p>Single player: swap between them any time with <span class="keyboard-only"><kbd>Tab</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-view" role="img" aria-label="Controller View">View</span></kbd></span>. Couch co-op: split screen, one player each.</p>
               <h3>The order, step by step</h3>
               <ol>
                 <li><b>Read the pick list</b> on Ralph's clipboard: two SKUs, how many of each, and where they live. A location like <b>C-4-2</b> is rack C, bay 4 (counting from the west end), shelf 2 (counting from the bottom).</li>
@@ -108,12 +124,12 @@
             <section>
               <h3>Reaching the shelves</h3>
               <p>Shelf 1 is in reach from the floor. Shelf 2 needs a ladder or the forks. Shelf 3 needs the forks raised high, or a ladder that Ralph lifts up on the forks with Dave on it.</p>
-              <p><b>Riding the forks:</b> Dave stands on the blades or a pallet and Ralph lifts him. Press <kbd>E</kbd> / <kbd>X</kbd> to hold on: then nothing Ralph does can throw him off, but he faces straight out and can't look round. From the forks he reaches a little further, and <kbd>E</kbd> on a box takes it (he lets go to grab it). He can even catch the forks mid-jump.</p>
-              <p><b>Ladders</b> hang on LADDERS stands in the basement and on the mezzanine landing. <kbd>E</kbd> shoulders one, <kbd>E</kbd> sets it up where the ghost turns green, then walk into the steps and climb with <kbd>W</kbd> / <kbd>S</kbd>. From the top step Dave reaches shelf 2. Jumping off works, but it always knocks the ladder over. Dave can also jump over railings, but he can't grab a box mid-jump.</p>
+              <p><b>Riding the forks:</b> Dave stands on the blades or a pallet and Ralph lifts him. Press <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></kbd></span> to hold on: then nothing Ralph does can throw him off, but he faces straight out and can't look round. From the forks he reaches a little further, and <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></span> on a box takes it (he lets go to grab it). He can even catch the forks mid-jump.</p>
+              <p><b>Ladders</b> hang on stands by the basement railing on the main floor and beside Rack I on the mezzanine. <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></span> shoulders one, <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></span> sets it up where the ghost turns green, then walk into the steps and climb with <span class="keyboard-only"><kbd>W</kbd> / <kbd>S</kbd></span><span class="controller-only">left stick</span>. From the top step Dave reaches shelf 2. Jumping off works, but it always knocks the ladder over. Dave can also jump over railings, but he can't grab a box mid-jump.</p>
               <p><b>The mezzanine</b> (racks H and I): take the stairs at its east end, or ride a pallet up on the forks to the PALLET DROP gap in its railing.</p>
               <h3>Moving boxes</h3>
-              <p><b>Pick up</b> with <kbd>E</kbd>: aim at the bottom box of a stack to take up to three. Tap <kbd>E</kbd> again to put them down where the ghost shows.</p>
-              <p><b>Punt</b> by holding <kbd>E</kbd> / <kbd>X</kbd> with a box in hand: hold to aim, and the ghost shows exactly where the box will land. Looking straight ahead lobs it well up and out; look down to keep it short. Let go and Dave boots it. Great for landing boxes on a pallet, or on raised forks.</p>
+              <p><b>Pick up</b> with <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></span>: aim at the bottom box of a stack to take up to three. Tap <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></span> again to put them down where the ghost shows.</p>
+              <p><b>Punt</b> by holding <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></kbd></span> with a box in hand: hold to aim, and the ghost shows exactly where the box will land. Looking straight ahead lobs it well up and out; look down to keep it short. Let go and Dave boots it. Great for landing boxes on a pallet, or on raised forks.</p>
               <p><b>Conveyors</b> carry anything on them north and drop it on the pallet at the end. The packing benches' tall back panels make a backboard: punt a box through a gap between benches at the far panel and it drops onto the packing line.</p>
               <p><b>FRAGILE</b> boxes explode. Punt one, drop one, or get knocked flat holding one, and most of the warehouse goes up with it. Set them down gently.</p>
             </section>
@@ -131,16 +147,15 @@
               <h3>Hazards</h3>
               <ul>
                 <li>A section of the basement's <b>railing is missing</b>, right beside the wrapper. The hazard tape stops nothing.</li>
-                <li>The <b>electrical panel</b> on the east wall sparks as it drips, and the outlet behind the ramp crackles.</li>
-                <li><b>Mystery barrels</b> by the south wall leak and gush when knocked over (don't ask what's in them).</li>
+                <li>The <b>electrical panel</b> on the east wall sparks as it drips.</li>
                 <li>Every <b>FRAGILE</b> box is a bomb, and racks topple like dominoes.</li>
               </ul>
               <h3>When it all goes wrong</h3>
               <ul>
-                <li>Hold <kbd>R</kbd> / <kbd>RB</kbd> for 3 s near knocked-over racking to put every rack and its stock back.</li>
-                <li>Hold <kbd>Q</kbd> / <kbd>Y</kbd> for 1 s to send your character back to the start.</li>
-                <li>Hold <kbd>E</kbd> / <kbd>X</kbd> near a tipped pallet or wrapped load to flip it upright, or <kbd>R</kbd> / <kbd>RB</kbd> near a fallen ladder to stand it up.</li>
-                <li>Forklift on its side? Dave holds <kbd>E</kbd> / <kbd>X</kbd> beside it for 2 s to heave it back over. Ralph can't.</li>
+                <li>Hold <span class="keyboard-only"><kbd>R</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-rb" role="img" aria-label="Controller RB">RB</span></kbd></span> for 3 s near knocked-over racking to put every rack and its stock back.</li>
+                <li>Hold <span class="keyboard-only"><kbd>Q</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-y" role="img" aria-label="Controller Y">Y</span></kbd></span> for 1 s to send your character back to the start.</li>
+                <li>Hold <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></kbd></span> near a tipped pallet or wrapped load to flip it upright, or <span class="keyboard-only"><kbd>R</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-rb" role="img" aria-label="Controller RB">RB</span></kbd></span> near a fallen ladder to stand it up.</li>
+                <li>Forklift on its side? Dave holds <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></kbd></span> beside it for 2 s to heave it back over. Ralph can't.</li>
               </ul>
               <h3>Tips</h3>
               <ul>
@@ -165,28 +180,29 @@
               <tr><th colspan="3">Dave · Climber</th></tr>
               <tr><td>Move</td><td>Left stick</td><td>WASD</td></tr>
               <tr><td>Look</td><td>Right stick</td><td>Mouse or IJKL</td></tr>
-              <tr><td>Jump</td><td>A</td><td>Space</td></tr>
-              <tr><td>Carrying: tap to put down; hold to aim a punt, let go to kick it</td><td>X</td><td>E</td></tr>
-              <tr><td>Stand a fallen ladder back up (hands empty)</td><td>Hold RB 1 s</td><td>Hold R 1 s</td></tr>
-              <tr><td>Flip a tipped-over pallet or wrapped load upright (hands empty)</td><td>Hold X 1 s</td><td>Hold E 1 s</td></tr>
-              <tr><td>Set a tipped forklift back on its wheels (hands empty)</td><td>Hold X 2 s</td><td>Hold E 2 s</td></tr>
-              <tr><td>Pick up a box · ladder: take, set up, fold · hold on</td><td>X</td><td>E</td></tr>
-              <tr><td>Reset knocked-over racking (near it)</td><td>Hold RB 3 s</td><td>Hold R 3 s</td></tr>
-              <tr><td>Back to where you started</td><td>Hold Y 1 s</td><td>Hold Q 1 s</td></tr>
+              <tr><td>Hold to crouch · fit inside shelf openings</td><td><span class="pad-button pad-l3" role="img" aria-label="Controller left stick click">L3</span></td><td>Ctrl</td></tr>
+              <tr><td>Jump</td><td><span class="pad-button pad-a" role="img" aria-label="Controller A">A</span></td><td>Space</td></tr>
+              <tr><td>Carrying: tap to put down; hold to aim a punt, let go to kick it</td><td><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></td><td>E</td></tr>
+              <tr><td>Stand a fallen ladder back up (hands empty)</td><td>Hold <span class="pad-button pad-rb" role="img" aria-label="Controller RB">RB</span> 1 s</td><td>Hold R 1 s</td></tr>
+              <tr><td>Flip a tipped-over pallet or wrapped load upright (hands empty)</td><td>Hold <span class="pad-button pad-x" role="img" aria-label="Controller X">X</span> 1 s</td><td>Hold E 1 s</td></tr>
+              <tr><td>Set a tipped forklift back on its wheels (hands empty)</td><td>Hold <span class="pad-button pad-x" role="img" aria-label="Controller X">X</span> 2 s</td><td>Hold E 2 s</td></tr>
+              <tr><td>Pick up a box · ladder: take, set up, fold · hold on</td><td><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></td><td>E</td></tr>
+              <tr><td>Reset knocked-over racking (near it)</td><td>Hold <span class="pad-button pad-rb" role="img" aria-label="Controller RB">RB</span> 3 s</td><td>Hold R 3 s</td></tr>
+              <tr><td>Back to where you started</td><td>Hold <span class="pad-button pad-y" role="img" aria-label="Controller Y">Y</span> 1 s</td><td>Hold Q 1 s</td></tr>
               <tr><td>Climb a ladder (walk into the steps; jumping off knocks it over)</td><td>Left stick</td><td>W / S</td></tr>
-              <tr><td>Swap character</td><td>View</td><td>Tab</td></tr>
-              <tr><td>Pause</td><td>Menu</td><td>Esc</td></tr>
+              <tr><td>Swap character</td><td><span class="pad-button pad-view" role="img" aria-label="Controller View">View</span></td><td>Tab</td></tr>
+              <tr><td>Pause</td><td><span class="pad-button pad-menu" role="img" aria-label="Controller Menu">Menu</span></td><td>Esc</td></tr>
             </table>
             <table>
               <tr><th colspan="3">Ralph · Driver</th></tr>
               <tr><td>Steer</td><td>Left stick ← →</td><td>A / D</td></tr>
               <tr><td>Look</td><td>Right stick</td><td>Mouse or IJKL</td></tr>
-              <tr><td>Accelerate</td><td>Left stick ↑ (or RT)</td><td>W</td></tr>
-              <tr><td>Brake, then reverse</td><td>Left stick ↓ (or LT)</td><td>S</td></tr>
-              <tr><td>Raise forks</td><td>RB</td><td>R</td></tr>
-              <tr><td>Lower forks</td><td>LB</td><td>F</td></tr>
-              <tr><td>Drift (hold while turning)</td><td>B</td><td>Space</td></tr>
-              <tr><td>Back to the parking bay (not if tipped)</td><td>Hold Y 1 s</td><td>Hold Q 1 s</td></tr>
+              <tr><td>Accelerate</td><td>Left stick ↑ (or <span class="pad-button pad-rt" role="img" aria-label="Controller RT">RT</span>)</td><td>W</td></tr>
+              <tr><td>Brake, then reverse</td><td>Left stick ↓ (or <span class="pad-button pad-lt" role="img" aria-label="Controller LT">LT</span>)</td><td>S</td></tr>
+              <tr><td>Raise forks</td><td><span class="pad-button pad-rb" role="img" aria-label="Controller RB">RB</span></td><td>R</td></tr>
+              <tr><td>Lower forks</td><td><span class="pad-button pad-lb" role="img" aria-label="Controller LB">LB</span></td><td>F</td></tr>
+              <tr><td>Drift (hold while turning)</td><td><span class="pad-button pad-b" role="img" aria-label="Controller B">B</span></td><td>Space</td></tr>
+              <tr><td>Back to the parking bay (not if tipped)</td><td>Hold <span class="pad-button pad-y" role="img" aria-label="Controller Y">Y</span> 1 s</td><td>Hold Q 1 s</td></tr>
             </table>
           </div>
           <p class="tag">

@@ -9,7 +9,7 @@ import { createLadderStand } from '../entities/ladder.js';
 import { buildParking, parkingRect } from './parking.js';
 import WAREHOUSE from './warehouse-v1.json';
 import ORDERS_FILE from './orders.json';
-import { LAYOUT, rackX1 } from './layout.js';
+import { LAYOUT, rackX1, WALL_LABELS } from './layout.js';
 import { buildWrapper } from './wrapper.js';
 import { buildPacking, packingRect } from './packing.js';
 import { buildMezzanine, mezzanineStairs } from './mezzanine.js';
@@ -700,11 +700,17 @@ function missingRailing(game, gap, at) {
     strip.rotation.z = s * Math.atan2(sag, half);
     g.add(strip);
   }
-  const sign = labelPlane('WATCH YOUR STEP', 0.46, 0.09, { bg: '#f5c518', fg: '#16171a' });
-  sign.material.side = THREE.DoubleSide;
-  sign.position.set(0, 0.98 - sag - 0.06, 0);
-  sign.rotation.z = 0.12;
-  g.add(sign);
+  // Separate outward-facing labels prevent mirrored lettering on the back.
+  const plate = new THREE.Group();
+  plate.position.set(0, 0.98 - sag - 0.06, 0);
+  plate.rotation.z = 0.12;
+  for (const side of [1, -1]) {
+    const sign = labelPlane('WATCH YOUR STEP', 0.46, 0.09, { bg: '#f5c518', fg: '#16171a' });
+    sign.position.z = side * 0.002;
+    sign.rotation.y = side === 1 ? 0 : Math.PI;
+    plate.add(sign);
+  }
+  g.add(plate);
   game.scene.add(g);
 }
 
@@ -1227,7 +1233,7 @@ export function buildLevel(game) {
   const wrapper = buildWrapper(game);
   buildPacking(game);
   const conveyors = buildConveyors(game);
-  buildMezzanine(game);
+  const landingRailing = buildMezzanine(game);
 
   // Loading docks: this order's is open with a trailer backed up to it
   const docks = buildDocks(game);
@@ -1237,10 +1243,10 @@ export function buildLevel(game) {
 
   // A big compass letter high up in the middle of each wall, so the walls are easy to name
   for (const [letter, x, z, ry] of [
-    ['N', 0, -halfZ + 0.03, 0],
-    ['S', 0, halfZ - 0.03, Math.PI],
-    ['W', -halfX + 0.03, 0, Math.PI / 2],
-    ['E', halfX - 0.03, 0, -Math.PI / 2],
+    [WALL_LABELS.north, 0, -halfZ + 0.03, 0],
+    [WALL_LABELS.south, 0, halfZ - 0.03, Math.PI],
+    [WALL_LABELS.west, -halfX + 0.03, 0, Math.PI / 2],
+    [WALL_LABELS.east, halfX - 0.03, 0, -Math.PI / 2],
   ]) {
     const badge = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: compassTexture(letter), transparent: true }));
     badge.position.set(x, 7.5, z);
@@ -1264,21 +1270,22 @@ export function buildLevel(game) {
     box.home = { pos: { x: t.x, y: t.y, z: t.z }, rot: { x: r.x, y: r.y, z: r.z, w: r.w } };
   });
 
-  // A-frame ladders: two on each LADDERS stand, upstairs and down
-  for (const st of LAYOUT.ladderStands) createLadderStand(game, { pos: [st.x, st.y, st.z], yaw: st.yaw });
+  // A-frame ladders: one by the basement edge on the main floor, one beside Rack I upstairs
+  for (const st of LAYOUT.ladderStands) createLadderStand(game, { pos: [st.x, st.y, st.z], yaw: st.yaw, count: st.count, showLabel: st.showLabel });
 
   const climberStart = new THREE.Vector3(...LAYOUT.climberSpawn.pos);
-  // OSHA violations: sparking outlet, dripping electrical panel, mystery barrels, blocked fire exits
-  const hazards = buildHazards(game, { floorHeightAt });
+  // OSHA violations: dripping electrical panel, caged fire exits
+  const hazards = buildHazards(game);
 
   // Empty pallets (fork pockets open toward ±local Z)
   for (const [x, y, z, yaw] of LAYOUT.pallets) createPallet(game, { pos: [x, y, z], yaw });
 
   const level = {
+    landingRailing,
     wrapZone,
     wrapper, // the stretch wrapper's arm (the wrap system swings it)
     conveyors, // the belts (the game drives things along them)
-    hazards, // the hazards' per-frame update (sparks, drips, barrels gushing)
+    hazards, // the hazards' per-frame update (sparks and drips)
     docks, // { name: { dock, zone, setOpen } }: the docks this run ships from
     dock: null, // this order's dock ({ name, wall, at }) and the zone inside its trailer: set by setOrder
     dockZone: null,

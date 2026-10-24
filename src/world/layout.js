@@ -133,15 +133,13 @@ export const LAYOUT = {
   // Forklift bay: its back against a wall, `width` along it and `depth` out from it, the truck
   // parked nose-out. In the basement's north-west corner, facing east along the ramp, so each
   // round starts with Ralph driving up it.
-  parking: { wall: 'west', at: NORTH + 2.2, width: 4, depth: 5.4, y: lower.y },
+  parking: { wall: 'south', wallLine: lower.z1, at: lower.x1 - 2.2, width: 4, depth: 5.4, y: lower.y },
   // OSHA violations round the building (hazards.js). Things on a wall give the wall and how far
   // along it they are (x for the north and south walls, z for east and west); y is the floor height.
   hazards: {
-    outlet: { wall: 'north', at: E - 7.4 }, // overloaded outlet on the north wall, east of the ramp
     panel: { wall: 'east', at: 8 }, // electrical panel with a leaking pipe dripping on it, just past the conveyor
-    // A section of the basement's railing that isn't there: on its east edge, by the ramp
-    railingGap: { along: 'z', line: lower.x1, from: -17.5, to: -15.5 },
-    barrels: { x: W + 27.6, z: SOUTH - 2, y: 0 }, // unlabelled barrels by the south wall, east of the mezzanine
+    // Missing railing beside the main-floor ladder stand on the basement's east edge
+    railingGap: { along: 'z', line: lower.x1, from: WRAP.z + FRAME + 0.1, to: lower.z1 },
     fireExits: [
       { wall: 'west', at: 2.3, y: 0 }, // on the west lane
       { wall: 'south', at: E - 4.1, y: 0 }, // south-east corner
@@ -149,11 +147,11 @@ export const LAYOUT = {
   },
   // yaw 0: the ladders hang on the south side of the stand; π: the north side; -π/2: the west side
   ladderStands: [
-    { x: lower.x1 - 0.3, z: -11.5, y: lower.y, yaw: -Math.PI / 2 }, // basement, against its east edge, ladders facing west
-    { x: mezzanine.x1 + 0.9, z: SOUTH - 0.3, y: mezzanine.y, yaw: Math.PI }, // top landing of the mezzanine stairs, against the south wall
+    { x: RACKS_E + 0.3, z: A + racking.depth / 2, y: 0, yaw: Math.PI / 2, count: 1, showLabel: false }, // against Rack A’s east endcap, clear of the forklift opening
+    { x: mezzanine.x1 - 1.9, z: SOUTH - 0.3, y: mezzanine.y, yaw: Math.PI, count: 1 }, // beside Rack I on the deck, clear of the stair landing
   ],
   incidentSign: { x: E - 3.5, y: 3.6 }, // on the north wall
-  climberSpawn: { pos: [RACKS_E + 1.5, 0, A + racking.depth + AISLE / 2], yaw: Math.PI / 2 }, // east end of aisle A/B, looking down it
+  climberSpawn: { pos: [RACKS_E + 1.3, 0, A + racking.depth / 2], yaw: Math.PI }, // beside the main-floor ladder, facing the south wall
   // Where Dave can come back after a respawn
   spawnPoints: [
     [RACKS_E + 1.5, 0, -5.45],
@@ -230,3 +228,6 @@ export const LAYOUT = {
 
 // A rack's east end
 export const rackX1 = (r) => r.x0 + r.bays * LAYOUT.racking.bayW;
+
+// Player-facing compass after the landscape presentation rotation; world axes remain stable.
+export const WALL_LABELS = { north: 'E', east: 'S', south: 'W', west: 'N' };

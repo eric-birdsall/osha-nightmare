@@ -8,9 +8,15 @@ import { hazardZones } from './hazards.js';
 // The pause screen's floor plan, drawn from the layout. SVG x/y = world x/z, in metres.
 const n = (v) => String(Math.round(v * 1000) / 1000);
 const rect = (x, y, w, h, cls, id) => `<rect${id ? ` id="${id}"` : ''} x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}"${cls ? ` class="${cls}"` : ''} />`;
-const text = (x, y, t, cls) => `<text x="${n(x)}" y="${n(y)}"${cls ? ` class="${cls}"` : ''}>${t}</text>`;
+const text = (x, y, t, cls) => `<text x="${n(x)}" y="${n(y)}" transform="rotate(-90 ${n(x)} ${n(y)})"${cls ? ` class="${cls}"` : ''}>${t}</text>`;
 
-export function drawFloorPlan(svg) {
+// Label positions are expressed in the final landscape view, not the unrotated world axes.
+// Multiline labels keep long names within their allotted space.
+const planLabel = (x, y, lines, size = 1.15) => lines.map((line, i) =>
+  text(y + i * size * 1.25, -x, line, 'fp-zone').replace('<text ', `<text style="font-size:${size}px" `),
+).join('');
+
+export function drawFloorPlan(svg, { idPrefix = 'fp', showPlayers = true } = {}) {
   const { room, lower, ramp, racks, docks, wrap, conveyors, mezzanine: mz } = LAYOUT;
   const park = parkingRect();
   const { halfX, halfZ } = room;
@@ -39,45 +45,56 @@ export function drawFloorPlan(svg) {
     rect(ramp.x0, ramp.z0, ramp.x1 - ramp.x0, ramp.z1 - ramp.z0, 'fp-ramp'),
     `<path d="M${n(tx)} ${n(tz)} L${n(hx)} ${n(hz)} M${n(l[0])} ${n(l[1])} L${n(hx)} ${n(hz)} L${n(r[0])} ${n(r[1])}" class="fp-arrow" />`,
     rect(STAIRS.x0, STAIRS.z0, STAIRS.x1 - STAIRS.x0, STAIRS.z1 - STAIRS.z0, 'fp-stairs'),
-    text((lower.x0 + lower.x1) / 2 + 2, lower.z1 - 1.6, `${lower.label} · ${n(-lower.y)} M DOWN`, 'fp-zone'),
+    planLabel(-(lower.z0 + lower.z1) / 2 + 2.3, lower.x1 - 4.8, [lower.label, `${n(-lower.y)} M DOWN`], 1.2),
     // The mezzanine (over the break room) and its stairs, the conveyor
     box(mz, 'fp-lower'),
     box(mezzanineStairs(), 'fp-stairs'),
-    text((mz.x0 + mz.x1) / 2, mz.z1 - 0.7, 'MEZZANINE · BREAK ROOM UNDER', 'fp-zone'),
+    planLabel(-(mz.z0 + mz.z1) / 2, -halfX - 2.1, ['MEZZANINE', 'BREAK ROOM BELOW'], 0.9),
     ...conveyors.map((c) => box(c, 'fp-ramp')),
+    // Repeated arrows follow actual belt velocity: positive speed carries toward world -Z.
+    ...conveyors.flatMap((c) => {
+      const cx = (c.x0 + c.x1) / 2, direction = c.speed >= 0 ? -1 : 1;
+      const arrows = [];
+      for (let z = c.z0 + 1.5; z < c.z1 - 0.5; z += 3.5) {
+        const tip = z + direction * 0.75, tail = z - direction * 0.75;
+        arrows.push(`<path class="fp-belt-arrow" d="M${n(cx)} ${n(tail)} L${n(cx)} ${n(tip)} M${n(cx - .28)} ${n(tip - direction * .4)} L${n(cx)} ${n(tip)} L${n(cx + .28)} ${n(tip - direction * .4)}" />`);
+      }
+      return arrows;
+    }),
     text(conveyors[0].x0 - 1.2, (conveyors[0].z0 + conveyors[0].z1) / 2, 'CONVEYOR', 'fp-zone'),
     `<g class="fp-racks">${racks.map((r) => rect(r.x0, r.z0, rackX1(r) - r.x0, r.z1 - r.z0)).join('')}</g>`,
-    `<g class="fp-labels">${racks.map((r) => text((r.x0 + rackX1(r)) / 2, (r.z0 + r.z1) / 2, `RACK ${r.name}`)).join('')}</g>`,
+    `<g class="fp-labels">${racks.map((r) => text((r.x0 + rackX1(r)) / 2, (r.z0 + r.z1) / 2, r.name)).join('')}</g>`,
     rect(wrap.x - wrap.frame.half, wrap.z - wrap.frame.half, wrap.frame.half * 2, wrap.frame.half * 2, 'fp-room'),
     rect(wrap.x - wrap.size / 2, wrap.z - wrap.size / 2, wrap.size, wrap.size, 'fp-wrap'),
-    text(wrap.x, wrap.z + wrap.frame.half + 1.0, 'WRAPPER', 'fp-zone'), // below it: the ramp is above
+    planLabel(-wrap.z, wrap.x + wrap.frame.half + 1.15, ['WRAPPER'], 1.1), // below it: the ramp is above
     ...(() => {
       const pk = packingRect();
-      return [box(pk, 'fp-room'), text((pk.x0 + pk.x1) / 2, pk.z1 + 0.9, 'PACKING', 'fp-zone')];
+      return [box(pk, 'fp-room'), planLabel(-(pk.z0 + pk.z1) / 2, pk.x0 - 1, ['PACKING'], 1.15)];
     })(),
     ...docks.map((d, i) => {
       const [r] = dockAt(d);
-      return `<rect id="fp-dock-${i}" x="${n(r.x0)}" y="${n(r.z0)}" width="${n(r.x1 - r.x0)}" height="${n(r.z1 - r.z0)}" class="fp-dock" />`;
+      return `<rect id="${idPrefix}-dock-${i}" x="${n(r.x0)}" y="${n(r.z0)}" width="${n(r.x1 - r.x0)}" height="${n(r.z1 - r.z0)}" class="fp-dock" />`;
     }),
     ...docks.map((d, i) => text(...dockAt(d)[1], `D${i + 1}`, 'fp-zone')),
-    text(rcx, rcz + 0.5, 'RAMP', 'fp-zone'),
+    planLabel(-rcz, ramp.x1 - 0.8, ['RAMP'], 1.05),
     rect(park.x0, park.z0, park.x1 - park.x0, park.z1 - park.z0, 'fp-park'),
     text((park.x0 + park.x1) / 2, (park.z0 + park.z1) / 2, 'PARK', 'fp-zone'),
     // A stand turned side-on (against an east or west wall) runs north-south, labelled off to one side
     ...LAYOUT.ladderStands.map((st) => (Math.abs(Math.sin(st.yaw)) > 0.5 ? rect(st.x - 0.3, st.z - 1.1, 0.6, 2.2, 'fp-ladders') : rect(st.x - 1.1, st.z - 0.2, 2.2, 0.6, 'fp-ladders'))),
-    ...LAYOUT.ladderStands.map((st) => (Math.abs(Math.sin(st.yaw)) > 0.5 ? text(st.x - 2.2, st.z - 1.8, 'LADDERS', 'fp-zone') : text(st.x, st.z + 1.1, 'LADDERS', 'fp-zone'))),
-    // Fire exits (blocked, but they're on the plan) and the barrels nobody can identify
+    ...LAYOUT.ladderStands.filter((st) => st.showLabel !== false).map((st) => planLabel(-st.z + 2.5, st.x + 4.5, [st.count === 1 ? 'LADDER' : 'LADDERS'], 1.1)),
+    // Caged fire exits
     ...hazardZones()
-      .filter((h) => h.name === 'The blocked fire exit' || h.name === 'The mystery barrels')
-      .map((h) => text(h.x, h.z, h.name === 'The mystery barrels' ? '???' : 'FIRE EXIT', 'fp-zone')),
-    // The walls' compass letters, just outside them
-    text(0, -halfZ - 1.5, 'N', 'fp-compass'),
-    text(0, halfZ + 1.5, 'S', 'fp-compass'),
-    text(-halfX - 1.5, 0, 'W', 'fp-compass'),
-    text(halfX + 1.5, 0, 'E', 'fp-compass'),
-    '<circle id="fp-dave" r="0.9" class="fp-dave" />',
-    '<circle id="fp-ralph" r="1.1" class="fp-ralph" />',
+      .filter((h) => h.name === 'The blocked fire exit')
+      .map((h) => planLabel(Math.max(-halfZ + 3.5, Math.min(halfZ - 3.5, -h.z)), Math.max(-halfX + 1.2, Math.min(halfX - 1.2, h.x)), ['FIRE EXIT'], 1.1)),
+    ...(showPlayers ? [`<circle id="${idPrefix}-dave" r="0.9" class="fp-dave" />`,
+      `<circle id="${idPrefix}-ralph" r="1.1" class="fp-ralph" />`] : []),
   ];
-  svg.setAttribute('viewBox', `${-halfX - 3} ${-halfZ - 3} ${halfX * 2 + 6} ${halfZ * 2 + 6}`);
-  svg.innerHTML = parts.join('');
+  // Rotate presentation only: physics coordinates and live player markers stay in world space.
+  svg.setAttribute('viewBox', `${-halfZ - 3} ${-halfX - 3} ${halfZ * 2 + 6} ${halfX * 2 + 11}`);
+  const compass = `<g class="fp-rose" transform="translate(${n(halfZ - 1)} ${n(halfX + 4.5)})" aria-label="Compass: north up, east right, south down, west left">
+    <circle r="1.5" /><path d="M0 -1.8 L.4 -.4 L1.8 0 L.4 .4 L0 1.8 L-.4 .4 L-1.8 0 L-.4 -.4 Z" />
+    <path class="fp-rose-north" d="M0 -1.8 L.4 -.4 L0 0 L-.4 -.4 Z" />
+    <text x="0" y="-2.4">N</text><text x="2.4" y="0">E</text><text x="0" y="2.4">S</text><text x="-2.4" y="0">W</text>
+  </g>`;
+  svg.innerHTML = `<g transform="rotate(90)">${parts.join('')}</g>${compass}`;
 }

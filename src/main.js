@@ -21,7 +21,10 @@ renderer.shadowMap.autoUpdate = false;
 
 const input = new Input(canvas);
 const hud = new Hud(document.getElementById('hud'));
-drawFloorPlan(document.querySelector('.map svg'));
+drawFloorPlan(document.querySelector('#pause .map svg'));
+for (const screen of ['title', 'levels']) {
+  drawFloorPlan(document.querySelector(`#${screen} .map svg`), { idPrefix: screen, showPlayers: false });
+}
 document.getElementById('loading').remove();
 
 let game = null;
@@ -206,7 +209,7 @@ function pause() {
   state = 'paused';
   pausedAt = performance.now();
   // Light up this order's dock on the floor plan
-  game.level.dock && document.querySelectorAll('.fp-dock').forEach((r, i) => r.classList.toggle('open', DOCKS[i]?.name === game.level.dock.name));
+  game.level.dock && document.querySelectorAll('#pause .fp-dock').forEach((r, i) => r.classList.toggle('open', DOCKS[i]?.name === game.level.dock.name));
   // Mark Dave and Ralph on the pause screen's floor plan (SVG x/y = world x/z)
   for (const [id, body] of [['fp-dave', game.climber.body], ['fp-ralph', game.forklift.body]]) {
     const t = body.translation();

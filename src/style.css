@@ -1080,3 +1080,107 @@ kbd {
   font-family: var(--ui);
   letter-spacing: 1px;
 }
+
+/* Prompts use the player's active input; Xbox face buttons retain their familiar colors. */
+.pad-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.65em; height: 1.65em; padding: 0 0.2em; box-sizing: border-box;
+  border: 2px solid #a5abb3; border-radius: 6px; background: #20242b;
+  color: #fff; font: bold 0.9em system-ui, sans-serif; vertical-align: middle;
+  box-shadow: 0 2px 2px #0008; text-shadow: none;
+}
+.pad-a, .pad-b, .pad-x, .pad-y { border-radius: 50%; width: 1.65em; padding: 0; }
+.pad-a { color: #72d85b; } .pad-b { color: #ff6565; }
+.pad-x { color: #4ca5ff; } .pad-y { color: #ffda46; }
+kbd:has(.pad-button) { background: transparent; padding: 0; }
+body:not([data-input="controller"]) .controller-only,
+body[data-input="controller"] .keyboard-only { display: none !important; }
+body:not([data-input="controller"]) #controls td:nth-child(2),
+body[data-input="controller"] #controls td:nth-child(3) { display: none; }
+
+.tutorial {
+  position: absolute; left: 16px; top: 62px; width: min(470px, calc(100% - 32px));
+  box-sizing: border-box; padding: 12px 15px; border-left: 4px solid #f5c518;
+  background: rgba(18, 22, 27, 0.93); color: #f4f1e8; pointer-events: none;
+  font-size: 15px; line-height: 1.45;
+}
+.tutorial strong { display: block; color: #f5c518; font-size: 13px; }
+.tutorial p { margin: 7px 0 0; }
+.view.split .tutorial { top: 44px; padding: 8px 12px; font-size: 13px; width: min(540px, calc(100% - 135px)); }
+@media (max-width: 650px) { .tutorial { top: 82px; font-size: 13px; } }
+
+/* Title and order selection share a menu-left / blueprint-right composition. */
+.title-layout {
+  display: grid; grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
+  align-items: center; gap: clamp(24px, 4vw, 64px);
+  width: min(1320px, 94vw); max-height: calc(100dvh - 70px);
+}
+.title-layout > .panel { min-width: 0; width: 100%; max-width: none; padding: 24px 28px; }
+.title-layout .logo { width: 100%; margin-top: 0; }
+.title-layout .subtitle { font-size: 17px; letter-spacing: 3px; }
+.title-layout .title-map {
+  min-width: 0; width: 100%; height: min(76dvh, 760px); padding: 18px 22px;
+  transform: rotate(0.5deg); box-shadow: 10px 14px 35px #0006;
+}
+.title-map svg { min-height: 0; }
+.blueprint-footer {
+  display: flex; justify-content: space-between; gap: 12px; padding-top: 10px;
+  border-top: 1px solid #dbe9f780; font-size: 12px; font-weight: 700; letter-spacing: 2px;
+}
+@media (max-width: 780px) {
+  #title, #levels { overflow-y: auto; align-items: flex-start; padding: 36px 0; }
+  .title-layout { grid-template-columns: 1fr; max-height: none; width: min(520px, 92vw); gap: 24px; }
+  .title-layout > .panel { max-height: none; }
+  .title-layout .title-map { height: min(85vw, 600px); transform: none; }
+}
+@media (min-width: 781px) and (max-height: 720px) {
+  .title-layout { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }
+  .title-layout > .panel { padding: 14px 22px; }
+  .title-layout .logo { width: 76%; margin-bottom: 4px; }
+  .title-layout .btn { margin-top: 8px; }
+}
+
+.fp-note { fill: #dbe9f7; font: 700 0.95px var(--ui); text-anchor: middle; dominant-baseline: middle; }
+
+.fp-belt-arrow { fill: none; stroke: #f5c518; stroke-width: .16; stroke-linecap: round; stroke-linejoin: round; }
+.fp-rose circle { fill: #173a63; stroke: #8fb4dc; stroke-width: .08; }
+.fp-rose path { fill: #dbe9f7; stroke: #8fb4dc; stroke-width: .05; }
+.fp-rose .fp-rose-north { fill: #f5c518; }
+.fp-rose text { fill: #dbe9f7; font: 700 1.1px var(--ui); text-anchor: middle; dominant-baseline: middle; }
+
+/* Order selection needs room for names and records, with a quieter supporting blueprint. */
+#levels .title-layout { grid-template-columns: minmax(500px, 1.12fr) minmax(0, 1fr); gap: 32px; }
+#levels .title-map { height: min(64dvh, 620px); padding: 14px 16px; }
+.selection-title {
+  margin: 0 0 8px; color: #f5c518; font: 400 32px/1.15 var(--stencil);
+  letter-spacing: 1px; white-space: nowrap;
+}
+#levels #lv-mode { margin: 0 0 18px; font-size: 14px; letter-spacing: 1px; }
+#levels .level-list { margin: 0; }
+#levels .btn.level {
+  display: grid; grid-template-columns: 124px minmax(0, 1fr) auto;
+  gap: 10px; min-height: 56px; margin: 8px 0;
+  padding: 10px 38px 10px 28px;
+}
+#levels .btn.level .osha-text { font-size: 18px; letter-spacing: .4px; }
+#levels .lv-name { font-size: 17px; line-height: 1.2; letter-spacing: 0; }
+#levels .lv-best { font-size: 16px; gap: 6px; white-space: nowrap; }
+#levels .lv-best .none { font-size: 14px; white-space: nowrap; }
+#levels .lv-best .medal { padding: 1px 5px; font-size: 10px; letter-spacing: .6px; }
+#levels .ctl-btns { margin-top: 14px; }
+#levels .ctl-btns .btn { margin: 0; padding-top: 9px; padding-bottom: 9px; }
+@media (min-width: 781px) and (max-width: 1100px) {
+  #levels .title-layout { grid-template-columns: minmax(470px, 1.3fr) minmax(0, 1fr); gap: 20px; }
+  #levels .title-layout > .panel { padding: 20px 18px; }
+  #levels .btn.level { grid-template-columns: 112px minmax(0, 1fr) auto; }
+  #levels .btn.level .osha-text { font-size: 16px; }
+  #levels .lv-name { font-size: 16px; }
+}
+@media (max-width: 780px) {
+  #levels .title-layout { grid-template-columns: 1fr; gap: 24px; }
+  #levels .title-map { height: min(85vw, 520px); }
+  #levels .title-layout > .panel { padding: 20px 16px; }
+  #levels .btn.level { grid-template-columns: 108px minmax(0, 1fr); padding-right: 30px; }
+  #levels .btn.level .osha-text { font-size: 16px; }
+  #levels .lv-best { grid-column: 2; justify-self: start; margin-left: 0; }
+}

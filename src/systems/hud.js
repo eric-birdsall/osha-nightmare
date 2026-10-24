@@ -10,7 +10,7 @@ const VIEW_HTML = (role) => `
   <div class="roles card">
     <span data-r="driver">Ralph</span>
     <span data-r="climber">Dave</span>
-    <span class="swaphint">Tab / View to swap</span>
+    <span class="swaphint"></span>
   </div>
   ${
     role === 'climber'
@@ -18,6 +18,7 @@ const VIEW_HTML = (role) => `
       : /* speed, gear and fork height are on the forklift's dashboard */
         `<div class="driftmeter"><div class="bar"><div class="fill"></div></div><div class="label"></div></div><div class="prompt"></div>`
   }
+  <div class="tutorial card" role="status"><strong></strong><p></p></div>
   <div class="holdring"><svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="18"/><circle class="fil" cx="22" cy="22" r="18"/></svg></div>
   <div class="rolelabel">${role === 'climber' ? 'DAVE · CLIMBER' : 'RALPH · DRIVER'}</div>
   <div class="toast"></div>
@@ -44,6 +45,7 @@ export class Hud {
       const q = (s) => el.querySelector(s);
       this.views[role] = {
         el,
+        tutorial: q('.tutorial'),
         timer: q('.timer'),
         timerPen: q('.timer-pen'),
         roles: q('.roles'),
@@ -103,6 +105,12 @@ export class Hud {
       v.el.classList.toggle('top', !single && role === 'climber');
       v.el.classList.toggle('bottom', !single && role === 'driver');
       if (!visible) continue;
+      const guide = game.tutorial?.content(role);
+      v.tutorial.style.display = guide ? '' : 'none';
+      if (guide) {
+        v.tutorial.querySelector('strong').textContent = guide.title;
+        v.tutorial.querySelector('p').innerHTML = guide.detail;
+      }
       // The pick list isn't on the HUD: it's a clipboard in the forklift cab
       // The time on the clock is the score: the shift so far plus the incident penalties
       v.timer.textContent = fmt(game.time + game.falls * CONFIG.score.incidentPenalty);
@@ -110,6 +118,7 @@ export class Hud {
       v.timerPen.textContent = `+${CONFIG.score.incidentPenalty} s`;
       v.timerPen.classList.toggle('on', flashing);
       v.roles.style.display = single ? '' : 'none';
+      v.roles.querySelector('.swaphint').innerHTML = `<kbd>${game.keyHint(role, 'swap')}</kbd> to swap`;
       if (single) {
         for (const s of v.roles.querySelectorAll('[data-r]')) s.classList.toggle('on', s.dataset.r === game.active);
       }
@@ -123,6 +132,8 @@ export class Hud {
         let p = '';
         const key = game.keyHint(role, 'interact');
         if (c.state === 'wrapped') p = 'You are wrapped. Wait for it…';
+        else if (game.level.landingRailing.inReach(c)) p = `Kick railing off <kbd>${key}</kbd>`;
+        else if (c.findDragPallet()) p = c.draggedPallet ? `Dragging pallet · release <kbd>${key}</kbd> to let go` : `Drag empty pallet: hold <kbd>${key}</kbd> and move`;
         else if (c.holdingOn && c.target?.kind !== 'box') p = `Holding on · Let go <kbd>${key}</kbd>`;
         else if (c.onLadder && !c.carried && !c.target) {
           const climb = game.usesKeyboard(role) ? '<kbd>W</kbd> <kbd>S</kbd> climb' : 'Stick up / down to climb';
@@ -176,6 +187,7 @@ export class Hud {
           p = p ? `${p}<br><small>${r}</small>` : r;
         }
         // Aiming a punt: the arc and ghost show where it will land
+        if (c.crouched) p += `${p ? '<br>' : ''}<small>Crouched · ${c.crouchRequested ? `Release <kbd>${game.keyHint(role, 'crouch')}</kbd> to stand` : 'Stay low until there is room to stand'}</small>`;
         if (c.aimingPunt) p = 'Let go to punt it<br><small>Aim higher to punt further</small>';
         // The same ring fills while Q / Y is held to go back to the start
         if (respawn(role) > 0) p = p ? `${p}<br><small>Going back to the start…</small>` : 'Going back to the start…';

@@ -7,10 +7,8 @@ import { LAYOUT } from './layout.js';
 import { addPuddle } from './puddles.js';
 
 // OSHA violations dotted round the building (placed in LAYOUT.hazards):
-//  - an overloaded outlet with power strips daisy-chained off it, which shoots cartoon sparks
 //  - an electrical panel with a leaking pipe dripping on it: it zaps, into a puddle on the floor
-//  - unlabelled barrels leaking brightly coloured liquids; knock one over and it gushes
-//  - fire exits blocked by junk
+//  - fire exits enclosed in locked steel cages
 // (The missing section of railing is in level.js, where the railings are built.)
 
 const YELLOW = 0xf5c518;
@@ -78,14 +76,12 @@ export function hazardZones() {
   };
   const gap = hz.railingGap;
   return [
-    { name: 'The overloaded outlet', ...wallSpot(hz.outlet, 1.2), r: 1.8 },
     { name: 'The leaking electrical panel', ...wallSpot(hz.panel, 1.0), r: 2.0 },
     {
       name: 'The missing railing',
       ...(gap.along === 'z' ? { x: gap.line, z: (gap.from + gap.to) / 2 } : { x: (gap.from + gap.to) / 2, z: gap.line }),
       r: (gap.to - gap.from) / 2 + 0.8,
     },
-    { name: 'The mystery barrels', x: hz.barrels.x + 0.4, z: hz.barrels.z, r: 2.2 },
     ...hz.fireExits.map((e) => ({ name: 'The blocked fire exit', ...wallSpot(e, 0.9), r: 1.8 })),
   ];
 }
@@ -170,73 +166,6 @@ class Sparks {
   }
 }
 
-// ---------------------------------------------------------------- the overloaded outlet
-
-function buildOutlet(game, sparks) {
-  const { wall, at } = LAYOUT.hazards.outlet;
-  const g = wallGroup(game, wall, at);
-  // Scorched wall round a twin outlet with cube taps stacked in it
-  const scorch = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.7, 0.7),
-    new THREE.MeshBasicMaterial({
-      transparent: true,
-      depthWrite: false,
-      map: canvasTexture(128, 128, (c) => {
-        const grad = c.createRadialGradient(64, 64, 4, 64, 64, 64);
-        grad.addColorStop(0, 'rgba(20,16,12,0.85)');
-        grad.addColorStop(1, 'rgba(20,16,12,0)');
-        c.fillStyle = grad;
-        c.fillRect(0, 0, 128, 128);
-      }),
-    }),
-  );
-  put(g, scorch, 0, 0.5, 0.012);
-  put(g, boxMesh(0.12, 0.2, 0.02, 0xf4f1e8, { edges: false }), 0, 0.42, 0.015);
-  put(g, boxMesh(0.09, 0.09, 0.08, 0xf4f1e8, { edges: false }), 0, 0.44, 0.06);
-  put(g, boxMesh(0.09, 0.09, 0.08, 0xd9d4c4, { edges: false }), 0.04, 0.47, 0.13).rotation.z = 0.3;
-  const sign = labelPlane('DO NOT UNPLUG!!', 0.7, 0.16, { bg: '#fffbe6', fg: '#d0141b' });
-  put(g, sign, 0, 0.82, 0.014).rotation.z = -0.08;
-  // Cords down to a chain of power strips on the floor, and from those off to the packing stations
-  const cord = (x0, z0, x1, z1) => {
-    const len = Math.hypot(x1 - x0, z1 - z0);
-    const c = boxMesh(0.02, 0.012, len, 0x16171a, { edges: false, shadows: false });
-    c.position.set((x0 + x1) / 2, 0.008, (z0 + z1) / 2);
-    c.rotation.y = Math.atan2(x1 - x0, z1 - z0);
-    g.add(c);
-  };
-  put(g, boxMesh(0.02, 0.4, 0.02, 0x16171a, { edges: false }), 0.02, 0.22, 0.12);
-  const strips = [[0.25, 0.5, 0.4], [-0.35, 1.3, -0.5], [0.4, 2.2, 0.2]];
-  let [px, pz] = [0.02, 0.12];
-  for (const [sx, sz, ry] of strips) {
-    cord(px, pz, sx, sz);
-    const s = put(g, boxMesh(0.45, 0.05, 0.08, 0xf4f1e8, { edges: false }), sx, 0.025, sz);
-    s.rotation.y = ry;
-    put(g, boxMesh(0.04, 0.03, 0.03, 0xd0141b, { edges: false }), sx, 0.06, sz);
-    [px, pz] = [sx, sz];
-  }
-  for (const [x1, z1] of [[-2.5, 5.6], [-0.8, 5.8], [1.2, 5.7], [3.0, 5.5], [5.4, 5.8]]) cord(0.4, 2.2, x1, z1);
-  // Sparks: every few seconds, out of the outlet
-  const at3 = g.localToWorld(new THREE.Vector3(0, 0.45, 0.12));
-  const out = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), g.rotation.y);
-  const light = new THREE.PointLight(0xffc040, 0, 4);
-  light.position.copy(at3);
-  game.scene.add(light);
-  let next = 2 + Math.random() * 3;
-  let flash = 0;
-  return (dt, loud) => {
-    next -= dt;
-    if (next <= 0) {
-      next = 2.5 + Math.random() * 5;
-      sparks.burst(at3, out, 22);
-      flash = 0.2;
-      const v = loud(at3);
-      if (v > 0) sfx.zap(v);
-    }
-    flash = Math.max(0, flash - dt);
-    light.intensity = flash * 15;
-  };
-}
-
 // ---------------------------------------------------------------- the electrical waterfall
 
 function buildPanel(game, sparks) {
@@ -275,6 +204,34 @@ function buildPanel(game, sparks) {
   const joint = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.22, 14), flatMat(0xb8bcc2));
   joint.rotation.z = Math.PI / 2;
   put(g, joint, 0.1, 3.4, 0.3);
+  // Connected supply/return runs, risers and branches rather than a floating lone pipe.
+  const pipeRun = (a, b, radius = 0.06, color = 0x7d9db3) => {
+    const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b);
+    const axis = end.clone().sub(start);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, axis.length(), 12), flatMat(color));
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis.normalize());
+    mesh.position.copy(start.add(end).multiplyScalar(0.5));
+    g.add(mesh);
+  };
+  for (const h of [3.4, 4.0]) {
+    if (h === 3.4) {
+      pipeRun([-4.5, h, 0.3], [-4.5, 7.5, 0.3]);
+      pipeRun([4.5, h, 0.3], [4.5, 7.5, 0.3]);
+    }
+    if (h !== 3.4) pipeRun([-4.5, h, 0.3], [4.5, h, 0.3]);
+    for (const x of [-4.5, 4.5]) put(g, new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), flatMat(0x7d9db3)), x, h, 0.3);
+    for (const x of [-3.6, -1.8, 1.8, 3.6]) {
+      pipeRun([x, h, 0.3], [x + 0.13, h, 0.3], 0.09, 0x9aa0a8);
+      put(g, boxMesh(0.07, 0.25, 0.32, 0x555f68, { edges: false }), x, h, 0.14);
+    }
+  }
+  pipeRun([2.6, 4.0, 0.3], [2.6, 1.0, 0.3], 0.045);
+  pipeRun([2.6, 1.0, 0.3], [4.5, 1.0, 0.3], 0.045);
+  pipeRun([4.5, 1.0, 0.3], [4.5, 3.4, 0.3], 0.045);
+  const valve = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.025, 8, 16), flatMat(0xb53127));
+  put(g, valve, 2.6, 2.5, 0.45);
+  pipeRun([2.6, 2.5, 0.3], [2.6, 2.5, 0.45], 0.025, 0x9aa0a8);
+  pipeRun([2.44, 2.5, 0.45], [2.76, 2.5, 0.45], 0.015, 0xb53127);
   // Water streaking down the front of the panel
   const wet = new THREE.MeshBasicMaterial({ color: 0x8fc8ff, transparent: true, opacity: 0.45, depthWrite: false });
   put(g, new THREE.Mesh(new THREE.PlaneGeometry(0.1, 1.15), wet), 0.12, 1.5, 0.258);
@@ -336,77 +293,6 @@ function buildPanel(game, sparks) {
   return { update };
 }
 
-// ---------------------------------------------------------------- mystery barrels
-
-const MYSTERY = [
-  { name: 'mystery (green)', color: '#7dff3a', alpha: 0.8 },
-  { name: 'mystery (pink)', color: '#ff3ad1', alpha: 0.75 },
-  { name: 'mystery (orange)', color: '#ff8c1a', alpha: 0.8 },
-  { name: 'mystery (blue)', color: '#3ae8ff', alpha: 0.75 },
-  { name: 'mystery (purple)', color: '#9a4dff', alpha: 0.8 },
-];
-const DRUMS = [0x2f5fb3, 0x9a4b23, 0x2f6b3a, 0x6b7280, 0x23262b];
-const R = 0.29;
-const HALF_H = 0.44;
-
-function barrelMesh(color, liquid, mark) {
-  const g = new THREE.Group();
-  const mat = flatMat(color);
-  const drum = new THREE.Mesh(new THREE.CylinderGeometry(R, R, HALF_H * 2, 20), mat);
-  drum.castShadow = drum.receiveShadow = true;
-  g.add(drum);
-  for (const y of [-0.15, 0.15, -HALF_H + 0.02, HALF_H - 0.02]) {
-    const rib = new THREE.Mesh(new THREE.TorusGeometry(R + 0.005, 0.015, 6, 24), mat);
-    rib.rotation.x = Math.PI / 2;
-    rib.position.y = y;
-    g.add(rib);
-  }
-  const lid = new THREE.Mesh(new THREE.CylinderGeometry(R - 0.02, R - 0.02, 0.01, 20), flatMat(0x16171a));
-  lid.position.y = HALF_H + 0.003;
-  g.add(lid);
-  if (mark) {
-    // A hand-sprayed question mark: no label, no idea
-    const q = labelPlane('???', 0.32, 0.2, { bg: 'rgba(0,0,0,0)', fg: '#f4f1e8', transparent: true });
-    q.position.set(0, 0.05, R + 0.004);
-    g.add(q);
-  }
-  // A thin stream leaking out of a hole near the bottom, down to the floor
-  const stream = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.26, 0.03), new THREE.MeshBasicMaterial({ color: liquid.color, transparent: true, opacity: 0.85 }));
-  stream.position.set(0, -HALF_H + 0.13, R + 0.02);
-  g.add(stream);
-  g.userData.stream = stream;
-  return g;
-}
-
-function buildBarrels(game) {
-  const { x, z, y } = LAYOUT.hazards.barrels;
-  const spots = [[0, 0], [0.66, 0.12], [0.2, 0.64], [0.12, -0.66], [0.78, -0.52]];
-  const barrels = [];
-  const turn = [-0.3, 0.25, -0.1, 0.35, 0.05]; // each leaks a little off east (fixed, like the rest of the warehouse)
-  spots.forEach(([dx, dz], i) => {
-    const liquid = MYSTERY[i % MYSTERY.length];
-    const mesh = barrelMesh(DRUMS[i % DRUMS.length], liquid, i % 2 === 0);
-    // Leak toward the room (east), turned a little each
-    const yaw = Math.PI / 2 + turn[i];
-    const body = game.world.createRigidBody(
-      RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(x + dx, y + HALF_H + 0.01, z + dz)
-        .setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) })
-        .setCanSleep(true),
-    );
-    game.world.createCollider(RAPIER.ColliderDesc.cylinder(HALF_H, R).setMass(90).setFriction(0.6).setCollisionGroups(COL.dyn), body);
-    game.scene.add(mesh);
-    const ent = { kind: 'barrel', body, mesh, mass: 90, liquid, gushed: false };
-    game.addEntity(ent);
-    barrels.push(ent);
-    // The puddle each one has made already, in front of its leak
-    const px = x + dx + Math.sin(yaw) * 0.75;
-    const pz = z + dz + Math.cos(yaw) * 0.75;
-    addPuddle(game, { x: px, y, z: pz, r: 0.5 + (i % 3) * 0.12, liquid });
-  });
-  return { barrels };
-}
-
 // ---------------------------------------------------------------- blocked fire exits
 
 function buildFireExit(game, { wall, at, y }) {
@@ -416,52 +302,113 @@ function buildFireExit(game, { wall, at, y }) {
   put(g, boxMesh(1.0, 2.15, 0.04, 0x8c2b2b), 0, 1.08, 0.06);
   put(g, boxMesh(0.8, 0.06, 0.06, 0xc9ced6, { edges: false }), 0, 1.0, 0.11);
   const keep = labelPlane('FIRE EXIT · KEEP CLEAR', 0.86, 0.17, { bg: '#ffffff', fg: '#d0141b' });
-  put(g, keep, 0, 2.0, 0.082); // just showing over the junk
+  put(g, keep, 0, 2.0, 0.082); // visible through the cage
   // Lit EXIT sign over it
   put(g, boxMesh(0.55, 0.24, 0.08, 0xf4f4f4, { edges: false }), 0, 2.55, 0.04);
   const exit = labelPlane('EXIT ➜', 0.5, 0.2, { bg: '#0f8a3c', fg: '#ffffff' });
   put(g, exit, 0, 2.55, 0.082);
-  // ...blocked by a pile of junk: pallets, boxes, and a sheet of plywood leaning on the door
-  const card = 0xc49a6c;
-  for (let k = 0; k < 3; k++) put(g, boxMesh(1.2, 0.14, 1.0, 0x9a7650), -0.15, 0.07 + k * 0.15, 0.85).rotation.y = (k - 1) * 0.06;
-  put(g, boxMesh(0.6, 0.5, 0.5, card), -0.4, 0.7, 0.75).rotation.y = 0.2;
-  put(g, boxMesh(0.5, 0.45, 0.45, card), 0.15, 0.68, 0.95).rotation.y = -0.15;
-  put(g, boxMesh(0.45, 0.4, 0.4, 0xb08a5a), -0.15, 1.13, 0.8).rotation.y = 0.4;
-  put(g, boxMesh(0.5, 1.5, 0.5, card), 0.75, 0.75, 0.5);
-  put(g, boxMesh(0.4, 0.4, 0.4, 0xb08a5a), 0.75, 1.7, 0.5).rotation.y = 0.3;
-  const ply = put(g, boxMesh(1.1, 1.9, 0.03, 0xd8b98a), 0.05, 0.92, 0.3);
-  ply.rotation.x = -0.12;
-  solidIn(game, g, [1.9, 1.6, 1.4], [0.15, 0.8, 0.75]);
+  // A welded steel cage surrounds the door: barred front, side panels and a roof.
+  // Continuous panel colliders prevent Dave or the forklift slipping through the bars.
+  const steel = 0x555f68;
+  // The south-east enclosure reaches the east wall (local -X on the south wall).
+  const cornerCage = wall === 'south';
+  const minX = cornerCage ? at - LAYOUT.room.halfX + 0.04 : -1.4;
+  const maxX = cornerCage ? 1.8 : 1.4;
+  const width = maxX - minX, midX = (minX + maxX) / 2;
+  const depth = cornerCage ? 3.2 : 2.0, height = 3.1;
+  const bar = (w, h, d, x, y, z) => put(g, boxMesh(w, h, d, steel, { edges: false }), x, y, z);
+  for (const x of [minX, maxX]) {
+    for (const z of [0.08, depth]) bar(0.08, height, 0.08, x, height / 2, z);
+    for (const h of [0.06, 1.4, height]) bar(0.06, 0.06, depth, x, h, depth / 2);
+    for (let z = 0.2; z < depth; z += 0.16) bar(0.025, height, 0.025, x, height / 2, z);
+    solidIn(game, g, [0.1, height, depth], [x, height / 2, depth / 2]);
+  }
+  for (const h of [0.06, 1.4, height]) bar(width, 0.06, 0.06, midX, h, depth);
+  for (let x = minX + 0.16; x < maxX; x += 0.16) {
+    bar(0.025, height, 0.025, x, height / 2, depth);
+    bar(0.025, 0.025, depth, x, height, depth / 2);
+  }
+  solidIn(game, g, [width, height, 0.1], [midX, height / 2, depth]);
+  solidIn(game, g, [width, 0.1, depth], [midX, height, depth / 2]);
+  // A chained, padlocked front makes the lack of access clear.
+  bar(0.07, height, 0.07, 0, height / 2, depth + 0.02);
+  put(g, boxMesh(0.24, 0.04, 0.04, 0xc9ced6, { edges: false }), 0, 1.25, depth + 0.07);
+  put(g, boxMesh(0.1, 0.13, 0.06, YELLOW), 0.05, 1.18, depth + 0.1);
+  // Stored junk blocks the door inside the cage, staying below the KEEP CLEAR lettering.
+  const wood = 0x9a7650;
+  for (let layer = 0; layer < 3; layer++) {
+    const bottom = layer * 0.16;
+    for (const x of [-0.48, 0, 0.48]) put(g, boxMesh(0.12, 0.11, 0.9, wood), x - 0.1, bottom + 0.055, 0.85);
+    for (let i = 0; i < 5; i++) put(g, boxMesh(0.2, 0.05, 0.95, 0xb38c55), -0.58 + i * 0.24, bottom + 0.135, 0.85);
+  }
+  const cartons = [
+    [-0.38, 0.73, 0.65, 0.65, 0.5, 0.55, -0.12],
+    [0.27, 0.78, 0.88, 0.55, 0.6, 0.6, 0.15],
+    [-0.15, 1.23, 0.7, 0.5, 0.5, 0.5, -0.07],
+    [0.87, 0.55, 0.55, 0.4, 1.1, 0.45, 0.05],
+  ];
+  for (const [x, h, z, w, dh, d, turn] of cartons) {
+    const carton = put(g, boxMesh(w, dh, d, 0xc49a6c), x, h, z);
+    carton.rotation.y = turn;
+    put(carton, boxMesh(0.07, 0.008, d + 0.01, 0xdcc49a, { edges: false }), 0, dh / 2 + 0.005, 0);
+  }
+  const plywood = put(g, boxMesh(0.42, 1.55, 0.04, 0xd8b98a), -0.93, 0.8, 0.58);
+  plywood.rotation.x = -0.14;
+  solidIn(game, g, [2.3, 1.6, 1.25], [0, 0.8, 0.75]);
+  if (cornerCage) {
+    // Fixed varied storage piles fill the corner without changing on every restart.
+    let pile = 0;
+    for (let x = minX + 0.7; x < maxX - 0.5; x += 1.25) {
+      for (const z of [0.72, 2.3]) {
+        // The original pile already occupies the space directly in front of the door.
+        if (z < 1 && Math.abs(x) < 1.2) continue;
+        const layers = 2 + pile % 4;
+        const stack = new THREE.Group();
+        stack.position.set(x, 0, z);
+        stack.rotation.y = (pile % 3 - 1) * 0.09;
+        g.add(stack);
+        for (let layer = 0; layer < layers; layer++) {
+          const bottom = layer * 0.16;
+          for (const sx of [-0.45, 0, 0.45]) put(stack, boxMesh(0.12, 0.11, 0.9, wood), sx, bottom + 0.055, 0);
+          for (let i = 0; i < 5; i++) put(stack, boxMesh(0.2, 0.05, 0.95, 0xb38c55), -0.48 + i * 0.24, bottom + 0.135, 0);
+        }
+        let top = layers * 0.16;
+        const boxes = 1 + pile % 3;
+        for (let n = 0; n < boxes; n++) {
+          const h = 0.3 + ((pile + n) % 3) * 0.1;
+          // Keep the center below the KEEP CLEAR sign's sightline.
+          if (Math.abs(x) < 0.8 && top + h > 1.55) break;
+          const d = 0.48 + (n % 2) * 0.16;
+          const carton = put(stack, boxMesh(0.65 + (pile % 2) * 0.15, h, d, [0xc49a6c, 0xa88050, 0xd1ae79][(pile + n) % 3]), (n % 2 ? 0.1 : -0.1), top + h / 2, 0);
+          carton.rotation.y = (n % 3 - 1) * 0.16;
+          put(carton, boxMesh(0.07, 0.008, d + 0.01, 0xdcc49a, { edges: false }), 0, h / 2 + 0.005, 0);
+          top += h;
+        }
+        solidIn(game, g, [1.15, top, 1.05], [x, top / 2, z]);
+        pile++;
+      }
+    }
+    const boards = put(g, boxMesh(0.65, 1.75, 0.1, 0x997347), minX + 0.4, 0.9, 1.35);
+    boards.rotation.z = -0.16;
+  }
+
 }
 
 // Builds them all. Returns { update(dt, listeners) }: a per-frame update; listeners are the
 // camera positions that hear the sparks.
-export function buildHazards(game, { floorHeightAt }) {
+export function buildHazards(game) {
   const sparks = new Sparks(game.scene);
-  const outlet = buildOutlet(game, sparks);
   const panel = buildPanel(game, sparks);
-  const { barrels } = buildBarrels(game);
   for (const e of LAYOUT.hazards.fireExits) buildFireExit(game, e);
-  const up = new THREE.Vector3();
   let listeners = [];
   // 0..1: how loud something at p is for the nearest listener
   const loud = (p) => Math.max(0, ...listeners.map((l) => 1 - l.distanceTo(p) / 16));
   return {
     update(dt, ears) {
       listeners = ears;
-      outlet(dt, loud);
       panel.update(dt, loud);
       sparks.update(dt);
-      // A barrel knocked over gushes the rest of its contents where it lands
-      for (const b of barrels) {
-        if (b.gushed || b.removed) continue;
-        up.set(0, 1, 0).applyQuaternion(b.body.rotation());
-        if (up.y > 0.4 || b.body.linvel().y < -0.5) continue;
-        b.gushed = true;
-        b.mesh.userData.stream.visible = false;
-        const t = b.body.translation();
-        addPuddle(game, { x: t.x, y: floorHeightAt(t.x, t.z), z: t.z, r: 1.0, liquid: b.liquid });
-      }
+
     },
   };
 }

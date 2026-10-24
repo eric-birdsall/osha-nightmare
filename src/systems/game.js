@@ -8,6 +8,7 @@ import { Climber } from '../entities/climber.js';
 import { WrapSystem, collectStack } from './wrapping.js';
 import { Recorder, ReplayDirector, buildCctvFixtures } from './replay.js';
 import { settings } from './settings.js';
+import { Tutorial } from './tutorial.js';
 import { describeLocation } from '../world/level.js';
 import { quatToThree } from '../physics.js';
 import { disposeTree } from '../util/meshes.js';
@@ -157,6 +158,7 @@ export class Game {
     this.complete = false;
     this.onComplete = null;
     this.incidentSign.set(this.days);
+    this.tutorial = !this.shift && this.orderId === 1 ? new Tutorial(this) : null;
   }
 
   // ---------------------------------------------------------------- entities
@@ -180,6 +182,7 @@ export class Game {
   // ---------------------------------------------------------------- input routing
 
   assignDevices(input) {
+    this.input = input;
     const pads = input.padCount();
     this.deviceHints = { climber: '', driver: '' };
     if (this.mode === 'single') {
@@ -204,16 +207,14 @@ export class Game {
   }
 
   usesKeyboard(role) {
+    if (this.mode === 'single') return !this.input || this.input.lastDevice === 'kbm';
     return this.devices[role].includes('kbm');
   }
 
   keyHint(role, action) {
-    const kb = this.usesKeyboard(role);
-    const pad = this.devices[role].some((d) => d.startsWith('pad'));
-    const map = { interact: ['E', 'X'], toss: ['R', 'RB'] };
-    const [k, p] = map[action];
-    if (kb && pad && this.mode === 'single') return `${k} / ${p}`;
-    return kb ? k : p;
+    const map = { interact: ['E', 'X'], toss: ['R', 'RB'], swap: ['Tab', 'View'], lift: ['R', 'RB'], lower: ['F', 'LB'], crouch: ['Ctrl', 'L3'] };
+    const [key, button] = map[action];
+    return this.usesKeyboard(role) ? key : `<span class="pad-button pad-${button.toLowerCase()}" role="img" aria-label="Controller ${button}">${button === 'View' ? '▱' : button}</span>`;
   }
 
   swapCharacter() {
@@ -854,6 +855,7 @@ export class Game {
     this.climber.updateVisuals(dt);
     this.climber.updateCamera(dt);
     this.forklift.updateCamera();
+    this.tutorial?.update(dt);
     this.incidentSign.set(this.days);
     this.recorder.capture(this.clock);
     if (this.pendingReplay && this.clock >= this.pendingReplay.at) {

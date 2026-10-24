@@ -7,7 +7,7 @@ import { buildLadderGhost, ladderFootprint } from './ladder.js';
 import { collectStack } from '../systems/wrapping.js';
 import { flatMat } from '../util/meshes.js';
 import { spawnRagdoll } from '../systems/ragdoll.js';
-import { WorkerModel, firstPersonArm } from './worker.js';
+import { WorkerModel, firstPersonArm, firstPersonKick } from './worker.js';
 import { BLADE_CENTRE } from './forklift.js';
 import { sfx } from '../systems/audio.js';
 
@@ -53,6 +53,8 @@ export class Climber {
     kcc.setApplyImpulsesToDynamicBodies(false);
     this.kcc = kcc;
 
+    this.crouched = false;
+    this.crouchRequested = false;
     this.state = 'walk'; // 'walk' | 'ragdoll' | 'wrapped'
     this.yaw = spawn.yaw;
     this.pitch = 0;
@@ -116,7 +118,7 @@ export class Climber {
 
   get eye() {
     const t = this.body.translation();
-    return new THREE.Vector3(t.x, t.y - this.centerOff + CONFIG.climber.eyeHeight, t.z);
+    return new THREE.Vector3(t.x, t.y - this.centerOff + (this.crouched ? CONFIG.climber.crouchEyeHeight : CONFIG.climber.eyeHeight), t.z);
   }
 
   viewDir(out = new THREE.Vector3()) {
@@ -138,6 +140,8 @@ export class Climber {
     // Arms hang off a rig at the eye that follows the carry pitch, not the raw view pitch
     this.armRig = new THREE.Group();
     this.camera.add(this.armRig);
+    this.kickRig = firstPersonKick();
+    this.camera.add(this.kickRig);
     this.hands = [-1, 1].map((side) => {
       const arm = firstPersonArm(side);
       arm.traverse((o) => o.layers.set(2));
@@ -156,11 +160,51 @@ export class Climber {
     this.game.scene.add(blob);
   }
 
+  get height() {
+    return this.crouched ? CONFIG.climber.crouchHeight : CONFIG.climber.height;
+  }
+
+  crouchStep(a, active) {
+    if (this.state !== 'walk' || this.onLadder || this.holdingOn) return;
+    this.crouchRequested = active && !!a.crouchHeld;
+    if (this.crouchRequested === this.crouched) return;
+    const cfg = CONFIG.climber, feet = this.feet;
+    const nextHeight = this.crouchRequested ? cfg.crouchHeight : cfg.height;
+    // On the ground, lower the head. In the air, tuck the legs: preserve head height
+    // and raise the feet by the height difference without adding upward velocity.
+    const footLift = this.grounded ? 0 : this.height - nextHeight;
+    const nextFeetY = feet.y + footLift;
+    if (!this.crouchRequested) {
+      // Stay low until the full standing capsule fits; never stand through a shelf or box.
+      let blocked = false;
+      this.game.world.intersectionsWithShape(
+        { x: feet.x, y: nextFeetY + cfg.height / 2, z: feet.z }, { x: 0, y: 0, z: 0, w: 1 },
+        new RAPIER.Capsule((cfg.height - cfg.radius * 2) / 2, cfg.radius - 0.015),
+        () => { blocked = true; return false; }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+        COL.climberQuery, this.collider,
+      );
+      if (blocked) return;
+    }
+    this.crouched = this.crouchRequested;
+    this.halfH = (this.height - cfg.radius * 2) / 2;
+    this.centerOff = this.height / 2;
+    this.collider.setShape(new RAPIER.Capsule(this.halfH, cfg.radius));
+    this.body.setTranslation({ x: feet.x, y: nextFeetY + this.centerOff, z: feet.z }, true);
+    this.body.setNextKinematicTranslation({ x: feet.x, y: nextFeetY + this.centerOff, z: feet.z });
+    this.peakY += footLift; // changing posture alone must not count as fall distance
+  }
+
   // ---------------------------------------------------------------- per physics step
 
   preStep(a, dt, active) {
     const cfg = CONFIG.climber;
     this.jumpedThisStep = false;
+    this.crouchStep(a, active);
+    if (this.game.forklift.tipped) {
+      if (this.holdingOn) this.letGo();
+      this.onBlades = false;
+    }
+    if (this.state !== 'walk') this.draggedPallet = null;
     if (this.state === 'ragdoll') return this.ragdollStep(dt);
     if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt);
     if (this.holdingOn) {
@@ -190,7 +234,7 @@ export class Climber {
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     // Slower with a stack of boxes in his arms (a ladder on his shoulder doesn't slow him)
     const stackFactor = cfg.stackSpeed[Math.max(0, this.carriedBoxes().length - 1)] ?? 1;
-    const speed = cfg.walkSpeed * stackFactor;
+    const speed = cfg.walkSpeed * stackFactor * (this.draggedPallet ? 0.5 : 1) * (this.crouched ? cfg.crouchSpeed : 1);
     const wish = fwd.multiplyScalar(my * speed).addScaledVector(right, mx * speed);
 
     // Walking into the steps of a set-up ladder: climb on
@@ -264,8 +308,13 @@ export class Climber {
     this.uprightStep(a, dt, active);
     this.palletFlipStep(a, dt, active);
     this.rightForkliftStep(a, dt, active);
+    this.dragPalletStep(a, dt, active);
     this.puntStep(a, dt, active);
-    if (active && a.interact) {
+    if (active && a.interact && !this.draggedPallet) {
+      if (this.game.level.landingRailing.inReach(this)) {
+        this.game.level.landingRailing.kick();
+        return;
+      }
       // A box in reach comes first, even from the forks: he lets go of the carriage to take it
       if (this.holdingOn && this.target?.kind === 'box') {
         this.letGo();
@@ -304,15 +353,24 @@ export class Climber {
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     for (const lad of this.ladders()) {
       if (!lad.standing) continue;
-      const foot = lad.footPoint(0);
-      if (Math.abs(foot.y - feet.y) > 0.3) continue;
-      if (Math.hypot(foot.x - feet.x, foot.z - feet.z) < 0.55 && fwd.dot(lad.front) < -0.5) return lad;
+      // Landing on a tread should join the climb at that height, rather than requiring
+      // Dave to return to the bottom of the ladder first.
+      const local = feet.clone().sub(new THREE.Vector3().copy(lad.body.translation()))
+        .applyQuaternion(quatToThree(lad.body.rotation()).invert());
+      const height = THREE.MathUtils.clamp(local.y - 0.02, 0, CONFIG.ladder.topStep);
+      const foot = lad.footPoint(height);
+      const supported = this.support?.body.handle === lad.body.handle;
+      if (!supported && Math.abs(foot.y - feet.y) > 0.3) continue;
+      if (local.y > CONFIG.ladder.capHeight + 0.2) continue;
+      if (Math.hypot(foot.x - feet.x, foot.z - feet.z) < (supported ? 0.7 : 0.55) && fwd.dot(lad.front) < -0.5) return lad;
     }
     return null;
   }
 
   mountLadder(lad) {
-    this.onLadder = { ent: lad, h: 0, heading: lad.heading };
+    const local = this.feet.clone().sub(new THREE.Vector3().copy(lad.body.translation()))
+      .applyQuaternion(quatToThree(lad.body.rotation()).invert());
+    this.onLadder = { ent: lad, h: THREE.MathUtils.clamp(local.y - 0.02, 0, CONFIG.ladder.topStep), heading: lad.heading };
     this.relVel.set(0, 0, 0);
     this.airVel.set(0, 0, 0);
     this.vy = 0;
@@ -405,7 +463,7 @@ export class Climber {
     const cfg = CONFIG.climber;
     // Riding the forks up into something overhead
     if (lad.body.linvel().y > 0.05) {
-      const head = { x: feet.x, y: feet.y + cfg.height - 0.15, z: feet.z };
+      const head = { x: feet.x, y: feet.y + this.height - 0.15, z: feet.z };
       const hit = castRay(this.game.world, head, { x: 0, y: 1, z: 0 }, 0.2, COL.climberQuery, (c) => c.handle !== this.collider.handle && c.parent()?.handle !== lad.body.handle);
       if (hit) return this.goRagdoll('crushed', new THREE.Vector3(0, -1, 0));
     }
@@ -550,6 +608,60 @@ export class Climber {
       if (d < bestD) [best, bestD] = [lad, d];
     }
     return best;
+  }
+
+  // Only loose, upright, empty pallets can be pulled; never the pallet Dave stands on.
+  canDragPallet(pallet) {
+    if (!pallet || pallet.kind !== 'pallet' || pallet.removed || pallet.carried) return false;
+    if (this.support?.body.handle === pallet.body.handle) return false;
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(pallet.body.rotation()));
+    if (up.y < 0.9) return false;
+    const feet = this.feet, pos = pallet.body.translation();
+    if (Math.abs(pos.y - feet.y) > 0.3 || Math.hypot(pos.x - feet.x, pos.z - feet.z) > 2.1) return false;
+    if (collectStack(this.game, pallet).size > 1) return false;
+    // Also reject boxes just placed above the deck before physics establishes contact.
+    const inverse = quatToThree(pallet.body.rotation()).invert();
+    const [w, h, length] = CONFIG.objects.pallet.size;
+    return !this.game.entities.some((box) => {
+      if (box.kind !== 'box' || box.removed || box.carried) return false;
+      const local = new THREE.Vector3().copy(box.body.translation()).sub(new THREE.Vector3().copy(pos)).applyQuaternion(inverse);
+      return Math.abs(local.x) < w / 2 + box.size[0] / 2 && Math.abs(local.z) < length / 2 + box.size[2] / 2
+        && local.y + box.size[1] / 2 > h && local.y - box.size[1] / 2 < h + 0.2;
+    });
+  }
+
+  findDragPallet() {
+    if (this.state !== 'walk' || !this.grounded || this.carried || this.ladderCarry || this.onLadder || this.holdingOn || this.nearTippedForklift) return null;
+    if (this.draggedPallet && this.canDragPallet(this.draggedPallet)) return this.draggedPallet;
+    if (this.target || this.onBlades) return null;
+    const feet = this.feet, forward = this.viewDir().setY(0).normalize();
+    let best = null, distance = 1.8;
+    for (const pallet of this.game.entities) {
+      if (pallet.kind !== 'pallet') continue;
+      const delta = new THREE.Vector3().copy(pallet.body.translation()).sub(feet).setY(0);
+      const d = delta.length();
+      if (d >= distance || delta.normalize().dot(forward) < 0.25 || !this.canDragPallet(pallet)) continue;
+      best = pallet; distance = d;
+    }
+    return best;
+  }
+
+  dragPalletStep(a, dt, active) {
+    const pallet = active && a.interactHeld ? this.findDragPallet() : null;
+    if (!pallet) { this.draggedPallet = null; return; }
+    const feet = this.feet;
+    if (pallet !== this.draggedPallet) {
+      this.dragOffset = new THREE.Vector3().copy(pallet.body.translation()).sub(feet).setY(0);
+      this.draggedPallet = pallet;
+    }
+    const pos = pallet.body.translation(), velocity = pallet.body.linvel();
+    const desired = new THREE.Vector3(
+      this.velocity.x + (feet.x + this.dragOffset.x - pos.x) * 6, 0,
+      this.velocity.z + (feet.z + this.dragOffset.z - pos.z) * 6,
+    ).clampLength(0, 2.2);
+    const change = desired.sub(new THREE.Vector3(velocity.x, 0, velocity.z)).clampLength(0, 24 * dt);
+    // Pull with impulses so walls and other obstacles continue blocking the pallet.
+    pallet.body.applyImpulse(change.multiplyScalar(pallet.mass), true);
   }
 
   // An empty pallet on its side or upside down (not flat) within reach.
@@ -709,6 +821,7 @@ export class Climber {
 
   // Grab the carriage: from now on we ride it rigidly and can't be thrown off.
   grab() {
+    if (this.game.forklift.tipped) return;
     this.holdingOn = true;
     const feet = this.feet;
     this.holdLocal.copy(this.carriageLocal(feet));
@@ -824,6 +937,7 @@ export class Climber {
       m.forward += 2.2 * dt;
     }
     this.kcc.computeColliderMovement(this.collider, disp, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery);
+    this.pushLoose();
     const mv = this.kcc.computedMovement();
     const t = this.body.translation();
     this.body.setNextKinematicTranslation({ x: t.x + mv.x, y: t.y + mv.y, z: t.z + mv.z });
@@ -919,8 +1033,8 @@ export class Climber {
     const nearForks = (m, up = 0) => Math.abs(local.x) < 0.85 + m && local.z > -0.5 - m && local.z < 1.9 + m && local.y > -0.3 - m && local.y < 1.6 + m + up;
     // In the air (jumping or falling at the forks) the reach is bigger still, and higher up
     const near = this.grounded || this.holdingOn ? nearForks(0) : nearForks(0.3, 0.8);
-    this.onBlades = this.state === 'walk' && !this.carried && !this.ladderCarry && near;
-    if (this.holdingOn && (!nearForks(0.6, 0.8) || this.carried || this.state !== 'walk')) this.holdingOn = false;
+    this.onBlades = !fl0.tipped && this.state === 'walk' && !this.carried && !this.ladderCarry && near;
+    if (this.holdingOn && (fl0.tipped || !nearForks(0.6, 0.8) || this.carried || this.state !== 'walk')) this.holdingOn = false;
     if (this.holdingOn) this.onBlades = true;
     // Just grabbed on: slide the grip point to the middle of the blades (quickly, not a snap)
     if (this.holdingOn && this.holdTarget) {
@@ -1066,7 +1180,7 @@ export class Climber {
     const fl = this.game.forklift;
     let reason = null;
     this.game.world.intersectionsWithShape(
-      { x: feet.x, y: feet.y + cfg.height - 0.12, z: feet.z },
+      { x: feet.x, y: feet.y + this.height - 0.12, z: feet.z },
       { x: 0, y: 0, z: 0, w: 1 },
       new RAPIER.Ball(0.2),
       (c) => {
@@ -1132,7 +1246,8 @@ export class Climber {
         if (d >= bestD) continue;
         const flat = to.setY(0);
         // Within ~75 degrees of where Dave faces (or right up against it)
-        if (flat.length() > 0.35 && flat.normalize().dot(fwd) < 0.25) continue;
+        // Stored ladders can be taken from beside their stand without turning to aim at it.
+        if (ent.state !== 'stored' && flat.length() > 0.35 && flat.normalize().dot(fwd) < 0.25) continue;
         best = ent;
         bestD = d;
       }
@@ -1714,6 +1829,15 @@ export class Climber {
   // ---------------------------------------------------------------- per render frame
 
   updateVisuals(dt = 1 / 60) {
+    // A quick follow-through puts the right boot in the lower center of Dave's view.
+    // Camera attachment keeps it visible even when aiming a punt up or down.
+    const kick = this.kickTime == null ? -1 : (this.game.clock - this.kickTime) / 0.35;
+    this.kickRig.visible = this.state === 'walk' && kick >= 0 && kick < 1;
+    if (this.kickRig.visible) {
+      const swing = Math.sin(Math.PI * Math.pow(kick, 0.65));
+      this.kickRig.position.set(0.24 - swing * 0.08, -1.0 + swing * 0.68, -0.45 - swing * 0.18);
+      this.kickRig.rotation.set(-0.2 * swing, 0.12, -0.1 * swing);
+    }
     if (this.state === 'ragdoll') {
       this.ragdoll.sync();
       this.blob.visible = false;
@@ -1721,6 +1845,7 @@ export class Climber {
     }
     const f = this.feet;
     this.bodyMesh.position.copy(f);
+    this.bodyMesh.scale.y = this.height / CONFIG.climber.height;
     const walkSpeed = this.grounded ? Math.hypot(this.relVel.x, this.relVel.z) : 0;
     this.worker.update(dt, {
       yaw: this.yaw,

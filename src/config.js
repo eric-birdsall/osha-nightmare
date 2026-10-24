@@ -14,6 +14,9 @@ export const CONFIG = {
     height: 1.8,
     radius: 0.35,
     eyeHeight: 1.65,
+    crouchHeight: 1.0,
+    crouchEyeHeight: 0.85,
+    crouchSpeed: 0.55,
     walkSpeed: 4.0, // m/s (was 3.5)
     groundAccel: 30, // m/s² toward target walk velocity
     airAccel: 4, // limited air control

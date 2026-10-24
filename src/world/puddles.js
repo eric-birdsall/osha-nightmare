@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// Puddles: scenery only (under the leaking electrical panel, round the mystery barrels). Nothing in
+// Puddles: scenery only (under the leaking electrical panel). Nothing in
 // the warehouse is slippery: the floor grips the same everywhere.
 
 // An irregular puddle: overlapping blobs with a glossy highlight, transparent round the edge.

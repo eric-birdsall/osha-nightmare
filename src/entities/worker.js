@@ -329,3 +329,19 @@ export function firstPersonArm(side) {
   arm.userData.glove = glove;
   return arm;
 }
+
+// Camera-space trouser leg and work boot, shown only during Dave's first-person punt.
+export function firstPersonKick() {
+  const rig = new THREE.Group();
+  const part = (size, color, pos) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), flatMat(color));
+    mesh.position.set(...pos);
+    rig.add(mesh);
+  };
+  part([0.16, 0.18, 0.48], C.pants, [0, 0, -0.1]);
+  part([0.18, 0.16, 0.3], C.boot, [0, -0.015, -0.44]);
+  part([0.19, 0.035, 0.32], 0x242321, [0, -0.11, -0.44]);
+  rig.traverse((object) => object.layers.set(2));
+  rig.visible = false;
+  return rig;
+}

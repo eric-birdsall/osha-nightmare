@@ -11,11 +11,11 @@ import { LAYOUT } from './layout.js';
 // The bay's frame: origin on the wall at the middle of the bay, local +z out into the room, local
 // x along the wall. `ry` turns local into world (a truck facing out of the bay has yaw ry).
 function frame() {
-  const { wall, at, y } = LAYOUT.parking;
+  const { wall, wallLine, at, y } = LAYOUT.parking;
   const { halfX, halfZ } = LAYOUT.room;
   const f = {
     north: { x: at, z: -halfZ, ry: 0 },
-    south: { x: at, z: halfZ, ry: Math.PI },
+    south: { x: at, z: wallLine ?? halfZ, ry: Math.PI },
     west: { x: -halfX, z: at, ry: Math.PI / 2 },
     east: { x: halfX, z: at, ry: -Math.PI / 2 },
   }[wall];

@@ -7,7 +7,7 @@ import { prop } from './props.js';
 
 // The mezzanine: a steel deck on columns along the south wall, holding the backstock racks H/I.
 // Dave climbs the stairs at its east end; the forklift can lift a pallet (or Dave on one) up to the
-// gap in its front railing, the pallet gate. The deck's east edge is railed except where it meets
+// removable railing at the stair landing. The deck's east edge is railed except where it meets
 // the top of the stairs. Under it is the break room: toilets, a water fountain, vending machines,
 // a table and chairs and a microwave on a counter.
 
@@ -39,7 +39,7 @@ function railing(game, x0, z0, x1, z1, y) {
   if (len < 0.1) return;
   const ry = Math.atan2(-(z1 - z0), x1 - x0);
   const [mx, mz] = [(x0 + x1) / 2, (z0 + z1) / 2];
-  game.world.createCollider(
+  const collider = game.world.createCollider(
     // As tall as it looks (1.1 m): Dave can jump and scramble over it; the forklift can't
     RAPIER.ColliderDesc.cuboid(len / 2, 0.55, 0.05)
       .setTranslation(mx, y + 0.55, mz)
@@ -65,6 +65,7 @@ function railing(game, x0, z0, x1, z1, y) {
   toe.position.y = 0.06;
   g.add(toe);
   game.scene.add(g);
+  return { mesh: g, collider };
 }
 
 // A canvas-textured plane: draw(g, w, h) paints it
@@ -88,7 +89,7 @@ export function mezzanineStairs() {
 
 export function buildMezzanine(game) {
   const m = LAYOUT.mezzanine;
-  const { x0, x1, z0, z1, y, gate } = m;
+  const { x0, x1, z0, z1, y } = m;
   const [cx, cz, w, d] = [(x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0];
   // Deck: a steel plate on the columns, with yellow paint along its front edge
   solid(game, [w, DECK_T, d], [cx, y - DECK_T / 2, cz]);
@@ -103,29 +104,18 @@ export function buildMezzanine(game) {
     add(game, boxMesh(0.2, y - DECK_T, 0.2, STEEL), x, (y - DECK_T) / 2, z0 + 0.15);
   }
   add(game, boxMesh(w, 0.3, 0.15, STEEL), cx, y - DECK_T - 0.15, z0 + 0.08);
-  // Railings: along the front with the pallet gate left open, and down the east edge as far as
+  // Permanent railing along the whole front, and down the east edge as far as
   // the top of the stairs
   const e = 0.06;
-  railing(game, x0, z0 + e, gate.from, z0 + e, y);
-  railing(game, gate.to, z0 + e, x1, z0 + e, y);
+  railing(game, x0, z0 + e, x1, z0 + e, y);
   const st = mezzanineStairs();
   railing(game, x1 - e, z0, x1 - e, st.top, y); // the landing joins the deck past here
-  // The pallet gate: hazard stripes on the deck edge and a sign hanging over it
-  const stripes = new THREE.Mesh(new THREE.PlaneGeometry(gate.to - gate.from, 0.3), new THREE.MeshBasicMaterial({ color: 0x16171a }));
-  stripes.rotation.x = -Math.PI / 2;
-  add(game, stripes, (gate.from + gate.to) / 2, y + 0.005, z0 + 0.25);
-  for (let x = gate.from + 0.2; x < gate.to - 0.1; x += 0.5) {
-    const s = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.3), new THREE.MeshBasicMaterial({ color: YELLOW }));
-    s.rotation.set(-Math.PI / 2, 0, 0.6);
-    add(game, s, x, y + 0.006, z0 + 0.25);
-  }
-  add(game, labelPlane('PALLET DROP · MAX 500 KG', 2.6, 0.3, { bg: '#f5c518', fg: '#16171a' }), (gate.from + gate.to) / 2, y - DECK_T - 0.25, z0 - 0.02).rotation.y = Math.PI;
   // Signs on the front of the deck
   add(game, labelPlane('MEZZANINE · BACKSTOCK', 3.2, 0.3, { bg: '#1d3f80', fg: '#ffffff' }), x0 + 6, y - DECK_T - 0.15, z0 - 0.02).rotation.y = Math.PI;
   add(game, labelPlane('BREAK ROOM', 2.0, 0.3, { bg: '#1a7f37', fg: '#ffffff' }), x0 + 11, y - DECK_T - 0.15, z0 - 0.02).rotation.y = Math.PI;
 
   // Stairs up the east end: steps solid to the floor, yellow nosing, a handrail on the open side,
-  // and a landing at deck height at the top that joins the deck
+  // and a solid landing at deck height with an open outer edge for forklift deliveries
   const sx = (st.x0 + st.x1) / 2;
   for (let i = 1; i < STEPS; i++) {
     const top = (y * i) / STEPS;
@@ -137,9 +127,10 @@ export function buildMezzanine(game) {
     add(game, nose, sx, top + 0.004, st.z0 + (i - 1) * TREAD + 0.03);
   }
   const landing = st.z1 - st.top;
-  solid(game, [STAIRS_W, DECK_T, landing], [sx, y - DECK_T / 2, st.top + landing / 2]);
-  add(game, boxMesh(STAIRS_W, DECK_T, landing, 0x7d838a), sx, y - DECK_T / 2, st.top + landing / 2);
-  add(game, boxMesh(0.15, y - DECK_T, 0.15, STEEL), st.x1 - 0.1, (y - DECK_T) / 2, st.z1 - 0.1); // its post
+  // Fill the landing all the way to the floor, matching the solid stair treads.
+  // The visible block and collider share the same dimensions so there is no walk-through gap.
+  solid(game, [STAIRS_W, y, landing], [sx, y / 2, st.top + landing / 2]);
+  add(game, boxMesh(STAIRS_W, y, landing, 0x7d838a), sx, y / 2, st.top + landing / 2);
   const nose = new THREE.Mesh(new THREE.PlaneGeometry(STAIRS_W, 0.08), new THREE.MeshBasicMaterial({ color: YELLOW }));
   nose.rotation.x = -Math.PI / 2;
   add(game, nose, sx, y + 0.004, st.top + 0.04);
@@ -149,9 +140,39 @@ export function buildMezzanine(game) {
   add(game, rail, st.x1 - 0.05, y / 2 + 1.0, st.z0 + run / 2);
   for (const [z, h] of [[st.z0 + 0.1, 0], [st.top - 0.1, y]]) add(game, boxMesh(0.06, 1.0, 0.06, YELLOW, { edges: false }), st.x1 - 0.05, h + 0.5, z);
   solid(game, [0.1, y + 1.0, run], [st.x1 - 0.05, (y + 1.0) / 2, st.z0 + run / 2]); // the handrail side is closed off
-  railing(game, st.x1 - e, st.top, st.x1 - e, st.z1, y); // and the landing's open side
+  // Dave kicks this section off the landing before Ralph delivers a pallet.
+  const removable = railing(game, st.x1 - e, st.top, st.x1 - e, st.z1, y);
+  const center = new THREE.Vector3(st.x1 - e, y + 0.55, st.top + landing / 2);
+  let open = false;
+  const landingRailing = {
+    get open() { return open; },
+    inReach(climber) {
+      if (open) return false;
+      if (climber.state !== 'walk' || climber.carried || climber.ladderCarry || climber.onLadder || climber.holdingOn) return false;
+      const feet = climber.feet;
+      // Only operate from deck height, within reach of the section (including its ends).
+      const nearZ = THREE.MathUtils.clamp(feet.z, st.top, st.z1);
+      return Math.abs(feet.y - y) < 0.45 && Math.hypot(feet.x - center.x, feet.z - nearZ) < 1.5;
+    },
+    kick() {
+      if (open) return;
+      open = true;
+      removable.collider.setEnabled(false);
+      const mesh = removable.mesh;
+      const yaw = mesh.rotation.y;
+      // Detach just beyond the deck lip so the feet clear it as Dave kicks it outward.
+      const debris = prop(game, 'Kicked landing railing', mesh,
+        [mesh.position.x + 0.18, y + 0.03, mesh.position.z], yaw,
+        [{ half: [landing / 2 + 0.035, 0.55, 0.05], pos: [0, 0.55, 0] }], 18);
+      debris.body.enableCcd(true);
+      debris.body.setLinvel({ x: 2.8, y: 0.6, z: 0 }, true);
+      debris.body.setAngvel({ x: 0, y: 0.4, z: -3 }, true);
+      game.toast('Dave kicked the railing off the landing', 2);
+    },
+  };
 
   buildBreakRoom(game);
+  return landingRailing;
 }
 
 // ---------------------------------------------------------------- the break room

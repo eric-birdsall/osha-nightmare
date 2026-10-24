@@ -663,7 +663,7 @@ export class Forklift {
     group.position.copy(pos);
     group.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(eye, pos, new THREE.Vector3(0, 1, 0)));
     root.add(group);
-    this.clipboard = { canvas, tex, key: null };
+    this.clipboard = { canvas, tex, group, key: null };
   }
 
   drawClipboard() {

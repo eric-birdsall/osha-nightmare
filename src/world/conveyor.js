@@ -5,7 +5,7 @@ import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { LAYOUT } from './layout.js';
 
 // Powered roller conveyors (LAYOUT.conveyors): waist-high belts that carry anything resting on
-// them north at their `speed`, and drop it off the north end. Boxes, pallets, barrels, ladders,
+// them north at their `speed`, and drop it off the north end. Boxes, pallets, ladders,
 // and Dave if he climbs on (he rides it; see Climber's support velocity).
 
 const YELLOW = 0xf5c518;
@@ -98,8 +98,11 @@ function buildConveyor(game, c) {
   // pallet instead of sailing over it
   if (c.backstop) {
     const bz = z0 - 0.75 - 0.5 - 0.06;
-    add(boxMesh(1.3, 1.2, 0.08, YELLOW), cx, 0.6, bz);
-    add(boxMesh(1.3, 0.2, 0.09, 0x16171a, { edges: false }), cx, 1.05, bz);
+    // Build the stripe as its own section: overlapping boxes shared coplanar end faces,
+    // making the black stripe flicker against the yellow panel when viewed from the side.
+    add(boxMesh(1.3, 0.95, 0.08, YELLOW, { edges: false }), cx, 0.475, bz);
+    add(boxMesh(1.3, 0.2, 0.08, 0x16171a, { edges: false }), cx, 1.05, bz);
+    add(boxMesh(1.3, 0.05, 0.08, YELLOW, { edges: false }), cx, 1.175, bz);
     game.world.createCollider(RAPIER.ColliderDesc.cuboid(0.65, 0.6, 0.04).setTranslation(cx, 0.6, bz).setFriction(0.4).setCollisionGroups(COL.static), game.staticBody);
   }
   const velocity = new THREE.Vector3(0, 0, -speed); // north

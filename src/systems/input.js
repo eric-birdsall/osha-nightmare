@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
 
 // Standard gamepad mapping indices
-const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, UP: 12, DOWN: 13 };
+const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, L3: 10, UP: 12, DOWN: 13 };
 
 function deadzone2(x, y) {
   const dz = CONFIG.input.deadZone;
@@ -13,7 +13,7 @@ function deadzone2(x, y) {
 
 const blank = () => ({
   moveX: 0, moveY: 0, lookX: 0, lookY: 0,
-  jump: false, interact: false, interactHeld: false, toss: false, tossHeld: false,
+  jump: false, crouchHeld: false, interact: false, interactHeld: false, toss: false, tossHeld: false,
   steer: 0, throttle: 0, brake: 0, liftUp: 0, liftDown: 0, drift: false,
   swap: false, pause: false, respawnHeld: false,
 });
@@ -23,6 +23,8 @@ const blank = () => ({
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
+    this.lastDevice = 'kbm';
+    this.keyboardActivity = false;
     this.keys = new Set();
     this.pressed = new Set();
     this.mouseDX = 0;
@@ -39,6 +41,7 @@ export class Input {
     }
 
     addEventListener('keydown', (e) => {
+      this.keyboardActivity = true;
       if (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
       if (!e.repeat) this.pressed.add(e.code);
       this.keys.add(e.code);
@@ -49,7 +52,7 @@ export class Input {
     // browsers, or Chrome's cooldown right after Esc), drag with a button held instead.
     this.dragging = false;
     this.lockFailed = false;
-    canvas.addEventListener('mousedown', () => (this.dragging = true));
+    canvas.addEventListener('mousedown', () => { this.dragging = true; this.keyboardActivity = true; });
     addEventListener('mouseup', () => (this.dragging = false));
     addEventListener('blur', () => (this.dragging = false));
     document.addEventListener('pointerlockerror', () => (this.lockFailed = true));
@@ -58,6 +61,7 @@ export class Input {
     });
     addEventListener('mousemove', (e) => {
       if (this.pointerLocked || this.dragging) {
+        if (e.movementX || e.movementY) this.keyboardActivity = true;
         this.mouseDX += e.movementX;
         this.mouseDY += e.movementY;
       }
@@ -78,9 +82,12 @@ export class Input {
     const list = navigator.getGamepads ? [...navigator.getGamepads()].filter((p) => p && p.connected) : [];
     this.pads = list;
     this.padEdges.clear();
+    if (this.keyboardActivity || this.keys.size) this.lastDevice = 'kbm';
     for (const p of list) {
       const prev = this.padPrev.get(p.index) || { buttons: [], up: false, down: false };
       const now = p.buttons.map((b) => b.pressed);
+      const active = p.buttons.some((b) => b.pressed || b.value > 0.25) || p.axes.some((axis) => Math.abs(axis) > CONFIG.input.deadZone);
+      if (active && !this.keyboardActivity && !this.keys.size) this.lastDevice = `pad${list.indexOf(p)}`;
       const sy = p.axes[1] || 0;
       const up = sy < -0.6;
       const down = sy > 0.6;
@@ -93,6 +100,9 @@ export class Input {
       this.padEdges.set(p.index, edges);
       this.padPrev.set(p.index, { buttons: now, up, down });
     }
+    if (this.lastDevice !== 'kbm' && !this.pad(this.lastDevice)) this.lastDevice = 'kbm';
+    this.keyboardActivity = false;
+    document.body.dataset.input = this.lastDevice === 'kbm' ? 'keyboard' : 'controller';
   }
 
   // Clear per-frame edges and mouse deltas (after the first physics step consumed them).
@@ -147,6 +157,7 @@ export class Input {
         a.lookX += this.mouseDX * cfg.lookSensitivity + this.keyLookX() * cfg.stickLookSpeed * this.dt;
         a.lookY += this.mouseDY * cfg.lookSensitivity + this.keyLookY() * cfg.stickLookSpeed * this.dt;
         a.jump ||= this.pressed.has('Space');
+        a.crouchHeld ||= !!(this.key('ControlLeft') || this.key('ControlRight'));
         a.interact ||= this.pressed.has('KeyE');
         a.interactHeld ||= this.key('KeyE') > 0;
         a.toss ||= this.pressed.has('KeyR');
@@ -163,6 +174,7 @@ export class Input {
         a.lookX += lx * cfg.stickLookSpeed * this.dt;
         a.lookY += ly * cfg.stickLookSpeed * this.dt;
         a.jump ||= this.padPressed(p, BTN.A);
+        a.crouchHeld ||= !!p.buttons[BTN.L3]?.pressed;
         a.interact ||= this.padPressed(p, BTN.X);
         a.interactHeld ||= !!p.buttons[BTN.X]?.pressed;
         a.toss ||= this.padPressed(p, BTN.RB);
