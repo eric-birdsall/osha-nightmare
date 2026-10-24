@@ -76,7 +76,7 @@ export const CONFIG = {
     steerMax: deg(60),
     steerRate: deg(140), // how fast the rear wheels turn
     maxYawRate: 1.7,
-    // Drifting: hold Space / B while turning at speed and the rear tyres let go
+    // Drifting: hold Space / RT while turning at speed and the rear tyres let go
     drift: {
       minSpeed: 2.0, // m/s before a drift can start
       gripLatAccel: 6.5, // m/s²: how hard a normal (grip) turn can corner, so fast turns run wide

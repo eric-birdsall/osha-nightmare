@@ -212,15 +212,15 @@ export class Input {
         const p = this.pad(d);
         if (!p) continue;
         // Left stick drives: up = forward, down = brake then reverse, sideways = steer.
-        // (The triggers still work as accelerator and brake.)
+        // RT drifts; LT also works as a brake.
         const [sx, sy] = deadzone2(p.axes[0] || 0, p.axes[1] || 0);
         const [lx, ly] = deadzone2(p.axes[2] || 0, p.axes[3] || 0);
         a.steer += sx;
-        a.throttle = Math.max(a.throttle, -sy, p.buttons[BTN.RT]?.value || 0);
+        a.throttle = Math.max(a.throttle, -sy);
         a.brake = Math.max(a.brake, sy, p.buttons[BTN.LT]?.value || 0);
         a.liftUp = Math.max(a.liftUp, p.buttons[BTN.RB]?.pressed ? 1 : 0);
         a.liftDown = Math.max(a.liftDown, p.buttons[BTN.LB]?.pressed ? 1 : 0);
-        a.drift ||= !!p.buttons[BTN.B]?.pressed;
+        a.drift ||= !!p.buttons[BTN.RT]?.pressed || (p.buttons[BTN.RT]?.value || 0) > 0.25;
         a.respawnHeld ||= !!p.buttons[BTN.Y]?.pressed;
         a.lookX += lx * cfg.stickLookSpeed * this.dt;
         a.lookY += ly * cfg.stickLookSpeed * this.dt;
