@@ -13,6 +13,11 @@ import { quatToThree } from '../physics.js';
 import { disposeTree } from '../util/meshes.js';
 import { sfx } from './audio.js';
 
+// The in-game incident banner: INCIDENT in the UI kit's red block lettering (src/ui/osha-ui.css), on its
+// metal plate, with what happened underneath
+const INCIDENT_BANNER = (line) =>
+  `<span class="osha-text osha-text--red" data-text="INCIDENT">INCIDENT</span><small>${line}</small>`;
+
 // The crew: Dave climbs, Ralph drives. Each incident type has a few lines picked at random;
 // 'again' lines are used once that same thing has already happened this shift.
 const INCIDENT_LINES = {
@@ -367,7 +372,7 @@ export class Game {
       where: describeLocation(at),
     };
     this.lastIncident = incident;
-    this.hud?.banner(`⚠ INCIDENT ⚠<small>${incident.line}</small>`);
+    this.hud?.banner(INCIDENT_BANNER(incident.line));
     // Queue the CCTV replay once things have had a moment to fall over
     if (!this.replay && !this.pendingReplay && !this.report) {
       this.pendingReplay = { incidentTime: this.clock, at: this.clock + CONFIG.replay.delay, incident };
@@ -767,7 +772,7 @@ export class Game {
         run.byRalph ||= byRalph;
         run.incident.line = rackDownLine(run.rows, run.byRalph, false);
         run.incident.culprit = run.byRalph ? 'Ralph' : undefined;
-        this.hud?.banner(`⚠ INCIDENT ⚠<small>${run.incident.line}</small>`);
+        this.hud?.banner(INCIDENT_BANNER(run.incident.line));
         continue;
       }
       const again = (this.incidentCounts.rackDown = (this.incidentCounts.rackDown || 0) + 1) > 1;

@@ -101,23 +101,11 @@ body {
   margin: 4px auto 10px;
   filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
 }
-/* Headings are caution placards: black stencil on yellow */
-h2 {
-  display: inline-block;
-  margin: 0 0 6px;
-  padding: 4px 22px 2px;
-  font-family: var(--stencil);
-  font-weight: 400;
-  font-size: 30px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--hazard-k);
-  background: var(--hazard-y);
-  border: 3px solid var(--hazard-k);
-  box-shadow: 0 0 0 3px var(--hazard-y);
-}
-h2.big {
-  font-size: 42px;
+/* Screen headings (Order Complete, Controls) in the UI kit's distressed block lettering
+   (src/ui/osha-ui.css) */
+.screen-title.osha-text {
+  font-size: 46px;
+  margin: 2px 0 10px;
 }
 .subtitle {
   margin: 4px 0 2px;
@@ -190,6 +178,26 @@ h2.big {
   top: 50%;
   transform: translateY(-50%);
   font-size: 16px;
+}
+/* Menu buttons in the UI kit's block lettering: ivory on the dark buttons, dark ink on
+   the highlighted yellow one */
+.btn .osha-text {
+  font-size: 22px; /* QUIT TO TITLE just clears the focus arrow in the narrow pause menu */
+  letter-spacing: 1px;
+  white-space: nowrap; /* the kit's paint layer doesn't wrap, so neither may the label */
+  vertical-align: middle;
+}
+.btn:hover .osha-text,
+.btn.focus .osha-text {
+  --osha-ink: #22252a;
+  --osha-glint: #4a4f57;
+  --osha-shade: #111214;
+  -webkit-text-stroke: 0;
+  text-shadow: 0.03em 0.04em 0 rgba(0, 0, 0, 0.25);
+}
+.btn:hover .osha-text::after,
+.btn.focus .osha-text::after {
+  display: none; /* no chipped paint on the dark-on-yellow label: it would read as noise */
 }
 .pads {
   color: #8b96a3;
@@ -751,24 +759,26 @@ kbd {
   opacity: 1;
 }
 .banner {
+  /* The UI kit's metal plate (osha-plate) with INCIDENT in its red block lettering */
   position: absolute;
   left: 50%;
   top: 30%;
   transform: translate(-50%, -50%) scale(0.6);
-  background: #c62828;
+  flex-direction: column;
+  padding: 10px 30px 14px;
   color: #fff;
-  padding: 10px 26px;
-  border-radius: 10px;
-  font-weight: 900;
-  font-size: 34px;
+  font-size: 16px;
   text-align: center;
   opacity: 0;
-  border: 4px solid #fff;
   transition: opacity 0.2s, transform 0.25s cubic-bezier(0.3, 1.8, 0.5, 1);
+}
+.banner .osha-text {
+  font-size: 48px;
 }
 .banner small {
   display: block;
-  font-size: 15px;
+  margin-top: 6px;
+  font-size: 16px;
   font-weight: 700;
 }
 .banner.on {
@@ -1055,14 +1065,6 @@ kbd {
   letter-spacing: 1px;
   text-transform: uppercase;
   background: rgba(17, 18, 20, 0.92);
-}
-.banner {
-  border-radius: 0;
-  border: 8px solid;
-  border-image: var(--hazard) 8;
-  font-family: var(--stencil);
-  font-weight: 400;
-  letter-spacing: 1px;
 }
 .banner small {
   font-family: var(--ui);

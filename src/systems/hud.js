@@ -20,7 +20,7 @@ const VIEW_HTML = (role) => `
   <div class="holdring"><svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="18"/><circle class="fil" cx="22" cy="22" r="18"/></svg></div>
   <div class="rolelabel">${role === 'climber' ? 'DAVE · CLIMBER' : 'RALPH · DRIVER'}</div>
   <div class="toast"></div>
-  <div class="banner"></div>
+  <div class="banner osha-plate"></div>
   <div class="devicehint"></div>
   <div class="fade"></div>
 `;

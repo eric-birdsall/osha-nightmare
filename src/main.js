@@ -89,7 +89,10 @@ function menuNav() {
 }
 
 function refreshInvert() {
-  for (const b of document.querySelectorAll('[data-act="invert"]')) b.textContent = `Invert Look: ${input.invertY ? 'On' : 'Off'}`;
+  for (const b of document.querySelectorAll('[data-act="invert"] .osha-text')) {
+    // Kit lettering: its chipped-paint layer reads data-text, so keep both in step
+    b.textContent = b.dataset.text = `INVERT LOOK: ${input.invertY ? 'ON' : 'OFF'}`;
+  }
 }
 refreshInvert();
 

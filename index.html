@@ -8,8 +8,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Saira+Stencil+One&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Black+Ops+One&family=Saira+Stencil+One&display=swap"
     />
+    <link rel="stylesheet" href="/src/ui/osha-ui.css" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -22,9 +23,9 @@
           <img class="logo" src="/src/logo-menu.png" alt="Ralph &amp; Dave's OSHA Nightmare" width="960" height="480" />
           <p class="subtitle">Warehouse safety simulator</p>
           <p class="fine">First playable build · Authorized personnel only</p>
-          <button class="btn" data-act="single">Single Player</button>
-          <button class="btn" data-act="coop">Couch Co-op</button>
-          <button class="btn" data-act="controls">Controls</button>
+          <button class="btn" data-act="single"><span class="osha-text osha-text--ivory" data-text="SINGLE PLAYER">SINGLE PLAYER</span></button>
+          <button class="btn" data-act="coop"><span class="osha-text osha-text--ivory" data-text="COUCH CO-OP">COUCH CO-OP</span></button>
+          <button class="btn" data-act="controls"><span class="osha-text osha-text--ivory" data-text="CONTROLS">CONTROLS</span></button>
           <p class="pads"></p>
         </div>
       </div>
@@ -33,13 +34,13 @@
         <div class="panel wide">
           <div class="cols">
             <div class="menu">
-              <h2>Paused</h2>
+              <div class="screen-title osha-text osha-text--yellow" data-text="PAUSED">PAUSED</div>
               <p class="fine">Shift on hold · Machinery idle</p>
-              <button class="btn" data-act="resume">Resume</button>
-              <button class="btn" data-act="restart">Restart</button>
-              <button class="btn coop-only" data-act="swaproles">Swap Roles</button>
-              <button class="btn" data-act="controls">Controls</button>
-              <button class="btn" data-act="quit">Quit to Title</button>
+              <button class="btn" data-act="resume"><span class="osha-text osha-text--ivory" data-text="RESUME">RESUME</span></button>
+              <button class="btn" data-act="restart"><span class="osha-text osha-text--ivory" data-text="RESTART">RESTART</span></button>
+              <button class="btn coop-only" data-act="swaproles"><span class="osha-text osha-text--ivory" data-text="SWAP ROLES">SWAP ROLES</span></button>
+              <button class="btn" data-act="controls"><span class="osha-text osha-text--ivory" data-text="CONTROLS">CONTROLS</span></button>
+              <button class="btn" data-act="quit"><span class="osha-text osha-text--ivory" data-text="QUIT TO TITLE">QUIT TO TITLE</span></button>
             </div>
             <div class="map">
               <div class="map-head">FLOOR PLAN · BUILDING 1</div>
@@ -52,21 +53,21 @@
 
       <div id="complete" class="screen hidden">
         <div class="panel">
-          <h2 class="big">ORDER COMPLETE</h2>
+          <div class="screen-title osha-text osha-text--yellow" data-text="ORDER COMPLETE">ORDER COMPLETE</div>
           <div class="stamp">SHIPPED</div>
           <div class="stats">
             <div><span>Time</span><b id="c-time">00:00</b></div>
             <div><span>Incidents</span><b id="c-falls">0</b></div>
           </div>
           <p class="tag" id="c-quip"></p>
-          <button class="btn" data-act="restart">Restart</button>
-          <button class="btn" data-act="quit">Quit to Title</button>
+          <button class="btn" data-act="restart"><span class="osha-text osha-text--ivory" data-text="RESTART">RESTART</span></button>
+          <button class="btn" data-act="quit"><span class="osha-text osha-text--ivory" data-text="QUIT TO TITLE">QUIT TO TITLE</span></button>
         </div>
       </div>
 
       <div id="controls" class="screen hidden">
         <div class="panel wide">
-          <h2>Controls</h2>
+          <div class="screen-title osha-text osha-text--yellow" data-text="CONTROLS">CONTROLS</div>
           <p class="fine">Safe operating procedure · Read before operating equipment</p>
           <div class="cols">
             <table>
@@ -103,8 +104,8 @@
             (the clipboard says which: its door is up and its lamp is green).
           </p>
           <div class="ctl-btns">
-            <button class="btn" data-act="invert">Invert Look: Off</button>
-            <button class="btn" data-act="back">Back</button>
+            <button class="btn" data-act="invert"><span class="osha-text osha-text--ivory" data-text="INVERT LOOK: OFF">INVERT LOOK: OFF</span></button>
+            <button class="btn" data-act="back"><span class="osha-text osha-text--ivory" data-text="BACK">BACK</span></button>
           </div>
         </div>
       </div>

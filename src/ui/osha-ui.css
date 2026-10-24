@@ -1,0 +1,88 @@
+/* OSHA Nightmare UI kit (industrial typography). Its font, Black Ops One, loads with the other
+   Google Fonts in index.html: an @import here would be dropped once Vite bundles the CSS. */
+
+:root {
+  --osha-yellow: #ffcb05;
+  --osha-ivory: #f4eee3;
+  --osha-red: #df211c;
+  --osha-outline: #18191b;
+  --osha-metal: #292d30;
+  --osha-depth: 0.075em;
+}
+
+/* Designed for DOM / HTML-overlay UI in a Vite + Three.js game. */
+.osha-text {
+  --osha-ink: var(--osha-yellow);
+  --osha-glint: color-mix(in srgb, var(--osha-ink), white 20%);
+  --osha-shade: color-mix(in srgb, var(--osha-ink), black 22%);
+  font-family: 'Black Ops One', Impact, sans-serif;
+  font-weight: 400;
+  font-size: clamp(2rem, 7vw, 7rem);
+  line-height: 1.07;
+  letter-spacing: .006em;
+  text-transform: uppercase;
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+  color: var(--osha-ink);
+  -webkit-text-stroke: .018em #201b17;
+  text-shadow:
+    .012em .012em 0 var(--osha-glint),
+    .028em .035em 0 var(--osha-shade),
+    .045em .055em 0 #7d5312,
+    .06em .075em 0 #35271d,
+    .078em .095em 0 #131518,
+    .09em .115em .03em rgba(0,0,0,.85);
+}
+
+/* Optional chipped-paint layer; use data-text matching visible text. */
+.osha-text::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  white-space: pre;
+  color: transparent;
+  background: linear-gradient(170deg, var(--osha-glint), var(--osha-ink) 37%, var(--osha-shade) 88%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-stroke: 0;
+  -webkit-mask-image: url('./assets/heavy-distress-mask.svg');
+  mask-image: url('./assets/heavy-distress-mask.svg');
+  -webkit-mask-size: 390px 132px;
+  mask-size: 390px 132px;
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  pointer-events: none;
+}
+
+.osha-text--ivory { --osha-ink: var(--osha-ivory); }
+.osha-text--red { --osha-ink: var(--osha-red); }
+.osha-text--yellow { --osha-ink: var(--osha-yellow); }
+.osha-text--small { font-size: clamp(1.1rem, 3vw, 2.7rem); }
+.osha-text--medium { font-size: clamp(1.7rem, 5vw, 4.7rem); }
+
+/* Industrial sign or button frame; no scenery/background included. */
+.osha-plate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: .23em .52em .39em;
+  background: linear-gradient(152deg, #484849 0%, #22262a 38%, #111418 100%);
+  border: .14em solid #f5c60d;
+  outline: .12em solid #111;
+  box-shadow: 0 .18em 0 #080909, 0 .27em .32em #0009, inset 0 0 0 .055em #111;
+  clip-path: polygon(2% 0,98% 0,100% 13%,100% 87%,98% 100%,2% 100%,0 87%,0 13%);
+}
+.osha-hazard {
+  --stripe-size: 48px;
+  border-image: repeating-linear-gradient(125deg,#111 0 17px,#f8c617 17px 34px) 10;
+}
+.osha-button {
+  cursor: pointer;
+  font: inherit;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+.osha-button:hover { transform: translateY(-3px); filter: brightness(1.08); }
+.osha-button:active { transform: translateY(3px); }
+.osha-button:focus-visible { outline: 3px solid white; outline-offset: 7px; }
+@media (prefers-reduced-motion: reduce) { .osha-button { transition: none; } }
