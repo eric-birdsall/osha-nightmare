@@ -11,11 +11,11 @@ import { LAYOUT } from '/src/world/layout.js';
 import { boxLook } from '/src/entities/box.js';
 import { CONFIG } from '/src/config.js';
 
-export const VERSION = 1;
+export const VERSION = 3;
 const SEED = 20261024;
 
 // What each order asks for: rack, bay (1-6 from the west end), shelf (1 = bottom), quantity, how
-// many short at the pick face (the rest is backstock on the mezzanine), FRAGILE or not, and whether
+// many short at the pick face (the rest is pallet backstock along the West wall), FRAGILE or not, and whether
 // a look-alike decoy may sit beside it. Five rising in difficulty; no two share a SKU or a slot.
 const ORDER_SPECS = [
   {
@@ -38,8 +38,8 @@ const ORDER_SPECS = [
     title: 'Top shelf',
     dock: 'Dock 1',
     lines: [
-      { rack: 'D', bay: 2, shelf: 2, qty: 2, short: 0, fragile: false, decoy: true },
-      { rack: 'B', bay: 5, shelf: 3, qty: 1, short: 0, fragile: false, decoy: true },
+      { rack: 'H', bay: 1, shelf: 3, qty: 2, short: 0, fragile: false, decoy: true },
+      { rack: 'I', bay: 1, shelf: 5, qty: 1, short: 0, fragile: false, decoy: true },
     ],
   },
   {
@@ -115,8 +115,8 @@ export async function bake() {
   const faces = {}; // "A-1-1" -> [spot | null, spot | null, spot | null]
   const signs = {}; // pick face -> backstock location
   const taken = (c) => c in faces;
-  const mezz = racks.filter((r) => r.base).map((r) => r.name);
-  const main = racks.filter((r) => !r.base).map((r) => r.name);
+  const high = racks.filter((r) => r.palletFromShelf != null).map((r) => r.name);
+  const main = racks.filter((r) => r.palletFromShelf == null).map((r) => r.name);
   const freeFace = (names, shelf) => {
     for (;;) {
       const name = pick(names);
@@ -127,6 +127,12 @@ export async function bake() {
   };
   // A pick face holding `count` of `sku` (middle first), a gap if it's short, maybe a decoy
   const fillFace = (c, sku, count, { gap, decoy }) => {
+    const [name, , shelf] = c.split('-');
+    const rack = racks.find(r => r.name === name);
+    if (rack.palletFromShelf != null && Number(shelf) > rack.palletFromShelf) {
+      faces[c] = Array.from({ length: 6 }, () => spot(sku, sku, 'small'));
+      return;
+    }
     const spots = [null, null, null];
     for (const i of [1, 0, 2].slice(0, count)) spots[i] = spot(sku, sku, 'medium');
     const free = [0, 1, 2].filter((i) => !spots[i]);
@@ -139,10 +145,10 @@ export async function bake() {
     for (const i of free) spots[i] = spot(newSku()); // the rest of the face: ordinary stock
     faces[c] = spots;
   };
-  // A full row of `sku` on a mezzanine rack's bottom shelf: where a short face's rest is kept
+  // A full row of `sku` on an upper West-wall pallet deck: where a short face's rest is kept
   const backstockRow = (sku) => {
-    const c = freeFace(mezz, 0);
-    faces[c] = [spot(sku, sku, 'medium'), spot(sku, sku, 'medium'), spot(sku, sku, 'medium')];
+    const c = freeFace(high, 2 + Math.floor(rand() * 3));
+    faces[c] = Array.from({ length: 6 }, () => spot(sku, sku, 'small'));
     return c;
   };
 
@@ -176,7 +182,12 @@ export async function bake() {
     for (let b = 0; b < r.bays; b++) {
       for (let s = 0; s < r.shelves.length; s++) {
         const c = code(r.name, b, s);
-        if (!taken(c)) faces[c] = [spot(newSku()), spot(newSku()), spot(newSku())];
+        if (!taken(c)) {
+          if (r.palletFromShelf != null && s >= r.palletFromShelf) {
+            const sku = newSku();
+            faces[c] = Array.from({ length: 6 }, () => spot(sku, sku, 'small'));
+          } else faces[c] = [spot(newSku()), spot(newSku()), spot(newSku())];
+        }
       }
     }
   }

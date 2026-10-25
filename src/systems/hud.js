@@ -164,7 +164,7 @@ export class Hud {
         let p = '';
         const key = game.keyHint(role, 'interact');
         if (c.state === 'wrapped') p = 'You are wrapped. Wait for it…';
-        else if (game.level.landingRailing.inReach(c)) p = `Kick railing off <kbd>${key}</kbd>`;
+
         else if (c.findDragPallet()) p = c.draggedPallet ? `Dragging pallet · release <kbd>${key}</kbd> to let go` : `Drag empty pallet: hold <kbd>${key}</kbd> and move`;
         else if (c.holdingOn && c.target?.kind !== 'box') p = `Holding on · Let go <kbd>${key}</kbd>`;
         else if (c.onLadder && !c.carried && !c.target) {
@@ -235,8 +235,9 @@ export class Hud {
         const f = game.forklift;
         // Ralph owns recovery, including when the truck is on its side.
         const tip = f.tipped ? `Forklift tipped · hold <kbd>${game.keyHint('driver', 'reset')}</kbd> to reset upright in parking` : '';
-        v.prompt.innerHTML = tip;
-        v.prompt.style.display = tip ? '' : 'none';
+        const storageHint = game.level.storage?.hint(f) || '';
+        v.prompt.innerHTML = tip || storageHint;
+        v.prompt.style.display = (tip || storageHint) ? '' : 'none';
         const need = CONFIG.forklift.drift.boostCharge;
         const charge = f.driftCharge || 0;
         const state = f.boostTime > 0 ? 'boost' : charge >= need ? 'ready' : (f.drift || 0) > 0.5 ? 'charging' : '';

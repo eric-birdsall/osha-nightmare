@@ -136,6 +136,7 @@ export class Game {
     this.level = buildLevel(this);
     this.forklift = new Forklift(this, this.level.forkliftSpawn);
     this.climber = new Climber(this, this.level.climberSpawn);
+    this.climber.spawnOnForks();
     this.wrap = new WrapSystem(this);
     buildCctvFixtures(this.scene);
     this.clock = 0; // simulation time, for the replay buffer
@@ -268,6 +269,7 @@ export class Game {
     this.puntedStep(dt);
     this.climber.postStep(dt);
     this.watchRacks(dt);
+    this.level.storage.step(dt);
     this.watchFragile(dt);
     if (this.receiving) this.receivingSystem.step(dt);
     else {
@@ -576,8 +578,16 @@ export class Game {
     box.armed = false;
     box.armedTime = 0;
     if (box.home) {
-      box.body.setTranslation(box.home.pos, true);
-      box.body.setRotation(box.home.rot, true);
+      const pallet = box.storagePallet;
+      if (pallet && !pallet.removed && new THREE.Vector3(0, 1, 0).applyQuaternion(pallet.body.rotation()).y > .8) {
+        // High-storage stock returns to its pallet, even after Ralph has lowered it to staging.
+        const pos = box.storageOffset.clone().applyQuaternion(pallet.body.rotation()).add(pallet.body.translation());
+        box.body.setTranslation(pos, true);
+        box.body.setRotation(pallet.body.rotation(), true);
+      } else {
+        box.body.setTranslation(box.home.pos, true);
+        box.body.setRotation(box.home.rot, true);
+      }
       box.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       box.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
       box.handled = false;
@@ -677,6 +687,7 @@ export class Game {
   // A stocked box that fell off its shelf (not one Dave picked up and moved).
   boxFell(b) {
     if (b.handled || b.carried || b.removed) return false;
+    if (b.storagePallet && !b.storagePallet.removed && collectStack(this, b.storagePallet).has(b)) return false;
     const t = b.body.translation();
     const h = b.home.pos;
     return Math.hypot(t.x - h.x, t.y - h.y, t.z - h.z) > 0.4;

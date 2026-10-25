@@ -308,10 +308,6 @@ export class Climber {
     this.dragPalletStep(a, dt, active);
     this.puntStep(a, dt, active);
     if (active && a.interact && !this.draggedPallet) {
-      if (this.game.level.landingRailing.inReach(this)) {
-        this.game.level.landingRailing.kick();
-        return;
-      }
       // A box in reach comes first, even from the forks: he lets go of the carriage to take it
       if (this.holdingOn && this.target?.kind === 'box') {
         this.letGo();
@@ -787,6 +783,29 @@ export class Climber {
     this.ladderGhost.quaternion.copy(quatToThree(yawQuat(p.yaw)));
     this.ladderGhost.userData.mat.color.setHex(p.ok ? 0x7cf0a0 : 0xff5a4a);
     this.ladderPlaceOk = p.ok;
+  }
+
+  // Initial passenger position: feet on the bare blades, already gripping the carriage.
+  spawnOnForks() {
+    const carriage = this.game.forklift.carriage;
+    const rotation = quatToThree(carriage.rotation());
+    this.holdLocal.set(BLADE_CENTRE.x, BLADE_CENTRE.y + .01, BLADE_CENTRE.z);
+    const feet = this.holdLocal.clone().applyQuaternion(rotation).add(carriage.translation());
+    const center = { x: feet.x, y: feet.y + this.centerOff, z: feet.z };
+    this.body.setTranslation(center, true);
+    this.body.setNextKinematicTranslation(center);
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(rotation);
+    this.yaw = Math.atan2(-forward.x, -forward.z);
+    this.pitch = 0;
+    this.holdingOn = this.onBlades = this.grounded = true;
+    this.holdTarget = null;
+    this.support = { body: carriage, collider: carriage.collider(1), point: feet.clone() };
+    this.relVel.set(0, 0, 0);
+    this.airVel.set(0, 0, 0);
+    this.launchVel.set(0, 0, 0);
+    this.vy = 0;
+    this.peakY = feet.y;
+    this.graceTimer = CONFIG.climber.respawnGrace;
   }
 
   // Grab the carriage: from now on we ride it rigidly and can't be thrown off.

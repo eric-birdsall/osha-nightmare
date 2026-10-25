@@ -96,7 +96,7 @@ export const CONFIG = {
     yawAccel: 4.0,
     wheelbase: 1.4,
     liftMin: 0.1,
-    liftMax: 3.5,
+    liftMax: 8.8, // five-shelf West-wall pallet racks, including fork-pocket clearance
     freeLift: 1.0, // m the forks rise before the inner mast starts telescoping up (collapsed, the mast fits in a trailer)
     liftSpeed: 0.4,
     lowerSpeed: 3.0, // forks can come down fast: holding F/LB keeps speeding them up...

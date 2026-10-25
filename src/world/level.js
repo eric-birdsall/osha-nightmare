@@ -13,7 +13,8 @@ import { RECEIVING_ORDER } from './receiving-orders.js';
 import { LAYOUT, rackX1, WALL_LABELS } from './layout.js';
 import { buildWrapper } from './wrapper.js';
 import { buildPacking, packingRect } from './packing.js';
-import { buildMezzanine, mezzanineStairs } from './mezzanine.js';
+import { PalletStorage } from './pallet-storage.js';
+import { buildBreakRoom } from './breakroom.js';
 import { buildConveyors } from './conveyor.js';
 import { buildHazards, hazardZones } from './hazards.js';
 
@@ -67,11 +68,8 @@ export function floorHeightAt(x, z) {
   }
   return LOWER.y;
 }
-// The floor at (x, z) for something at height y: the mezzanine deck if it's up there, else the
-// floor below.
+// Floors are all at ground level now; shelves are handled by the physics support query.
 export function floorHeightNear(x, z, y) {
-  const m = LAYOUT.mezzanine;
-  if (y > m.y - 1 && inRect(m, x, z)) return m.y;
   return floorHeightAt(x, z);
 }
 export const SHELF_LEVELS = LAYOUT.racking.shelves; // the usual shelves (each rack has its own: rack.shelves)
@@ -150,6 +148,10 @@ function labelRack(group, rack, cx, cz) {
   // End caps face west and east, mounted on the outside of the end uprights
   add(endCapSign(name, 1.0, 1.1), x0 - 0.05, 2.3, cz, -Math.PI / 2);
   add(endCapSign(name, 1.0, 1.1), x1 + 0.05, 2.3, cz, Math.PI / 2);
+  if (rack.palletFromShelf != null) {
+    const z = face === 'south' ? z1 + 0.025 : z0 - 0.025;
+    add(labelPlane('PALLET STORAGE · SHELVES 3–5', 3.8, 0.36, { bg: '#f5c518', fg: '#111111' }), (x0 + x1) / 2, 4.2, z, face === 'south' ? 0 : Math.PI);
+  }
   for (const [z, ry] of faces) {
     for (let b = 0; b < rack.bays; b++) {
       rack.shelves.forEach((y, sh) => {
@@ -301,9 +303,9 @@ function backstockSign(location) {
   return new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.23), new THREE.MeshBasicMaterial({ map: tex }));
 }
 
-// Three boxes per shelf along the open face, in every bay of every rack, exactly as the planogram
-// has them (a null is a gap), plus the BACKSTOCK signs.
-function stockShelves(game, racks) {
+// Low pick faces use three loose-box positions (null is a gap). High storage uses
+// loaded pallets from the same planogram, with BACKSTOCK signs on the pick faces.
+function stockShelves(game, racks, storage) {
   const looks = new Map();
   for (const spots of Object.values(WAREHOUSE.faces)) for (const sp of spots) if (sp) looks.set(sp[0], sp[1]);
   game.skus = { look: (sku) => looks.get(sku) ?? sku };
@@ -314,6 +316,10 @@ function stockShelves(game, racks) {
       for (let shelf = 0; shelf < rack.shelves.length; shelf++) {
         const at = locationCode(name, b, shelf);
         const reserved = game.receiving && RECEIVING_ORDER.lines.some((line) => line.location === at);
+        if (rack.palletFromShelf != null && shelf >= rack.palletFromShelf) {
+          storage.stock(ent, rack, b, shelf, WAREHOUSE.faces[at] || [], at);
+          continue;
+        }
         (reserved ? [] : WAREHOUSE.faces[at] || []).forEach((sp, i) => {
           if (!sp) return;
           const [sku, , type, jitter] = sp;
@@ -341,18 +347,20 @@ function stockShelves(game, racks) {
 }
 
 // An order's pick list: each line's SKU and quantity, its pick face (the main-floor face holding
-// most of that SKU) and, if that face is short, where the BACKSTOCK sign says the rest is.
+// most of that SKU) and its BACKSTOCK pointer. Regular pick faces take priority over
+// their full reserve pallets; high-only SKUs point straight to their storage location.
 export function orderLines(spec) {
   if (spec.activity === 'receiving') return spec.lines.map((line, i) => ({ ...line, line: 'ABC'[i], backstock: null }));
-  const mainFloor = new Set(RACKS.filter((r) => !r.base).map((r) => r.name));
+  const pickRacks = new Set(RACKS.filter((r) => r.palletFromShelf == null).map((r) => r.name));
   return spec.lines.map((l, i) => {
     let best = null;
-    let most = 0;
+    let most = 0, priority = -1;
     for (const [at, spots] of Object.entries(WAREHOUSE.faces)) {
       const n = spots.filter((sp) => sp && sp[0] === l.sku).length;
-      if (mainFloor.has(at[0]) && n > most) [best, most] = [at, n];
+      const rank = pickRacks.has(at[0]) ? 1 : 0;
+      if (n && (rank > priority || (rank === priority && n > most))) [best, most, priority] = [at, n, rank];
     }
-    if (!best) console.warn(`Order ${spec.id}: SKU ${l.sku} isn't on any main-floor shelf`);
+    if (!best) console.warn(`Order ${spec.id}: SKU ${l.sku} isn't stocked in any rack`);
     return { line: 'ABC'[i], sku: l.sku, qty: l.qty, location: best, backstock: WAREHOUSE.signs[best] ?? null };
   });
 }
@@ -867,13 +875,9 @@ export function describeLocation(p) {
   const lowerName = LAYOUT.lower.label.toLowerCase();
   if (p.x >= STAIRS.x0 - 0.3 && p.x <= STAIRS.x1 + 0.3 && p.z >= STAIRS.z0 - 0.3 && p.z <= STAIRS.z1 + 0.3) return `The stairs to the ${lowerName}`;
   const lower = inLowerLevel(p.x, p.z);
-  // The mezzanine: up on its deck, its stairs, or the break room underneath
-  const mz = LAYOUT.mezzanine;
-  const onMezz = inRect(mz, p.x, p.z) && p.y > mz.y - 0.5;
-  if (inRect(mezzanineStairs(), p.x, p.z)) return 'The mezzanine stairs';
-  const level = lower ? 'lower' : onMezz ? 'mezz' : 'main';
-  const levelOf = (r) => (r.base < 0 ? 'lower' : r.base > 1 ? 'mezz' : 'main');
-  const h = p.y - (onMezz ? mz.y : floorHeightAt(p.x, p.z));
+  const level = lower ? 'lower' : 'main';
+  const levelOf = (r) => (r.base < 0 ? 'lower' : 'main');
+  const h = p.y - floorHeightAt(p.x, p.z);
   const up = h > 0.5 ? `, ${h.toFixed(1)} m up` : '';
   const bayOf = (r) => Math.min(r.bays, Math.max(1, Math.floor((p.x - r.x0) / BAY_W) + 1));
   const alongside = (r, m = 0) => p.x >= r.x0 - m && p.x <= rackX1(r) + m;
@@ -892,10 +896,10 @@ export function describeLocation(p) {
     const by = rows.filter((o) => alongside(o));
     const gap = (o) => Math.max(o.z0 - p.z, p.z - o.z1);
     const r = by.sort((a, b) => gap(a) - gap(b))[0];
-    const name = lower ? lowerName[0].toUpperCase() + lowerName.slice(1) : 'The mezzanine';
+    const name = lowerName[0].toUpperCase() + lowerName.slice(1);
     return r ? `${name}, by Rack ${r.name}, bay ${bayOf(r)}${up}` : lower ? `${name}, open floor` : name;
   }
-  if (inRect(mz, p.x, p.z)) return 'The break room';
+  if (inRect(LAYOUT.breakRoom, p.x, p.z)) return 'The break room';
   const zone = LAYOUT.zones.find((zn) => p.x >= zn.x0 && p.x <= zn.x1 && p.z >= zn.z0 && p.z <= zn.z1);
   return zone ? zone.name : 'Open floor';
 }
@@ -1223,16 +1227,21 @@ export function buildLevel(game) {
     line.position.set((r.x0 + rackX1(r)) / 2, r.base + 0.005, z);
     scene.add(line);
   }
+  // Marked staging bays are ordinary floor: lower high-storage pallets here for Dave.
+  for (const bay of LAYOUT.staging) {
+    floorMarking(game, bay.x, bay.z, bay.w, bay.d, 0xf5c518, .08);
+    floorText(game, 'PALLET STAGING', bay.x, bay.z + bay.d / 2 + .25, 2.8, .35);
+  }
   // Wrapper zone
   const { x: wx, z: wz, size: ws } = LAYOUT.wrap;
   const wrapZone = makeZone(game, 'wrap', wx, wz, ws, ws);
   floorMarking(game, wx, wz, ws, ws, 0xf5c518, 0.15);
   floorText(game, 'WRAP', wx, wz + ws / 2 + 0.4, 2.0, 0.6);
-  // The stretch wrapper's gantry over it, the packing stations, the conveyor and the mezzanine
+  // The stretch wrapper's gantry over it, the packing stations, the conveyor and the ground-floor break room
   const wrapper = buildWrapper(game);
   buildPacking(game);
   const conveyors = buildConveyors(game);
-  const landingRailing = buildMezzanine(game);
+  buildBreakRoom(game);
 
   // Loading docks: this order's is open with a trailer backed up to it
   const docks = buildDocks(game);
@@ -1257,7 +1266,8 @@ export function buildLevel(game) {
   const parking = buildParking(game);
 
   // Stock every shelf and pick this shift's order
-  stockShelves(game, racks);
+  const storage = new PalletStorage(game);
+  stockShelves(game, racks, storage);
 
   // Loose boxes on the open floor for stacking
   LAYOUT.looseBoxes.forEach(([type, x, y, z], i) => {
@@ -1269,7 +1279,7 @@ export function buildLevel(game) {
     box.home = { pos: { x: t.x, y: t.y, z: t.z }, rot: { x: r.x, y: r.y, z: r.z, w: r.w } };
   });
 
-  // A-frame ladders: one by the basement edge on the main floor, one beside Rack I upstairs
+  // A-frame ladders: Rack A endcap and the gap between West-wall storage sections
   for (const st of LAYOUT.ladderStands) createLadderStand(game, { pos: [st.x, st.y, st.z], yaw: st.yaw, count: st.count, showLabel: st.showLabel });
 
   const climberStart = new THREE.Vector3(...LAYOUT.climberSpawn.pos);
@@ -1280,7 +1290,7 @@ export function buildLevel(game) {
   for (const [x, y, z, yaw] of LAYOUT.pallets) createPallet(game, { pos: [x, y, z], yaw });
 
   const level = {
-    landingRailing,
+    storage,
     wrapZone,
     wrapper, // the stretch wrapper's arm (the wrap system swings it)
     conveyors, // the belts (the game drives things along them)

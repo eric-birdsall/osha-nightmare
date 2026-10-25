@@ -1,3 +1,4 @@
+import { LAYOUT } from '../world/layout.js';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
@@ -880,7 +881,7 @@ export class Forklift {
     // Shelf heights as tick marks on the bar
     g.strokeStyle = '#e86a1c';
     g.lineWidth = 3;
-    for (const y of [1.5, 3.0]) {
+    for (const y of [...new Set(LAYOUT.racks.flatMap(r => r.shelves))]) {
       const ty = barTop + barH * (1 - y / cfg.liftMax);
       g.beginPath();
       g.moveTo(barX - 8, ty);

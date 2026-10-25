@@ -1,5 +1,5 @@
 {
-  "warehouse": 1,
+  "warehouse": 3,
   "orders": [
     {"id":1,"title":"Tutorial","dock":"Dock 2","lines":[{"sku":355,"qty":1}],"medals":{"gold":60,"silver":90,"bronze":120}},
     {"id":2,"title":"Reach for it","dock":"Dock 2","lines":[{"sku":584,"qty":3}],"medals":{"gold":120,"silver":180,"bronze":240}},

@@ -13,11 +13,11 @@
 //    │       ├─── B/C ────┤  lane              C          Y│
 //    │       ├─── D/E ────┤                    K          O│
 //    │       ├─── F/G ────┘                               R│
-//    │ MEZZANINE (H aisle I) over break rm │stairs     PANEL│
+//    │ HIGH RACK H │LADDER│ HIGH RACK I │BREAK ROOM  PANEL│
 //  S └──────────────────────────────────────────────────┘
 
 // The building is centred on x = 0, so changing its width moves both walls. Everything below is
-// placed from the wall it belongs with: the west side (basement, docks, ramp, racks, mezzanine)
+// placed from the wall it belongs with: the west side (basement, docks, ramp, central racks)
 // from the west wall W, and the east side (wrapper, packing, conveyor) from the east wall E, so
 // narrowing the building only moves the east side in.
 const room = { halfX: 19.2, halfZ: 23.2, wallH: 12 }; // wallH: up to the roof
@@ -50,20 +50,19 @@ const rack = (name, x0, z0, face, base = 0, size = {}) => ({
 });
 // Two racks back to back, the north one open to the north
 const pair = (north, south, x0, z0, base = 0, size = {}) => [rack(north, x0, z0, 'north', base, size), rack(south, x0, z0 + racking.depth + racking.flue, 'south', base, size)];
-// The mezzanine's racks are two shelves high
-const LOW = { shelves: [1.5, 3.0], uprightH: 3.7 };
-
-// The mezzanine: a steel deck `y` up along the south wall from the west wall, holding the
-// backstock racks H/I facing each other across an aisle wide enough to walk and set up a ladder.
-// Dave gets up by the stairs at its east end; the forklift can lift a pallet (or Dave) up to the
-// gap in its front railing, past the racks' east end. Under it is the break room.
-const MEZZ_AISLE = 2.6;
-const mezzanine = { x0: W, x1: W + 20, z0: SOUTH - 5.6, z1: SOUTH, y: 3.0, gate: { from: W + 16.8, to: W + 19.6 } };
+// West-wall high storage (world +Z after the compass rotation): two normal rack
+// sections with a 2.6 m ladder gap. Bottom decks are pick faces; upper decks hold pallets.
+const HIGH = { shelves: [1.5, 3.0, 4.8, 6.6, 8.4], uprightH: 9.8 };
+const highRack = (name, x0) => ({
+  ...rack(name, x0, SOUTH - 1.65, 'north', 0, HIGH),
+  z1: SOUTH - 0.15, bays: 4, palletFromShelf: 2,
+});
+const breakRoom = { x0: 5.8, x1: 12.8, z0: SOUTH - 5.1, z1: SOUTH };
 
 // One block of racks with a narrow lane (about 3.8 m) down its west side. Rack A stands with its
 // back to the basement's railing; below it B/C, D/E and F/G are back-to-back pairs, every row 4.4 m
-// from the next (G faces the mezzanine). The pick aisles are narrower than the racks are tall, so a
-// toppled rack falls onto its neighbour (dominoes). The backstock pair H/I stands on the mezzanine.
+// from the next (G faces the high-storage aisle). The pick aisles are narrower than the racks are tall, so a
+// toppled rack falls onto its neighbour (dominoes). The backstock sections H/I stand along the West wall.
 const RACKS_E = lower.x1; // the racks' east end caps line up with the basement's east edge
 const WEST = RACKS_E - 6 * racking.bayW; // the racks' west end
 const AISLE = 4.4;
@@ -74,10 +73,8 @@ const racks = [
   ...pair('B', 'C', WEST, A + racking.depth + AISLE),
   ...pair('D', 'E', WEST, A + racking.depth + AISLE + PAIR + AISLE),
   ...pair('F', 'G', WEST, A + racking.depth + 2 * (AISLE + PAIR) + AISLE),
-  // On the mezzanine, from just off the west wall: H along the front railing, I against the south
-  // wall, open to the aisle between them
-  rack('H', W + 0.3, mezzanine.z0 + 0.3, 'south', mezzanine.y, LOW),
-  rack('I', W + 0.3, mezzanine.z0 + 0.3 + racking.depth + MEZZ_AISLE, 'north', mezzanine.y, LOW),
+  highRack('H', W + 0.3),
+  highRack('I', -5.5),
 ];
 
 // The wrapper stands on the main floor against the basement's east edge, between the ramp and the
@@ -129,7 +126,8 @@ export const LAYOUT = {
   // Powered conveyors, each carrying anything on it north (toward -z) at `speed`: one along the
   // east wall, and one between the packing rows up to the wrapper (packed boxes go to be wrapped)
   conveyors: CONVEYORS,
-  mezzanine,
+  breakRoom,
+  staging: [{ x: -13.5, z: 17.2, w: 3.0, d: 2.4 }, { x: -0.1, z: 17.2, w: 3.0, d: 2.4 }],
   // Forklift bay: its back against a wall, `width` along it and `depth` out from it, the truck
   // parked nose-out. In the basement's north-west corner, facing east along the ramp, so each
   // round starts with Ralph driving up it.
@@ -148,7 +146,7 @@ export const LAYOUT = {
   // yaw 0: the ladders hang on the south side of the stand; π: the north side; -π/2: the west side
   ladderStands: [
     { x: RACKS_E + 0.3, z: A + racking.depth / 2, y: 0, yaw: Math.PI / 2, count: 1, showLabel: false }, // against Rack A’s east endcap, clear of the forklift opening
-    { x: mezzanine.x1 - 1.9, z: SOUTH - 0.3, y: mezzanine.y, yaw: Math.PI, count: 1 }, // beside Rack I on the deck, clear of the stair landing
+    { x: -6.8, z: SOUTH - 0.3, y: 0, yaw: Math.PI, count: 1 }, // between the West-wall rack sections
   ],
   incidentSign: { x: E - 3.5, y: 3.6 }, // on the north wall
   climberSpawn: { pos: [RACKS_E + 1.3, 0, A + racking.depth / 2], yaw: Math.PI }, // beside the main-floor ladder, facing the south wall
@@ -163,7 +161,7 @@ export const LAYOUT = {
     [RACKS_E - 3, 0, 15.2],
     [RACKS_E + 4, 0, -15],
     [E - 5, 0, 10],
-    [W + 10, mezzanine.y, mezzanine.z0 + 0.3 + racking.depth + MEZZ_AISLE / 2], // the mezzanine aisle
+    [-6.8, 0, 19.5], // the high-storage aisle
     [E - 6, 0, 18],
     [E - 3, 0, -9],
   ],
@@ -190,12 +188,12 @@ export const LAYOUT = {
     ...CONVEYORS.map((c) => [(c.x0 + c.x1) / 2, 0, c.z0 - 0.75, Math.PI / 2]),
   ],
   // Named stretches of the main floor, for incident reports (first match wins; the basement, the
-  // mezzanine and the break room are named separately)
+  // break room is named separately)
   zones: [
     { name: 'The conveyor', x0: E - 2.6, z0: -15.3, x1: E, z1: 6.8 },
     { name: 'The packing line', x0: PACKING.x - PACK_BELT / 2, z0: PACK_LINE_END - 1.5, x1: PACKING.x + PACK_BELT / 2, z1: PACKING.z + PACK_LEN / 2 + 0.2 },
-    { name: 'The west lane', x0: W, z0: lower.z1, x1: WEST, z1: mezzanine.z0 },
-    { name: 'South of the racks', x0: WEST, z0: 13.3, x1: RACKS_E, z1: mezzanine.z0 },
+    { name: 'The west lane', x0: W, z0: lower.z1, x1: WEST, z1: 18.0 },
+    { name: 'South of the racks', x0: WEST, z0: 13.3, x1: RACKS_E, z1: 18.0 },
     { name: 'By the ramp', x0: lower.x1, z0: NORTH, x1: PACK_WEST, z1: lower.z1 },
     { name: 'The east lane', x0: RACKS_E, z0: lower.z1, x1: PACK_WEST - 1.6, z1: SOUTH },
     { name: 'The east side', x0: PACK_WEST - 1.6, z0: NORTH, x1: E, z1: SOUTH },
@@ -220,9 +218,9 @@ export const LAYOUT = {
     ['06', 'PACKING', [E - 0.35, 5.4, -10]],
     ['07', 'CONVEYOR', [E - 0.35, 5.0, 2]],
     ['08', 'SOUTH WEST', [W + 0.4, 7.2, SOUTH - 0.4]],
-    ['09', 'MEZZANINE', [RACKS_E + 2.5, 6.0, SOUTH - 0.35]],
+    ['09', 'HIGH STORAGE', [RACKS_E + 2.5, 6.0, SOUTH - 0.35]],
     ['10', 'SOUTH EAST', [E - 0.4, 5.4, SOUTH - 0.4]],
-    ['11', 'BREAK ROOM', [W + 0.35, 2.4, SOUTH - 2.2]],
+    ['11', 'BREAK ROOM', [breakRoom.x1 - 0.2, 2.8, SOUTH - 0.3]],
   ],
 };
 

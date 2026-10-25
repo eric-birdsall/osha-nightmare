@@ -218,3 +218,96 @@ test('only Ralph can recover a tipped forklift by holding his reset control', ()
   assert.ok(game.respawnHold.driver < 0, 'One reset per hold');
   game.dispose();
 });
+
+test('Dave starts on the blades already holding on in both modes and rides with Ralph', () => {
+  for (const mode of ['single', 'coop']) {
+    const game = createGame(mode), dave = game.climber;
+    assert.equal(dave.holdingOn, true); assert.equal(dave.onBlades, true);
+    const local = dave.carriageLocal(dave.feet);
+    assert.ok(Math.abs(local.x) < .01 && Math.abs(local.y - .01) < .01);
+    assert.ok(local.z > .4 && local.z < .8);
+    game.active = 'driver'; game.assignDevices({ padCount: () => mode === 'coop' ? 1 : 0, lastDevice: 'kbm' });
+    const blank = Input.prototype.climberActions.call({ invertY: false }, []);
+    for (let i = 0; i < 90; i++) game.step(1 / 60, { climber: blank, driver: { ...blank, throttle: 1 } });
+    assert.equal(dave.holdingOn, true);
+    assert.ok(dave.carriageLocal(dave.feet).distanceTo(dave.holdLocal) < .15);
+    dave.letGo(); assert.equal(dave.holdingOn, false);
+    game.dispose();
+  }
+});
+
+test('five-shelf West-wall racks stock real loaded pallets and preserve backstock hints', async () => {
+  const { CONFIG } = await import('../src/config.js');
+  const { LAYOUT } = await import('../src/world/layout.js');
+  const { collectStack } = await import('../src/systems/wrapping.js');
+  const { floorHeightNear, orderLines, ORDERS } = await import('../src/world/level.js');
+  const game = new Game({ mode: 'single', order: 3 });
+  game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  assert.deepEqual(game.level.order.map(line => line.location), ['H-1-3', 'I-1-5']);
+  assert.equal(LAYOUT.mezzanine, undefined);
+  assert.equal(game.level.landingRailing, undefined);
+  assert.equal(floorHeightNear(-12, 19, 3), 0, 'No invisible mezzanine floor');
+  const high = LAYOUT.racks.filter(r => r.palletFromShelf != null);
+  assert.equal(high.length, 2);
+  for (const rack of high) {
+    assert.equal(rack.shelves.length, 5);
+    assert.equal(rack.base, 0);
+    assert.ok(CONFIG.forklift.liftMax > rack.shelves[4] + .15);
+  }
+  assert.equal(game.level.storage.slots.length, 24);
+  settle(game, 4);
+  for (const slot of game.level.storage.slots) {
+    assert.ok(slot.seated, `${slot.location} must rest squarely on its deck`);
+    const boxes = [...collectStack(game, slot.pallet)].filter(e => e.kind === 'box');
+    assert.equal(boxes.length, 6, `${slot.location} holds six physical cartons`);
+    assert.ok(boxes.every(b => b.sku === slot.sku), 'One SKU per storage pallet');
+    assert.ok(boxes.every(b => !game.boxFell(b)), 'A stable storage load does not need a rack reset');
+  }
+  assert.equal(orderLines(ORDERS.find(o => o.id === 4))[0].location, 'E-3-2');
+  assert.match(orderLines(ORDERS.find(o => o.id === 4))[0].backstock, /^[HI]-[1-4]-[3-5]$/);
+  game.dispose();
+});
+
+test('Ralph can lift a loaded storage pallet clear and back out without losing the cartons', async () => {
+  const { collectStack } = await import('../src/systems/wrapping.js');
+  for (const location of ['H-1-3', 'I-1-5']) {
+    const game = new Game({ mode: 'single', order: 3 });
+    game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+    game.climber.resetToStart();
+    settle(game, 2);
+    const slot = game.level.storage.slots.find(s => s.location === location);
+    const pallet = slot.pallet;
+    const fl = game.forklift;
+    const blank = Input.prototype.climberActions.call({ invertY: false }, []);
+    fl.height = slot.y + .055;
+    fl.teleport({ x: slot.rack.home.x + slot.x, z: 20.5 }, 0);
+    settle(game, .5);
+    for (let i = 0; i < 75; i++) game.step(1 / 60, { climber: blank, driver: { ...blank, liftUp: 1 } });
+    assert.ok(pallet.body.translation().y > slot.y + .2, 'Pallet lifts clear of its deck');
+    assert.equal(slot.seated, false);
+    for (let i = 0; i < 120; i++) game.step(1 / 60, { climber: blank, driver: { ...blank, brake: 1 } });
+    assert.ok(pallet.body.translation().z < 21.1, `Loaded pallet clears the rack front: pallet ${JSON.stringify(pallet.body.translation())}, truck ${JSON.stringify(fl.body.translation())}, tipped ${fl.tipped}`);
+    assert.equal([...collectStack(game, pallet)].filter(e => e.kind === 'box').length, 6, JSON.stringify([...collectStack(game, pallet)].map(e => [e.kind, e.sku, e.body.translation()])));
+    assert.ok(!game.rackKnocked(slot.rack), 'The truck does not have to shove the rack to retrieve stock');
+    // Ease back into the same bay, lower onto the shelf, then withdraw the blades.
+    game.active = 'climber'; settle(game, 1.2); game.active = 'driver';
+    for (let i = 0; i < 900 && pallet.body.translation().z < 22.12; i++) {
+      game.step(1 / 60, { climber: blank, driver: { ...blank, throttle: fl.body.linvel().z < .5 ? .5 : 0 } });
+    }
+    // Park-deceleration stops the truck while lowering; its own fork motor does the placement.
+    game.active = 'climber';
+    settle(game, .4);
+    game.active = 'driver';
+    for (let i = 0; i < 240 && fl.carriage.translation().y > slot.y + .09; i++) {
+      game.step(1 / 60, { climber: blank, driver: { ...blank, liftDown: .2 } });
+    }
+    settle(game, .8);
+    assert.ok(slot.seated, `Returned pallet seats at ${JSON.stringify(pallet.body.translation())} truck ${JSON.stringify(fl.body.translation())} gear ${fl.gear} height ${fl.height}`);
+    assert.equal([...collectStack(game, pallet)].filter(e => e.kind === 'box').length, 6);
+    for (let i = 0; i < 120; i++) game.step(1 / 60, { climber: blank, driver: { ...blank, brake: 1 } });
+    settle(game, .5);
+    assert.ok(slot.seated, `Pallet remains seated when forks withdraw: ${JSON.stringify(pallet.body.translation())} fork ${fl.measuredHeight()} target ${fl.height}`);
+    assert.ok(!game.rackKnocked(slot.rack), `Return should leave ${location} upright: ${JSON.stringify(slot.rack.body.rotation())}`);
+    game.dispose();
+  }
+});
