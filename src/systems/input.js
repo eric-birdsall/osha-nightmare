@@ -205,24 +205,21 @@ export class Input {
         a.liftDown = Math.max(a.liftDown, this.key('KeyF'));
         a.drift ||= this.key('Space') > 0;
         a.respawnHeld ||= this.key('KeyQ') > 0;
-        a.lookX += this.mouseDX * cfg.lookSensitivity + this.keyLookX() * cfg.stickLookSpeed * this.dt;
         a.lookY += this.mouseDY * cfg.lookSensitivity + this.keyLookY() * cfg.stickLookSpeed * this.dt;
         a.swap ||= this.pressed.has('Tab');
       } else {
         const p = this.pad(d);
         if (!p) continue;
-        // Left stick drives: up = forward, down = brake then reverse, sideways = steer.
-        // RT drifts; LT also works as a brake.
-        const [sx, sy] = deadzone2(p.axes[0] || 0, p.axes[1] || 0);
-        const [lx, ly] = deadzone2(p.axes[2] || 0, p.axes[3] || 0);
+        // Left stick steers only; A drives, B brakes/reverses, and RT drifts.
+        const [sx] = deadzone2(p.axes[0] || 0, p.axes[1] || 0);
+        const [, ly] = deadzone2(p.axes[2] || 0, p.axes[3] || 0);
         a.steer += sx;
-        a.throttle = Math.max(a.throttle, -sy);
-        a.brake = Math.max(a.brake, sy, p.buttons[BTN.LT]?.value || 0);
+        a.throttle = Math.max(a.throttle, p.buttons[BTN.A]?.pressed ? 1 : p.buttons[BTN.A]?.value || 0);
+        a.brake = Math.max(a.brake, p.buttons[BTN.B]?.pressed ? 1 : p.buttons[BTN.B]?.value || 0);
         a.liftUp = Math.max(a.liftUp, p.buttons[BTN.RB]?.pressed ? 1 : 0);
         a.liftDown = Math.max(a.liftDown, p.buttons[BTN.LB]?.pressed ? 1 : 0);
         a.drift ||= !!p.buttons[BTN.RT]?.pressed || (p.buttons[BTN.RT]?.value || 0) > 0.25;
         a.respawnHeld ||= !!p.buttons[BTN.Y]?.pressed;
-        a.lookX += lx * cfg.stickLookSpeed * this.dt;
         a.lookY += ly * cfg.stickLookSpeed * this.dt;
         a.swap ||= this.padPressed(p, BTN.BACK);
         a.pause ||= this.padPressed(p, BTN.START);

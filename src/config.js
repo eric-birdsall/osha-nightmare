@@ -107,7 +107,7 @@ export const CONFIG = {
     liftAccel: 0.8, // ease in and out going up
     liftStiffness: 2500, // carriage motor (acceleration-based)
     liftDamping: 120,
-    lookYawLimit: deg(120),
+    lookYawLimit: 0,
     lookPitchLimit: deg(60),
     lookSensitivity: 0.0022,
     stickLookSpeed: 2.4,

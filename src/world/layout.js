@@ -102,11 +102,11 @@ const CONVEYORS = [
   { name: 'Packing line', x0: PACKING.x - PACKING.belt / 2, x1: PACKING.x + PACKING.belt / 2, z0: PACK_LINE_END, z1: PACKING.z + PACK_LEN / 2 + 0.2, height: 0.8, speed: 0.8 },
 ];
 
-// Loading docks in the basement's north-west corner, one on the west wall and one on the north
-// wall: `at` is how far along the wall (z for east/west walls, x for north/south). Each order
+// Both loading docks share the player-facing east wall, Dock 1 north of Dock 2.
+// Internal wall keys retain the original axes: `at` is how far along the wall (z for east/west walls, x for north/south). Each order
 // ships from one, picked at random.
 const docks = [
-  { name: 'Dock 1', wall: 'west', at: -14 },
+  { name: 'Dock 1', wall: 'north', at: W + 3.5 },
   { name: 'Dock 2', wall: 'north', at: W + 10 },
 ];
 

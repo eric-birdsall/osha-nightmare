@@ -1123,10 +1123,10 @@ export function buildLevel(game) {
   const t = 0.2;
   const wallHalfY = (wallH - FLOOR_BOTTOM) / 2;
   const wallY = (wallH + FLOOR_BOTTOM) / 2;
-  // The run's docks: each one's wall gets a doorway (a wall has at most one dock)
+  // Cut a doorway for every dock used in this run, including multiple docks on one wall.
   openDocks = DOCKS.filter((d) => run.some((o) => o.dock === d.name));
   if (!openDocks.length) openDocks = [DOCKS[0]];
-  const dockOn = (wall) => openDocks.find((d) => d.wall === wall);
+  const docksOn = (wall) => openDocks.filter((d) => d.wall === wall).sort((a, b) => a.at - b.at);
   // Each wall as boxes along it ([half size, centre]); the north and south walls run past the
   // corners to close them
   const span = { north: halfX + t * 2, south: halfX + t * 2, west: halfZ, east: halfZ };
@@ -1142,19 +1142,18 @@ export function buildLevel(game) {
   const wallBoxes = [];
   for (const wall of ['north', 'south', 'west', 'east']) {
     const [a0, a1] = [-span[wall], span[wall]];
-    const gd = dockOn(wall);
-    if (!gd) {
-      wallBoxes.push(wallBox(wall, a0, a1, FLOOR_BOTTOM, wallH));
-      continue;
+    let cursor = a0;
+    for (const dock of docksOn(wall)) {
+      const doorFloor = dockFrame(dock).y;
+      const [g0, g1] = [dock.at - DOOR_HALF, dock.at + DOOR_HALF];
+      if (g0 > cursor) wallBoxes.push(wallBox(wall, cursor, g0, FLOOR_BOTTOM, wallH));
+      wallBoxes.push(
+        wallBox(wall, g0, g1, doorFloor + DOOR_H, wallH),
+        wallBox(wall, g0, g1, FLOOR_BOTTOM, doorFloor),
+      );
+      cursor = g1;
     }
-    const doorFloor = dockFrame(gd).y;
-    const [g0, g1] = [gd.at - DOOR_HALF, gd.at + DOOR_HALF];
-    wallBoxes.push(
-      wallBox(wall, a0, g0, FLOOR_BOTTOM, wallH),
-      wallBox(wall, g1, a1, FLOOR_BOTTOM, wallH),
-      wallBox(wall, g0, g1, doorFloor + DOOR_H, wallH), // over the door
-      wallBox(wall, g0, g1, FLOOR_BOTTOM, doorFloor), // under the threshold
-    );
+    if (cursor < a1) wallBoxes.push(wallBox(wall, cursor, a1, FLOOR_BOTTOM, wallH));
   }
   for (const [half, pos] of wallBoxes) {
     // Tall walls would throw the (fake) sun's shadow across half the floor
@@ -1174,21 +1173,18 @@ export function buildLevel(game) {
     { y0: 1.0, h: 0.3, out: 0.01, mat: new THREE.MeshLambertMaterial({ color: 0xf5c518, emissive: 0x5c4808, side: THREE.DoubleSide }) },
   ];
   const v = new THREE.Vector3();
-  const doorGap = (wall) => {
-    const gd = dockOn(wall);
-    return gd ? [gd.at - DOOR_HALF, gd.at + DOOR_HALF] : null;
-  };
+  const doorGaps = (wall) => docksOn(wall).map((dock) => [dock.at - DOOR_HALF, dock.at + DOOR_HALF]);
   for (const w of [
-    { on: (c) => c.z0 === -halfZ, z: -halfZ, ry: 0, gap: doorGap('north') },
-    { on: (c) => c.z1 === halfZ, z: halfZ, ry: Math.PI, gap: doorGap('south') },
-    { on: (c) => c.x0 === -halfX, x: -halfX, ry: Math.PI / 2, gap: doorGap('west') },
-    { on: (c) => c.x1 === halfX, x: halfX, ry: -Math.PI / 2, gap: doorGap('east') },
+    { on: (c) => c.z0 === -halfZ, z: -halfZ, ry: 0, gaps: doorGaps('north') },
+    { on: (c) => c.z1 === halfZ, z: halfZ, ry: Math.PI, gaps: doorGaps('south') },
+    { on: (c) => c.x0 === -halfX, x: -halfX, ry: Math.PI / 2, gaps: doorGaps('west') },
+    { on: (c) => c.x1 === halfX, x: halfX, ry: -Math.PI / 2, gaps: doorGaps('east') },
   ]) {
     const alongX = w.z !== undefined;
     const [nx, nz] = [Math.round(Math.sin(w.ry)), Math.round(Math.cos(w.ry))]; // into the room
     for (const c of grid.cells.filter(w.on)) {
       let spans = [alongX ? [c.x0, c.x1] : [c.z0, c.z1]];
-      if (w.gap) spans = spans.flatMap(([a, b]) => [[a, Math.min(b, w.gap[0])], [Math.max(a, w.gap[1]), b]]).filter(([a, b]) => b - a > 0.01);
+      for (const gap of w.gaps) spans = spans.flatMap(([a, b]) => [[a, Math.min(b, gap[0])], [Math.max(a, gap[1]), b]]).filter(([a, b]) => b - a > 0.01);
       for (const [a, b] of spans) {
         for (const band of bands) {
           const geo = new THREE.PlaneGeometry(b - a, band.h);

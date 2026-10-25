@@ -525,14 +525,12 @@ export class Forklift {
     const upY = new THREE.Vector3(0, 1, 0).applyQuaternion(q).y;
     this.tipped = upY < 0.5;
     this.tippedTime = this.tipped ? (this.tippedTime || 0) + dt : 0;
-    // Tipped over (and it isn't just bouncing back from the last one): incident, and it explodes
+    // A sustained tip is still an incident; Dave must right the truck.
     if (this.tippedTime > 0.6 && !this.tipReported && this.game.clock - (this.lastTipAt ?? -99) > 5) {
       this.tipReported = true;
       this.lastTipAt = this.game.clock;
       this.game.onIncident('tipped', { victim: 'Ralph', culprit: 'Ralph', subject: 'forklift' });
-      // ...and a tipped forklift goes up like a FRAGILE box (Ralph is fine, somehow)
-      const c = this.body.worldCom();
-      this.game.blast(new THREE.Vector3(c.x, c.y, c.z), { skipForklift: true, daveReason: 'forkliftBlast' });
+
     }
     if (upY > 0.9) this.tipReported = false;
     if (this.groundFrac === 0) return;
@@ -642,9 +640,9 @@ export class Forklift {
   }
 
   look(a, active) {
+    this.lookYaw = 0;
     if (!active) return;
     const cfg = CONFIG.forklift;
-    this.lookYaw = Math.max(-cfg.lookYawLimit, Math.min(cfg.lookYawLimit, this.lookYaw - a.lookX));
     this.lookPitch = Math.max(-cfg.lookPitchLimit, Math.min(cfg.lookPitchLimit, this.lookPitch - a.lookY));
   }
 
@@ -701,7 +699,7 @@ export class Forklift {
     clip.position.set(0, 0.19, 0.012);
     group.add(board, paper, clip);
     // On the inside of the left post, facing the driver's eye
-    const pos = new THREE.Vector3(0.37, 1.52, 0.62);
+    const pos = new THREE.Vector3(0.24, 1.52, 0.62);
     const eye = new THREE.Vector3(...CONFIG.forklift.seatEye);
     group.position.copy(pos);
     group.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(eye, pos, new THREE.Vector3(0, 1, 0)));
@@ -972,7 +970,7 @@ export class Forklift {
       .applyQuaternion(q)
       .add(t);
     this.camera.position.copy(eye);
-    const look = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.lookPitch, Math.PI + this.lookYaw, 0, 'YXZ'));
+    const look = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.lookPitch, Math.PI, 0, 'YXZ'));
     this.camera.quaternion.copy(q).multiply(look);
     // Drift boost: the view widens quickly so the speed reads as faster, then eases back
     const boosting = this.boostTime > 0;

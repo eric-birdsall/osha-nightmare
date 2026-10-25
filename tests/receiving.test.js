@@ -164,3 +164,40 @@ test('parking reset does not embed the forklift in a pallet left in its bay', ()
   assert.ok(Math.hypot(end.x - start.x, end.z - start.z) > 1.5);
   game.dispose();
 });
+
+test('both east-wall docks have usable doorways during Full Shift', () => {
+  const game = new Game({ mode: 'single', order: 'shift' });
+  const docks = game.level.docks;
+  assert.equal(docks['Dock 1'].dock.wall, 'north');
+  assert.equal(docks['Dock 2'].dock.wall, 'north');
+  assert.ok(docks['Dock 1'].dock.at < docks['Dock 2'].dock.at);
+  for (const name of ['Dock 1', 'Dock 2']) {
+    for (const [dockName, dock] of Object.entries(docks)) dock.setOpen(dockName === name);
+    game.world.step();
+    const dock = docks[name].dock;
+    const ray = new RAPIER.Ray({ x: dock.at, y: -.1, z: -22.7 }, { x: 0, y: 0, z: -1 });
+    const hit = game.world.castRay(ray, 2, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS);
+    assert.equal(hit, null, `${name} must have no wall collider across its open doorway`);
+  }
+  game.dispose();
+});
+
+test('tipping reports an incident without a blast; Ralph looks vertically and can read the clipboard', () => {
+  const game = createGame(), forklift = game.forklift;
+  forklift.lookYaw = .8;
+  const pitch = forklift.lookPitch;
+  forklift.look({ lookX: 1, lookY: .1 }, true);
+  assert.equal(forklift.lookYaw, 0); assert.notEqual(forklift.lookPitch, pitch);
+  forklift.lookPitch = -.36;
+  game.frame(.8);
+  assert.equal(game.receivingSystem.read, true, 'Clipboard stays readable with vertical look only');
+  let blasts = 0; const incidents = [];
+  game.blast = () => { blasts++; };
+  game.onIncident = reason => incidents.push(reason);
+  const blank = Input.prototype.climberActions.call({ invertY: false }, []);
+  forklift.body.setRotation({ x: 0, y: 0, z: Math.SQRT1_2, w: Math.SQRT1_2 }, true);
+  for (let i = 0; i < 60; i++) { game.clock += 1 / 60; forklift.preStep(blank, 1 / 60, true); }
+  assert.equal(forklift.tipped, true); assert.equal(blasts, 0);
+  assert.deepEqual(incidents, ['tipped']);
+  game.dispose();
+});
