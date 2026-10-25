@@ -9,6 +9,7 @@ import { WrapSystem, collectStack } from './wrapping.js';
 import { Recorder, ReplayDirector, buildCctvFixtures } from './replay.js';
 import { settings } from './settings.js';
 import { Tutorial } from './tutorial.js';
+import { Receiving } from './receiving.js';
 import { describeLocation } from '../world/level.js';
 import { quatToThree } from '../physics.js';
 import { disposeTree } from '../util/meshes.js';
@@ -118,9 +119,10 @@ export class Game {
   // order: one of the fixed orders (its id in orders.json), or 'shift' for a Full Shift (all five
   // back to back in the same warehouse, one clock)
   constructor({ mode, hud, order = 1 }) {
+    this.receiving = order === 'receiving-1';
     this.levelId = order; // what was picked on the level screen: an order id or 'shift'
     this.shift = order === 'shift';
-    this.orderId = this.shift ? ORDERS[0].id : order; // the order being picked now
+    this.orderId = this.receiving ? 1 : this.shift ? ORDERS[0].id : order; // the order being picked now
     this.mode = mode; // 'single' | 'coop'
     this.hud = hud;
     this.world = new RAPIER.World({ x: 0, y: CONFIG.physics.gravity, z: 0 });
@@ -158,7 +160,8 @@ export class Game {
     this.complete = false;
     this.onComplete = null;
     this.incidentSign.set(this.days);
-    this.tutorial = !this.shift && this.orderId === 1 ? new Tutorial(this) : null;
+    this.receivingSystem = this.receiving ? new Receiving(this) : null;
+    this.tutorial = this.receivingSystem || (!this.shift && this.orderId === 1 ? new Tutorial(this) : null);
   }
 
   // ---------------------------------------------------------------- entities
@@ -260,7 +263,7 @@ export class Game {
       if (this.respawnHold[role] >= CONFIG.input.respawnHoldTime) {
         this.respawnHold[role] = -1;
         (role === 'climber' ? this.climber : this.forklift).resetToStart();
-        this.toast(role === 'climber' ? 'Dave is back where he started' : 'The forklift is back in its bay', 2);
+        if (role === 'climber') this.toast('Dave is back where he started', 2);
       }
     }
     this.forklift.preStep(actions.driver, dt, driverOn);
@@ -272,8 +275,11 @@ export class Game {
     this.climber.postStep(dt);
     this.watchRacks(dt);
     this.watchFragile(dt);
-    this.wrap.step(dt);
-    this.orderStep(dt);
+    if (this.receiving) this.receivingSystem.step(dt);
+    else {
+      this.wrap.step(dt);
+      this.orderStep(dt);
+    }
     if (this.started && !this.complete) this.time += dt;
     this.dayTimer += dt;
     if (this.dayTimer >= CONFIG.hud.secondsPerDay) {

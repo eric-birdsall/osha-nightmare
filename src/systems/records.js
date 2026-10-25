@@ -1,3 +1,4 @@
+import { RECEIVING_ORDER } from '../world/receiving-orders.js';
 import { CONFIG } from '../config.js';
 import { ORDERS, WAREHOUSE_VERSION } from '../world/level.js';
 
@@ -18,12 +19,12 @@ function hash(text) {
 // the five orders' added up)
 const sum = (k) => ORDERS.reduce((t, o) => t + (o.medals?.[k] ?? 0), 0);
 export const FULL_SHIFT = { id: 'shift', title: 'Full Shift', medals: { gold: sum('gold'), silver: sum('silver'), bronze: sum('bronze') } };
-export const levelDef = (id) => (id === 'shift' ? FULL_SHIFT : ORDERS.find((o) => o.id === id));
+export const levelDef = (id) => (id === RECEIVING_ORDER.id ? RECEIVING_ORDER : id === 'shift' ? FULL_SHIFT : ORDERS.find((o) => o.id === id));
 
 // What a run of the level depends on: the warehouse, and the orders' lines and docks (not the
 // medal targets, which can be retuned without making old times incomparable)
 function levelVersion(id) {
-  const orders = id === 'shift' ? ORDERS : ORDERS.filter((x) => x.id === id);
+  const orders = id === RECEIVING_ORDER.id ? [RECEIVING_ORDER] : id === 'shift' ? ORDERS : ORDERS.filter((x) => x.id === id);
   return `${WAREHOUSE_VERSION}:${hash(JSON.stringify(orders.map((o) => [o.lines, o.dock])))}`;
 }
 

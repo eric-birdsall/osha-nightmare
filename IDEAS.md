@@ -158,6 +158,8 @@ the returns cage, if lost boxes should matter.
 
 ## 5. Putaway mode
 
+**First version built:** Receiving → PO-001 in single player or couch co-op. Two single-SKU pallets arrive at Dock 2, destinations are reserved empty first-shelf bays, progress requires stable correct placement, and cleanup requires returning empty pallets and parking. Mixed pallets, additional purchase orders and Full Shift integration remain future work.
+
 The reverse of picking. A purchase order arrives: a truck at a dock delivers pallets of new stock,
 and the crew has to put every box away on the shelves.
 

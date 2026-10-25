@@ -171,9 +171,43 @@ export class Forklift {
     this.camera.layers.enable(1);
   }
 
+  // Try the bay first, then its clear approach. Never reset into stock, debris, or Dave.
+  findResetSpot() {
+    const { pos, yaw } = this.game.level.forkliftSpawn;
+    const rotation = quatToThree(yawQuat(yaw));
+    const shape = new RAPIER.Cuboid(.8, 1.15, 1.65);
+    const offsets = [[0, 0], [-1, 0], [1, 0], [0, .6], [0, -.6]];
+    for (const forward of [2.3, 4.5, 6.5]) for (const side of [0, -2.5, 2.5]) offsets.push([side, forward]);
+    const floor = floorHeightAt(pos.x, pos.z);
+    // Reset can be called after bodies moved this step, before the next broad-phase update.
+    this.game.world.propagateModifiedBodyPositionsToColliders();
+    for (const [side, forward] of offsets) {
+      const candidate = new THREE.Vector3(side, 0, forward).applyQuaternion(rotation).add(pos);
+      let level = true;
+      for (const x of [-.8, .8]) for (const z of [-1.2, 2.1]) {
+        const corner = new THREE.Vector3(x, 0, z).applyQuaternion(rotation).add(candidate);
+        if (Math.abs(floorHeightAt(corner.x, corner.z) - floor) > .05) level = false;
+      }
+      if (!level) continue;
+      const center = new THREE.Vector3(0, 1.17, .45).applyQuaternion(rotation).add({ x: candidate.x, y: floor, z: candidate.z });
+      let blocked = false;
+      this.game.world.forEachCollider((collider) => {
+        if (blocked || collider.isSensor() || this.collidersSet.has(collider.handle)) return;
+        if (collider.intersectsShape(shape, center, yawQuat(yaw))) blocked = true;
+      });
+      if (!blocked) return candidate;
+    }
+    return null;
+  }
+
   // Straight back to the parking bay, upright and at rest with the forks down (holding Q / Y).
   resetToStart() {
     const spawn = this.game.level.forkliftSpawn;
+    const spot = this.findResetSpot();
+    if (!spot) {
+      this.game.toast('Parking area blocked: clear some space before resetting the forklift', 3);
+      return false;
+    }
     this.height = CONFIG.forklift.liftMin;
     this.liftVel = 0;
     this.tippedTime = 0;
@@ -181,7 +215,16 @@ export class Forklift {
     this.drift = 0;
     this.driftCharge = 0;
     this.boostTime = 0;
-    this.teleport(spawn.pos, spawn.yaw);
+    this.steer = 0;
+    this.driftHeld = false;
+    this.tipped = false;
+    this.speed = 0;
+    this.liftJoint.configureMotor(this.height, 0, CONFIG.forklift.liftStiffness, CONFIG.forklift.liftDamping);
+    this.teleport(spot, spawn.yaw);
+    if (Math.hypot(spot.x - spawn.pos.x, spot.z - spawn.pos.z) > .1) {
+      this.game.toast('Parking spot blocked: forklift reset in a clear space nearby', 3);
+    }
+    return true;
   }
 
   // Back on its wheels where it lies, pointing the way it was (Dave heaving it over), at rest.
@@ -690,11 +733,11 @@ export class Forklift {
     }
     g.textBaseline = 'middle';
     g.fillStyle = '#111';
-    g.font = 'bold 44px system-ui, sans-serif';
+    g.font = game.receiving ? 'bold 30px system-ui, sans-serif' : 'bold 44px system-ui, sans-serif';
     g.textAlign = 'left';
-    g.fillText('PICK LIST', 28, 52);
+    g.fillText(game.receiving ? 'PURCHASE ORDER' : 'PICK LIST', 28, 52);
     g.textAlign = 'right';
-    g.fillText(`ORDER #${game.orderId ?? 1}`, W - 28, 52);
+    g.fillText(game.receiving ? 'PO-001' : `ORDER #${game.orderId ?? 1}`, W - 28, 52);
     g.fillStyle = '#c62828';
     g.fillRect(28, 82, W - 56, 4);
     // Column headings on a yellow band
@@ -746,7 +789,7 @@ export class Forklift {
     g.fillStyle = '#333';
     g.font = '30px system-ui, sans-serif';
     g.textAlign = 'left';
-    g.fillText('Wrap, then load at', 30, 650);
+    g.fillText(game.receiving ? 'Unload truck at' : 'Wrap, then load at', 30, 650);
     g.fillStyle = '#1a7f37';
     g.font = 'bold 30px system-ui, sans-serif';
     g.fillText((game.level.dock?.name || 'Dock').toUpperCase(), 290, 650);

@@ -150,3 +150,15 @@ Blueprints on the title, order-selection and pause screens use a landscape orien
 The in-game wall badges match the landscape blueprint: N at the top, E at the right, S at the bottom and W at the left. Internal layout wall keys still follow the original coordinates; only player-facing direction labels are remapped.
 
 Blueprints use a compass rose in the bottom-right instead of wall-edge direction labels. Repeated yellow arrows indicate travel on both conveyors. Forklift parking and its charger sit in the southwest corner of the lower level (landscape compass); Ralph starts facing east.
+
+## Receiving / Putaway
+
+Choose Single Player or Couch Co-op, then **Receiving → PO-001**. The first fixed purchase order arrives at Dock 2 on two single-SKU pallets: two small SKU 355 boxes for A-6-1 and two small SKU 584 boxes for B-6-1. Those shelf faces start empty only in receiving mode. The cab clipboard lists exact destinations and live putaway counts; yellow shelf labels and the guided tutorial show where to go.
+
+Ralph unloads the trailer and brings pallets to the aisles. Dave places incoming boxes on their assigned shelves. Any orientation counts if the box stays within the correct bay and height, its center is over the shelf depth (a stable overhang on the front/back beam is allowed), is supported by the rack or its stock, and stays still for 0.75 seconds. Wrong locations, warehouse stock substituted for incoming boxes, carried boxes, and boxes balanced on the forks do not count. Removing a counted box removes its progress. Damaged incoming boxes return to the truck; boxes falling below the world are recovered there too. Racking can still be reset using the existing controls.
+
+After all four boxes are put away, return **both delivery pallets** upright, empty and flat on the lower floor in the green EMPTY PALLETS area. Place them side by side. Finally, park the forklift chassis anywhere fully within its marked starting bay, facing east with the forks lowered, and stop for one second. The final guide explains any remaining parking condition. Normal incident penalties apply. Receiving has separate single-player/co-op best times and medal targets (initial targets require playtesting); picking and Full Shift remain separate. The wrapper is inactive during receiving.
+
+`npm test` includes real warehouse/physics checks for incoming pallets, empty destinations, stable putaway, revoked progress, required cleanup and parking, and separate receiving records.
+
+Forklift resets check clearance for the collapsed truck and forks before moving it. If the normal parking spot contains pallets, boxes, debris, or Dave, the truck uses a clear nearby position and explains why. If no nearby position is safe, the reset asks for the area to be cleared instead of embedding the truck in an obstacle.

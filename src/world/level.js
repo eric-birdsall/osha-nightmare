@@ -9,6 +9,7 @@ import { createLadderStand } from '../entities/ladder.js';
 import { buildParking, parkingRect } from './parking.js';
 import WAREHOUSE from './warehouse-v1.json';
 import ORDERS_FILE from './orders.json';
+import { RECEIVING_ORDER } from './receiving-orders.js';
 import { LAYOUT, rackX1, WALL_LABELS } from './layout.js';
 import { buildWrapper } from './wrapper.js';
 import { buildPacking, packingRect } from './packing.js';
@@ -312,7 +313,8 @@ function stockShelves(game, racks) {
     for (let b = 0; b < rack.bays; b++) {
       for (let shelf = 0; shelf < rack.shelves.length; shelf++) {
         const at = locationCode(name, b, shelf);
-        (WAREHOUSE.faces[at] || []).forEach((sp, i) => {
+        const reserved = game.receiving && RECEIVING_ORDER.lines.some((line) => line.location === at);
+        (reserved ? [] : WAREHOUSE.faces[at] || []).forEach((sp, i) => {
           if (!sp) return;
           const [sku, , type, jitter] = sp;
           const half = CONFIG.objects[type].size[2] / 2;
@@ -324,7 +326,7 @@ function stockShelves(game, racks) {
           box.home = { rack: name, pos: { x: t.x, y: t.y, z: t.z }, rot: { x: r.x, y: r.y, z: r.z, w: r.w } };
           ent.stock.push(box);
         });
-        const to = WAREHOUSE.signs[at];
+        const to = reserved ? null : WAREHOUSE.signs[at];
         if (to) {
           // Hung under this shelf's beam, beside the location tag, so it moves with the rack
           const sign = backstockSign(to);
@@ -341,6 +343,7 @@ function stockShelves(game, racks) {
 // An order's pick list: each line's SKU and quantity, its pick face (the main-floor face holding
 // most of that SKU) and, if that face is short, where the BACKSTOCK sign says the rest is.
 export function orderLines(spec) {
+  if (spec.activity === 'receiving') return spec.lines.map((line, i) => ({ ...line, line: 'ABC'[i], backstock: null }));
   const mainFloor = new Set(RACKS.filter((r) => !r.base).map((r) => r.name));
   return spec.lines.map((l, i) => {
     let best = null;
@@ -1089,7 +1092,7 @@ function buildDocks(game) {
 
 export function buildLevel(game) {
   // The orders this run ships (orders.json): one level's, or all five in a Full Shift
-  const run = game.shift ? ORDERS : [ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0]];
+  const run = game.receiving ? [RECEIVING_ORDER] : game.shift ? ORDERS : [ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0]];
   const { scene } = game;
   const { halfX, halfZ, wallH } = ROOM;
 
