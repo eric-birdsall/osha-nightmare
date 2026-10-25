@@ -106,7 +106,7 @@ export class Receiving {
 
   parkingReason() {
     const f = this.game.forklift, home = this.game.level.forkliftSpawn;
-    if (f.tipped) return 'Dave needs to put the forklift back on its wheels.';
+    if (f.tipped) return 'Ralph needs to reset the tipped forklift from his seat.';
     const p = f.body.translation(), rotation = new THREE.Quaternion().copy(f.body.rotation());
     const bay = parkingRect();
     // Accept the visible parking area, rather than an invisible radius around the spawn.

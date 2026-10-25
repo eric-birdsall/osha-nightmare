@@ -18,6 +18,23 @@ const blank = () => ({
   swap: false, pause: false, respawnHeld: false,
 });
 
+// A blocked or unsupported controller API must not stop keyboard play or the render loop.
+export function readGamepads(nav = navigator, doc = document, secure = globalThis.isSecureContext) {
+  if (secure === false) return { pads: [], issue: 'Controllers require HTTPS or localhost. Open the HTTPS game page.' };
+  if (typeof nav.getGamepads !== 'function') return { pads: [], issue: 'This browser does not expose controller support. Open the game directly in Chrome or Edge.' };
+  try {
+    const policy = doc.permissionsPolicy || doc.featurePolicy;
+    if (policy?.allowsFeature && !policy.allowsFeature('gamepad')) {
+      return { pads: [], issue: 'Controller access is blocked by this page’s browser policy. Open the game directly in a browser tab.' };
+    }
+    return { pads: Array.from(nav.getGamepads() || []).filter((pad) => pad && pad.connected), issue: '' };
+  } catch (error) {
+    return { pads: [], issue: error.name === 'SecurityError'
+      ? 'Controller access is blocked by the browser. Open the game directly in a Chrome or Edge tab.'
+      : 'The browser could not read the controller. Reconnect it and reload the page.' };
+  }
+}
+
 // Maps keyboard/mouse and gamepads to per-character actions.
 // Devices are named 'kbm', 'pad0', 'pad1' (pads in connection order).
 export class Input {
@@ -79,7 +96,11 @@ export class Input {
   // Call once per rendered frame before reading actions.
   poll(dt) {
     this.dt = dt;
-    const list = navigator.getGamepads ? [...navigator.getGamepads()].filter((p) => p && p.connected) : [];
+    const result = readGamepads();
+    this.gamepadIssue = result.issue;
+    const list = result.pads;
+    const connected = new Set(list.map((pad) => pad.index));
+    for (const index of this.padPrev.keys()) if (!connected.has(index)) this.padPrev.delete(index);
     this.pads = list;
     this.padEdges.clear();
     if (this.keyboardActivity || this.keys.size) this.lastDevice = 'kbm';
@@ -111,6 +132,17 @@ export class Input {
     this.padEdges.clear();
     this.mouseDX = 0;
     this.mouseDY = 0;
+  }
+
+  controllerReport() {
+    if (this.gamepadIssue) return this.gamepadIssue;
+    if (!this.pads.length) return 'No controller detected yet.\nClick inside the game, then press A on the controller.\nIf it remains undetected, reconnect Bluetooth or try a USB data cable, then reload.';
+    const names = { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT', 8: 'View', 9: 'Menu', 10: 'L3', 11: 'R3' };
+    return this.pads.map((pad, index) => {
+      const pressed = pad.buttons.flatMap((button, i) => button.pressed || button.value > .25 ? [names[i] || `Button ${i}`] : []);
+      const axes = pad.axes.map((value, i) => Math.abs(value) > CONFIG.input.deadZone ? `Axis ${i}: ${value.toFixed(2)}` : '').filter(Boolean);
+      return `Controller ${index + 1}: ${pad.id}\n${pad.mapping === 'standard' ? 'Standard controls supported.' : 'Browser has not provided a standard button layout; controls may differ.'}\nInput: ${[...pressed, ...axes].join(', ') || 'Press a button or move a stick to test.'}`;
+    }).join('\n\n');
   }
 
   padCount() {

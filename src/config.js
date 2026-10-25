@@ -32,8 +32,6 @@ export const CONFIG = {
     puntHoldDelay: 0.25, // s: holding E / X with a box this long brings up the punt aim (shorter is a tap: put down)
     puntSpeed: 11.5, // m/s off his boot when he punts a box (R / RB): aim higher to punt further
     puntAngle: 0.4, // rad (~23 deg) the kick goes above where he's looking: looking level lobs it well up
-    forkliftRightRange: 3.2, // m from the truck's middle: Dave can heave a tipped forklift back on its wheels...
-    forkliftRightHoldTime: 2.0, // ...by holding E / X this long
     palletFlipRange: 1.8, // m: a tipped-over pallet this close can be flipped back flat...
     palletFlipHoldTime: 1.0, // ...by holding E / X this long
     puntHeight: 0.25, // the box's bottom when his boot meets it (it's dropped from his hands onto his foot)

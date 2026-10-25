@@ -215,7 +215,7 @@ export class Game {
   }
 
   keyHint(role, action) {
-    const map = { interact: ['E', 'X'], toss: ['R', 'RB'], swap: ['Tab', 'View'], lift: ['R', 'RB'], lower: ['F', 'LB'], crouch: ['Ctrl', 'L3'] };
+    const map = { interact: ['E', 'X'], toss: ['R', 'RB'], swap: ['Tab', 'View'], lift: ['R', 'RB'], lower: ['F', 'LB'], crouch: ['Ctrl', 'L3'], reset: ['Q', 'Y'], jump: ['Space', 'A'], gas: ['W', 'A'], brake: ['S', 'B'], drift: ['Space', 'RT'] };
     const [key, button] = map[action];
     return this.usesKeyboard(role) ? key : `<span class="pad-button pad-${button.toLowerCase()}" role="img" aria-label="Controller ${button}">${button === 'View' ? '▱' : button}</span>`;
   }
@@ -245,7 +245,7 @@ export class Game {
       this.started = daveMoved || ralphMoved;
     }
     // Holding Q / Y for a full second sends that character back to the start (the forklift to its
-    // bay, if it isn't lying on its side). Let go before holding again to do it again.
+    // bay, upright even after tipping). Let go before holding again to do it again.
     this.respawnHold ||= { climber: 0, driver: 0 };
     for (const [role, on] of [['climber', climberOn], ['driver', driverOn]]) {
       if (!(on && actions[role].respawnHeld)) {
@@ -253,12 +253,6 @@ export class Game {
         continue;
       }
       if (this.respawnHold[role] < 0) continue; // done: waiting for the button to come up
-      // A tipped forklift stays put: only Dave can get it back on its wheels
-      if (role === 'driver' && this.forklift.tipped) {
-        this.respawnHold[role] = -1;
-        this.toast('Tipped over: Dave has to set the forklift back on its wheels', 3);
-        continue;
-      }
       this.respawnHold[role] += dt;
       if (this.respawnHold[role] >= CONFIG.input.respawnHoldTime) {
         this.respawnHold[role] = -1;

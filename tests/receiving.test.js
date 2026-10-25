@@ -201,3 +201,20 @@ test('tipping reports an incident without a blast; Ralph looks vertically and ca
   assert.deepEqual(incidents, ['tipped']);
   game.dispose();
 });
+
+test('only Ralph can recover a tipped forklift by holding his reset control', () => {
+  const game = createGame(), f = game.forklift;
+  const blank = Input.prototype.climberActions.call({ invertY: false }, []);
+  f.body.setRotation({ x: 0, y: 0, z: Math.SQRT1_2, w: Math.SQRT1_2 }, true);
+  settle(game, 1); assert.equal(f.tipped, true);
+  game.active = 'climber'; game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  const p = f.body.translation();
+  game.climber.body.setTranslation({ x: p.x - 2, y: -.1, z: p.z }, true);
+  for (let i = 0; i < 150; i++) game.step(1 / 60, { climber: { ...blank, interactHeld: true }, driver: blank });
+  assert.equal(f.tipped, true, 'Dave cannot flip the truck with E/X');
+  game.active = 'driver'; game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  for (let i = 0; i < 80; i++) game.step(1 / 60, { climber: blank, driver: { ...blank, respawnHeld: true } });
+  assert.equal(f.tipped, false); assert.ok(1 - 2 * (f.body.rotation().x ** 2 + f.body.rotation().z ** 2) > .9);
+  assert.ok(game.respawnHold.driver < 0, 'One reset per hold');
+  game.dispose();
+});

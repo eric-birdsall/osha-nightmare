@@ -1,5 +1,30 @@
 import { CONFIG } from '../config.js';
 
+// The reference belongs to this view's character and uses only its current input device.
+export function basicControls(game, role) {
+  const keyboard = game.usesKeyboard(role);
+  const key = (action) => `<kbd>${game.keyHint(role, action)}</kbd>`;
+  const row = (name, control) => `<div><dt>${name}</dt><dd>${control}</dd></div>`;
+  const rows = role === 'driver' ? [
+    ['Steer', keyboard ? '<kbd>A</kbd> <kbd>D</kbd>' : 'Left stick ← →'],
+    ['Look', keyboard ? 'Mouse ↑ ↓ · I / K' : 'Right stick ↑ ↓'],
+    ['Gas / brake', `${key('gas')} ${key('brake')}`],
+    ['Forks ↑ / ↓', `${key('lift')} ${key('lower')}`],
+    ['Drift', `Hold ${key('drift')}`],
+    ['Reset truck', `Hold ${key('reset')}`],
+  ] : [
+    ['Move', keyboard ? '<kbd>WASD</kbd>' : 'Left stick'],
+    ['Look', keyboard ? 'Mouse · IJKL' : 'Right stick'],
+    ['Jump', key('jump')],
+    ['Crouch', `Hold ${key('crouch')}`],
+    ['Use / carry', key('interact')],
+    ['Punt / drag', `Hold ${key('interact')}`],
+    ['Reset rack', `Hold ${key('toss')}`],
+    ['Back to start', `Hold ${key('reset')}`],
+  ];
+  return `<strong>${role === 'driver' ? 'RALPH' : 'DAVE'} · CONTROLS</strong><dl>${rows.map(([label, control]) => row(label, control)).join('')}</dl>`;
+}
+
 // Per-view HUD overlays (DOM). One view per character; single player shows only the active one.
 
 const VIEW_HTML = (role) => `
@@ -23,6 +48,7 @@ const VIEW_HTML = (role) => `
   <div class="rolelabel">${role === 'climber' ? 'DAVE · CLIMBER' : 'RALPH · DRIVER'}</div>
   <div class="toast"></div>
   <div class="banner osha-plate"></div>
+  <aside class="basic-controls" aria-label="Basic controls"></aside>
   <div class="devicehint"></div>
   <div class="fade"></div>
 `;
@@ -56,6 +82,7 @@ export class Hud {
         toast: q('.toast'),
         banner: q('.banner'),
         deviceHint: q('.devicehint'),
+        controls: q('.basic-controls'),
         fade: q('.fade'),
         driftMeter: q('.driftmeter'),
         driftFill: q('.driftmeter .fill'),
@@ -105,6 +132,11 @@ export class Hud {
       v.el.classList.toggle('top', !single && role === 'climber');
       v.el.classList.toggle('bottom', !single && role === 'driver');
       if (!visible) continue;
+      const controlsKey = `${role}:${game.usesKeyboard(role)}`;
+      if (v.controlsKey !== controlsKey) {
+        v.controlsKey = controlsKey;
+        v.controls.innerHTML = basicControls(game, role);
+      }
       const guide = game.tutorial?.content(role);
       v.tutorial.style.display = guide ? '' : 'none';
       if (guide) {
@@ -172,13 +204,6 @@ export class Hud {
           const r = flipping ? `Flipping the ${what}…` : `Flip the ${what} upright: hold <kbd>${key}</kbd>`;
           p = p ? `${p}<br><small>${r}</small>` : r;
         }
-        // The forklift on its side nearby (hands empty): hold E / X to heave it back over
-        const rightHold = CONFIG.climber.forkliftRightHoldTime;
-        const righting = c.rightTimer > 0;
-        if (c.nearTippedForklift && c.state === 'walk') {
-          const r = righting ? 'Heave!…' : `Set the forklift back on its wheels: hold <kbd>${key}</kbd>`;
-          p = p ? `${p}<br><small>${r}</small>` : r;
-        }
         // A fallen ladder nearby (hands empty): hold R / RB to stand it back up
         const upHold = CONFIG.ladder.uprightHoldTime;
         const uprighting = c.uprightTimer > 0;
@@ -192,7 +217,7 @@ export class Hud {
         // The same ring fills while Q / Y is held to go back to the start
         if (respawn(role) > 0) p = p ? `${p}<br><small>Going back to the start…</small>` : 'Going back to the start…';
         const back = respawn(role);
-        const ring = Math.min(1, Math.max(back, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0, flipping ? c.flipTimer / flipHold : 0, righting ? c.rightTimer / rightHold : 0));
+        const ring = Math.min(1, Math.max(back, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0, flipping ? c.flipTimer / flipHold : 0));
         v.holdRing.style.display = ring > 0 ? '' : 'none';
         if (ring > 0) v.holdFill.style.strokeDashoffset = String(113.1 * (1 - ring));
         v.prompt.innerHTML = p;
@@ -208,8 +233,8 @@ export class Hud {
         // Drift meter: fills orange while a drift charges, blue once the boost is earned,
         // then BOOST! while it fires (Ralph can't see the sparks from the seat)
         const f = game.forklift;
-        // On its side: Ralph can't fix that from the seat
-        const tip = f.tipped ? `The forklift is on its side<br><small>Dave has to heave it back over: hold <kbd>${game.keyHint('climber', 'interact')}</kbd> beside it${single ? ' (swap to Dave)' : ''}</small>` : '';
+        // Ralph owns recovery, including when the truck is on its side.
+        const tip = f.tipped ? `Forklift tipped · hold <kbd>${game.keyHint('driver', 'reset')}</kbd> to reset upright in parking` : '';
         v.prompt.innerHTML = tip;
         v.prompt.style.display = tip ? '' : 'none';
         const need = CONFIG.forklift.drift.boostCharge;

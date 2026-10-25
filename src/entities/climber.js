@@ -91,8 +91,6 @@ export class Climber {
     this.resetTimer = 0; // holding R/RB near knocked-over racking
     this.uprightTimer = 0; // holding R/RB near a fallen ladder (-1: done, waiting for release)
     this.flipTimer = 0; // holding E/X near a tipped-over pallet (-1: done, waiting for release)
-    this.rightTimer = 0; // holding E/X near a tipped forklift (-1: done, waiting for release)
-    this.nearTippedForklift = false;
     this.tippedPallet = null;
     this.fallenLadder = null;
     this.nearKnockedRack = null;
@@ -307,7 +305,6 @@ export class Climber {
     this.resetStep(a, dt, active);
     this.uprightStep(a, dt, active);
     this.palletFlipStep(a, dt, active);
-    this.rightForkliftStep(a, dt, active);
     this.dragPalletStep(a, dt, active);
     this.puntStep(a, dt, active);
     if (active && a.interact && !this.draggedPallet) {
@@ -631,7 +628,7 @@ export class Climber {
   }
 
   findDragPallet() {
-    if (this.state !== 'walk' || !this.grounded || this.carried || this.ladderCarry || this.onLadder || this.holdingOn || this.nearTippedForklift) return null;
+    if (this.state !== 'walk' || !this.grounded || this.carried || this.ladderCarry || this.onLadder || this.holdingOn) return null;
     if (this.draggedPallet && this.canDragPallet(this.draggedPallet)) return this.draggedPallet;
     if (this.target || this.onBlades) return null;
     const feet = this.feet, forward = this.viewDir().setY(0).normalize();
@@ -731,33 +728,6 @@ export class Climber {
     pal.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     pal.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.tippedPallet = null;
-    sfx.putdown();
-  }
-
-  // A tipped forklift only comes back on its wheels when Dave heaves it over: hands empty, near it,
-  // holding E / X for a couple of seconds. It's righted where it lies.
-  rightForkliftStep(a, dt, active) {
-    const cfg = CONFIG.climber;
-    const fl = this.game.forklift;
-    const free = !this.carried && !this.ladderCarry && !this.onLadder && !this.holdingOn;
-    let near = false;
-    if (free && fl.tipped) {
-      const c = fl.body.worldCom();
-      const feet = this.feet;
-      near = Math.hypot(c.x - feet.x, c.z - feet.z) < cfg.forkliftRightRange && Math.abs(c.y - feet.y) < 2;
-    }
-    this.nearTippedForklift = near;
-    if (!(active && near && a.interactHeld)) {
-      this.rightTimer = 0;
-      return;
-    }
-    if (this.rightTimer < 0) return;
-    this.rightTimer += dt;
-    if (this.rightTimer < cfg.forkliftRightHoldTime) return;
-    this.rightTimer = -1;
-    fl.rightInPlace();
-    this.nearTippedForklift = false;
-    this.game.toast('Dave heaved the forklift back on its wheels', 2.5);
     sfx.putdown();
   }
 

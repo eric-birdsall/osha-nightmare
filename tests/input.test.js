@@ -21,3 +21,14 @@ test('Ralph drifts with RT, accelerates with A and brakes with B, and retains ke
   input.mouseDX = 50; input.keys.add('KeyJ'); assert.equal(input.driverActions(['kbm']).lookX, 0);
   input.keys.add('Space'); assert.equal(input.driverActions(['kbm']).drift, true);
 });
+
+test('controller polling handles unsupported, blocked, and sparse browser APIs', async () => {
+  const { readGamepads } = await import('../src/systems/input.js');
+  assert.match(readGamepads({}, {}, true).issue, /does not expose/);
+  assert.match(readGamepads({}, {}, false).issue, /HTTPS/);
+  const denied = { getGamepads: () => { const error = new Error(); error.name = 'SecurityError'; throw error; } };
+  assert.match(readGamepads(denied, {}, true).issue, /blocked/);
+  const pad = { connected: true, index: 2 };
+  assert.deepEqual(readGamepads({ getGamepads: () => [null, null, pad] }, {}, true).pads, [pad]);
+  assert.equal(readGamepads({ getGamepads: () => [pad] }, { permissionsPolicy: { allowsFeature: () => false } }, true).pads.length, 0);
+});

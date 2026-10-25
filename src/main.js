@@ -331,8 +331,10 @@ function tick(now) {
   const padText = document.querySelector('.pads');
   if (state === 'title' && padText) {
     const n = input.padCount();
-    padText.textContent = `Gamepads connected: ${n}${n ? '' : ' (press a button on a pad to wake it up)'}`;
+    padText.textContent = input.gamepadIssue || `Gamepads connected: ${n}${n ? '' : ' · click the game, then press A · see Controls for connection checks'}`;
   }
+
+  if (overlay === 'controls') document.getElementById('controller-report').textContent = input.controllerReport();
 
   if (state === 'playing') {
     game.assignDevices(input);

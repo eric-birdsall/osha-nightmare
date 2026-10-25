@@ -1184,3 +1184,17 @@ body[data-input="controller"] #controls td:nth-child(3) { display: none; }
   #levels .btn.level .osha-text { font-size: 16px; }
   #levels .lv-best { grid-column: 2; justify-self: start; margin-left: 0; }
 }
+
+.controller-diagnostics { margin: 12px 0 20px; padding: 12px 16px; text-align: left; border: 1px solid #657386; background: #151b23; }
+.controller-diagnostics h2 { font-size: 16px; letter-spacing: 1px; margin: 0 0 6px; color: #f5c518; }
+.controller-diagnostics pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 16px/1.4 var(--ui); color: #dbe9f7; }
+
+.basic-controls { position: absolute; right: 16px; bottom: 38px; width: 230px; padding: 10px 12px; background: #12161be6; border: 1px solid #657386; border-left: 3px solid #f5c518; color: #edf0f3; pointer-events: none; font: 14px/1.3 var(--ui); }
+.basic-controls strong { display: block; font-size: 12px; letter-spacing: 1px; color: #f5c518; margin-bottom: 7px; }
+.basic-controls dl { margin: 0; display: grid; gap: 5px; }
+.basic-controls dl > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.basic-controls dt { color: #c9cfd7; } .basic-controls dd { margin: 0; text-align: right; }
+.basic-controls kbd { margin-left: 2px; font-size: 12px; }
+.view.split .basic-controls { width: 200px; right: 10px; bottom: 28px; padding: 7px 9px; font-size: 12px; }
+.view.split .basic-controls dl { gap: 3px; }
+@media (max-width: 650px) { .basic-controls { width: 180px; right: 8px; font-size: 12px; } .basic-controls kbd { padding: 1px 3px; } }
