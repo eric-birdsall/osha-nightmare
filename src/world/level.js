@@ -4,6 +4,8 @@ import { COL } from '../physics.js';
 import { CONFIG } from '../config.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { createBox } from '../entities/box.js';
+import { FREIGHT_STOCK, freightHome } from './freight-stock.js';
+import { createFreight } from '../entities/freight.js';
 import { createPallet } from '../entities/pallet.js';
 import { createLadderStand } from '../entities/ladder.js';
 import { buildParking, parkingRect } from './parking.js';
@@ -149,7 +151,7 @@ function labelRack(group, rack, cx, cz) {
   add(endCapSign(name, 1.0, 1.1), x1 + 0.05, 2.3, cz, Math.PI / 2);
   if (rack.palletFromShelf != null) {
     const z = face === 'south' ? z1 + 0.025 : z0 - 0.025;
-    add(labelPlane('PALLET STORAGE · SHELVES 3–5', 3.8, 0.36, { bg: '#f5c518', fg: '#111111' }), (x0 + x1) / 2, 4.2, z, face === 'south' ? 0 : Math.PI);
+    add(labelPlane('MIXED STORAGE · CHECK SKU', 3.8, 0.36, { bg: '#f5c518', fg: '#111111' }), (x0 + x1) / 2, 4.2, z, face === 'south' ? 0 : Math.PI);
   }
   for (const [z, ry] of faces) {
     for (let b = 0; b < rack.bays; b++) {
@@ -315,8 +317,9 @@ function stockShelves(game, racks, storage) {
       for (let shelf = 0; shelf < rack.shelves.length; shelf++) {
         const at = locationCode(name, b, shelf);
         const reserved = game.receiving && game.receivingSpec.lines.some((line) => line.location === at);
-        if (rack.palletFromShelf != null && shelf >= rack.palletFromShelf) {
-          storage.stock(ent, rack, b, shelf, reserved ? [] : WAREHOUSE.faces[at] || [], at, game.receivingSpec?.lines.find(line => line.location === at)?.sku);
+        const freight = FREIGHT_STOCK[at];
+        if (freight || (rack.palletFromShelf != null && shelf >= rack.palletFromShelf)) {
+          storage.stock(ent, rack, b, shelf, WAREHOUSE.faces[at] || [], at, { empty: reserved, freight, reservedSku: game.receivingSpec?.lines.find(line => line.location === at)?.sku });
           continue;
         }
         (reserved ? [] : WAREHOUSE.faces[at] || []).forEach((sp, i) => {
@@ -352,6 +355,10 @@ export function orderLines(spec) {
   if (spec.activity === 'receiving') return spec.lines.map((line, i) => ({ ...line, line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], backstock: null }));
   const pickRacks = new Set(RACKS.filter((r) => r.palletFromShelf == null).map((r) => r.name));
   return spec.lines.map((l, i) => {
+    if (l.freight) {
+      const [location, item] = freightHome(l.sku);
+      return { ...l, line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], location, mass: item.mass, backstock: null };
+    }
     let best = null;
     let most = 0, priority = -1;
     for (const [at, spots] of Object.entries(WAREHOUSE.faces)) {
@@ -1076,6 +1083,7 @@ function buildDocks(game) {
     const c = f.toWorld(0, 0, zc);
     const alongX = d.wall === 'north' || d.wall === 'south';
     const zone = makeZone(game, 'dock', c.x, c.z, alongX ? halfW * 2 : L - 0.2, alongX ? L - 0.2 : halfW * 2);
+    zone.floorY = f.y;
     docks[d.name] = {
       dock: d,
       zone,
@@ -1284,6 +1292,8 @@ export function buildLevel(game) {
   const climberStart = new THREE.Vector3(...LAYOUT.climberSpawn.pos);
   // OSHA violations: dripping electrical panel, caged fire exits
   const hazards = buildHazards(game);
+
+  createFreight(game, LAYOUT.freight);
 
   // Empty pallets (fork pockets open toward ±local Z)
   for (const [x, y, z, yaw] of LAYOUT.pallets) createPallet(game, { pos: [x, y, z], yaw });

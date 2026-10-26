@@ -98,11 +98,12 @@ export const CONFIG = {
     liftMin: 0.1,
     liftMax: 8.8, // five-shelf West-wall pallet racks, including fork-pocket clearance
     freeLift: 1.0, // m the forks rise before the inner mast starts telescoping up (collapsed, the mast fits in a trailer)
-    liftSpeed: 0.4,
+    liftSpeed: 1.2, // sustained lift reaches the top racks in about 8 seconds
     lowerSpeed: 3.0, // forks can come down fast: holding F/LB keeps speeding them up...
     lowerAccel: 2.0, // ...at this rate (m/s²), so a short tap still lowers gently
     lowerStop: 8.0, // and stop hard (m/s²) when you let go; held down, they hit the ground at speed
-    liftAccel: 0.8, // ease in and out going up
+    liftAccel: 0.8, // gentle initial lift keeps short taps precise
+    liftStop: 8.0, // stop promptly on release, even after a fast sustained lift
     liftStiffness: 2500, // carriage motor (acceleration-based)
     liftDamping: 120,
     lookYawLimit: 0,

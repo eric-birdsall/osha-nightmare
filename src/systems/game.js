@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { forkViewBounds, showForkFeed } from './fork-view.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { syncMesh } from '../physics.js';
@@ -155,9 +156,10 @@ export class Game {
     this.incidentCounts = {};
     this.days = CONFIG.hud.startDays;
     this.dayTimer = 0;
-    this.itemStatus = Object.fromEntries(this.level.order.map((o) => [o.line, 0])); // boxes of each order line on the best-stocked pallet
+    this.itemStatus = Object.fromEntries(this.level.order.map((o) => [o.line, 0])); // confirmed quantities delivered to the active trailer
     this.statusTimer = 0;
     this.dockRest = new Map();
+    this.deliveredLoads = new Set();
     this.hintCooldown = 0;
     this.complete = false;
     this.onComplete = null;
@@ -217,7 +219,7 @@ export class Game {
   }
 
   keyHint(role, action) {
-    const map = { interact: ['E', 'X'], toss: ['R', 'RB'], swap: ['Tab', 'View'], lift: ['R', 'RB'], lower: ['F', 'LB'], crouch: ['Ctrl', 'L3'], reset: ['Q', 'Y'], jump: ['Space', 'A'], gas: ['W', 'A'], brake: ['S', 'B'], drift: ['Space', 'RT'] };
+    const map = { forkView: ['C', 'R3'], interact: ['E', 'X'], toss: ['R', 'RB'], swap: ['Tab', 'View'], lift: ['R', 'RB'], lower: ['F', 'LB'], crouch: ['Ctrl', 'L3'], reset: ['Q', 'Y'], jump: ['Space', 'A'], gas: ['W', 'A'], brake: ['S', 'B'], drift: ['Space', 'RT'] };
     const [key, button] = map[action];
     return this.usesKeyboard(role) ? key : `<span class="pad-button pad-${button.toLowerCase()}" role="img" aria-label="Controller ${button}">${button === 'View' ? '▱' : button}</span>`;
   }
@@ -262,6 +264,8 @@ export class Game {
         if (role === 'climber') this.toast('Dave is back where he started', 2);
       }
     }
+    if (driverOn && actions.driver.forkView) this.forklift.forkViewExpanded = !this.forklift.forkViewExpanded;
+    if (this.forklift.tipped) this.forklift.forkViewExpanded = false;
     this.forklift.preStep(actions.driver, dt, driverOn);
     this.forklift.look(actions.driver, driverOn);
     this.climber.preStep(actions.climber, dt, climberOn);
@@ -283,66 +287,82 @@ export class Game {
     }
   }
 
+  // A delivered load must be entirely inside the active trailer and resting on its floor.
+  deliveryReady(ent) {
+    const zone = this.level.dockZone, p = ent.body.translation();
+    if (!zone.contains(p) || Math.abs(p.y - zone.floorY) > .12) return false;
+    const q = new THREE.Quaternion().copy(ent.body.rotation());
+    if (new THREE.Vector3(0, 1, 0).applyQuaternion(q).y < .95) return false;
+    const v = ent.body.linvel(), a = ent.body.angvel();
+    if (Math.hypot(v.x, v.y, v.z) >= CONFIG.dock.restSpeed || Math.hypot(a.x, a.y, a.z) >= .2) return false;
+    const lo = ent.bounds?.min || { x: -.5, y: 0, z: -.6 };
+    const hi = ent.bounds?.max || { x: .5, y: .15, z: .6 };
+    for (const x of [lo.x, hi.x]) for (const y of [lo.y, hi.y]) for (const z of [lo.z, hi.z]) {
+      const corner = new THREE.Vector3(x, y, z).applyQuaternion(q).add(p);
+      if (!zone.contains(corner)) return false;
+    }
+    let onFloor = false;
+    for (let i = 0; i < ent.body.numColliders(); i++) {
+      const collider = ent.body.collider(i);
+      this.world.contactPairsWith(collider, other => {
+        if (other.isSensor() || other.parent()?.handle !== this.staticBody.handle) return;
+        this.world.contactPair(collider, other, manifold => {
+          if (manifold.numContacts() > 0 && Math.abs(manifold.normal().y) > .85) onFloor = true;
+        });
+      });
+    }
+    return onFloor;
+  }
+
+  // Secured cartons count only inside shrinkwrap; a strapped crate is one whole unit.
+  securedCounts(ent) {
+    return Object.fromEntries(this.level.order.map(line => [line.line,
+      line.freight ? Number(ent.kind === 'freight' && ent.sku === line.sku)
+        : ent.kind === 'wrapped' ? ent.skus[line.sku] || 0 : 0]));
+  }
+
   orderStep(dt) {
     this.hintCooldown = Math.max(0, this.hintCooldown - dt);
-    this.statusTimer -= dt;
-    if (this.statusTimer <= 0) {
-      this.statusTimer = 0.2;
-      // Order boxes per line on the best-stocked load (they all have to end up on one pallet)
-      const lines = this.level.order.map((o) => o.line);
-      const best = Object.fromEntries(lines.map((k) => [k, 0]));
-      for (const ent of this.entities) {
-        if (ent.kind !== 'wrapped' && ent.kind !== 'pallet') continue;
-        const n = this.lineCounts(ent);
-        for (const k of lines) best[k] = Math.max(best[k], n[k]);
-      }
-      for (const k of lines) {
-        if (best[k] > this.itemStatus[k]) sfx.check();
-        this.itemStatus[k] = best[k];
-      }
-    }
     if (this.complete) return;
-
-    const dock = this.level.dockZone;
-    const cfg = CONFIG.dock;
+    const loads = [], counts = Object.fromEntries(this.level.order.map(line => [line.line, 0]));
+    let looseAtDock = false;
     for (const ent of this.entities) {
-      if (ent.kind !== 'wrapped' && ent.kind !== 'pallet') continue;
-      const b = ent.body;
-      const t = b.translation();
-      const lv = b.linvel();
-      const inDock = dock.contains(t) && t.y < 1.5;
-      const still = Math.hypot(lv.x, lv.y, lv.z) < cfg.restSpeed;
-      const r = inDock && still ? (this.dockRest.get(ent) || 0) + dt : 0;
-      this.dockRest.set(ent, r);
-      if (r < cfg.restTime) continue;
-      if (ent.kind === 'wrapped') {
-        const wrapped = ent.skus;
-        const total = this.lineCounts(ent);
-        if (this.level.order.every((o) => (wrapped[o.sku] || 0) >= o.qty)) {
-          this.finishOrder(ent);
-          return;
-        }
-        const unwrapped = this.level.order.filter((o) => (wrapped[o.sku] || 0) < o.qty && total[o.line] >= o.qty);
-        if (unwrapped.length) {
-          this.hint(`SKU ${unwrapped.map((o) => o.sku).join(' & ')} isn't all wrapped. Take it back to the wrapper.`);
-          continue;
-        }
-        const missing = this.level.order
-          .filter((o) => total[o.line] < o.qty)
-          .map((o) => `${o.qty - total[o.line]} × SKU ${o.sku}`);
-        this.hint(`Order incomplete: missing ${missing.join(' and ')}`);
-      } else if (collectStack(this, ent).size > 1) {
-        this.hint('Wrap it first.');
-      }
+      if (!['wrapped', 'pallet', 'freight'].includes(ent.kind)) continue;
+      const resting = this.deliveryReady(ent);
+      const time = resting ? (this.dockRest.get(ent) || 0) + dt : 0;
+      this.dockRest.set(ent, time);
+      if (time < CONFIG.dock.restTime) continue;
+      if (ent.kind === 'pallet') { looseAtDock ||= collectStack(this, ent).size > 1; continue; }
+      loads.push(ent);
+      const secured = this.securedCounts(ent);
+      for (const line of this.level.order) counts[line.line] += secured[line.line];
+      looseAtDock ||= [...collectStack(this, ent)].some(e => e.kind === 'box');
+    }
+    for (const line of this.level.order) {
+      const count = Math.min(counts[line.line], line.qty);
+      if (count > this.itemStatus[line.line]) sfx.check();
+      this.itemStatus[line.line] = count;
+    }
+    this.deliveredLoads = new Set(loads);
+    if (this.level.order.every(line => counts[line.line] >= line.qty)) {
+      this.finishOrder(loads);
+      return;
+    }
+    if (looseAtDock) this.hint('Wrap loose cartons before shipping. Strapped crates ship as whole units.');
+    else if (loads.length) {
+      const remaining = this.level.order.filter(line => counts[line.line] < line.qty)
+        .map(line => `${line.qty - counts[line.line]} × SKU ${line.sku}`);
+      this.hint(`Delivered loads count together. Still needed: ${remaining.join(', ')}`);
     }
   }
 
-  // Boxes of each order line (by SKU) on a pallet or wrapped load: wrapped in, plus loose on top.
+  // Gathered stock on a load, used by the picking tutorial. Delivery counts are separate.
   lineCounts(ent) {
-    const n = Object.fromEntries(this.level.order.map((o) => [o.line, ent.skus?.[o.sku] || 0]));
+    const n = this.securedCounts(ent);
     for (const e of collectStack(this, ent)) {
-      const o = e.kind === 'box' && this.level.order.find((x) => x.sku === e.sku);
-      if (o) n[o.line]++;
+      if (e.kind !== 'box') continue;
+      const line = this.level.order.find(l => !l.freight && l.sku === e.sku);
+      if (line) n[line.line]++;
     }
     return n;
   }
@@ -358,7 +378,7 @@ export class Game {
     this.hud?.toast(text, secs);
   }
 
-  // The load at the dock is the whole order. In a Full Shift, the truck leaves with it and the next
+  // Delivered loads together fill the order. In a Full Shift, all of them leave and the next
   // order's pick list comes in (same warehouse, mess and all; the clock keeps running); otherwise,
   // or after the last order, the level's done.
   finishOrder(load) {
@@ -369,11 +389,12 @@ export class Game {
       this.onComplete?.({ time: this.time, falls: this.falls });
       return;
     }
-    if (load) this.shipLoad(load);
+    for (const ent of Array.isArray(load) ? load : load ? [load] : []) if (!ent.removed) this.shipLoad(ent);
     this.orderId = next.id;
     this.level.setOrder(next);
     this.itemStatus = Object.fromEntries(this.level.order.map((o) => [o.line, 0]));
     this.dockRest = new Map();
+    this.deliveredLoads = new Set();
     this.hud?.banner(
       `<span class="osha-text osha-text--yellow" data-text="ORDER ${next.id}">ORDER ${next.id}</span><small>Shipped! Next up: ${next.title} · ${next.dock}</small>`,
       3.5,
@@ -382,10 +403,13 @@ export class Game {
 
   // The truck pulls away with a delivered load: it's gone from the warehouse
   shipLoad(load) {
-    this.world.removeRigidBody(load.body);
-    this.scene.remove(load.mesh);
-    this.removeEntity(load);
-    this.climber.forgetBodies(new Set([load.body.handle]));
+    if (this.climber.wrapped?.body === load.body) this.climber.resetToStart();
+    const stack = collectStack(this, load);
+    const handles = new Set([...stack].map(ent => ent.body.handle));
+    this.climber.forgetBodies(handles);
+    for (const ent of stack) {
+      this.world.removeRigidBody(ent.body); this.scene.remove(ent.mesh); this.removeEntity(ent);
+    }
   }
 
   incidentLine(reason) {
@@ -788,7 +812,7 @@ export class Game {
   loadedMass(rack) {
     let m = rack.mass;
     for (const e of collectStack(this, rack)) {
-      if (e.kind === 'box' || e.kind === 'pallet' || e.kind === 'wrapped') m += e.mass || 0;
+      if (['box', 'pallet', 'wrapped', 'freight'].includes(e.kind)) m += e.mass || 0;
     }
     return m;
   }
@@ -877,12 +901,13 @@ export class Game {
   render(renderer, w, h) {
     renderer.shadowMap.needsUpdate = true;
     if (this.replay) return this.replay.render(renderer, w, h);
+    const driverCamera = this.forklift.forkViewExpanded ? this.forklift.forkCamera : this.forklift.camera;
     const views =
       this.mode === 'single'
-        ? [[this.active === 'climber' ? this.climber.camera : this.forklift.camera, 0, 0, w, h]]
+        ? [[this.active === 'climber' ? this.climber.camera : driverCamera, 0, 0, w, h]]
         : [
             [this.climber.camera, 0, h / 2, w, h / 2],
-            [this.forklift.camera, 0, 0, w, h / 2],
+            [driverCamera, 0, 0, w, h / 2],
           ];
     renderer.setScissorTest(true);
     for (const [cam, x, y, vw, vh] of views) {
@@ -892,7 +917,18 @@ export class Game {
       renderer.setScissor(x, y, vw, vh);
       renderer.render(this.scene, cam);
       renderer.shadowMap.needsUpdate = false;
+      if (cam === driverCamera && showForkFeed(this.forklift)) {
+        const b = forkViewBounds(vw, vh);
+        const feed = this.forklift.forkCamera;
+        feed.aspect = b.width / b.height;
+        feed.updateProjectionMatrix();
+        renderer.setViewport(x + b.left, y + vh - b.top - b.height, b.width, b.height);
+        renderer.setScissor(x + b.left, y + vh - b.top - b.height, b.width, b.height);
+        renderer.clearDepth();
+        renderer.render(this.scene, feed);
+      }
     }
+    renderer.setViewport(0, 0, w, h);
     renderer.setScissorTest(false);
   }
 

@@ -1232,6 +1232,7 @@ export class Climber {
         this.target = ent;
         this.targetStack = this.stackOn(ent)?.length || 1;
       }
+      else if (ent?.kind === 'freight') this.target = ent;
       else if (ent && ent.kind === 'ladder' && !this.onLadder && ent.state !== 'carried' && this.support?.body.handle !== ent.body.handle) this.target = ent;
     }
     if (!this.target && !this.onLadder) this.target = this.nearbyLadder(chest, dir);
@@ -1313,7 +1314,7 @@ export class Climber {
   // Picking up a box takes the boxes stacked on it too, up to climber.maxCarry in all. A taller
   // stack is too much: he takes the top box instead.
   pickUp(ent) {
-    if (ent.removed) return;
+    if (ent.removed || ent.kind !== 'box') return;
     let boxes = this.stackOn(ent) || [ent];
     if (boxes[0] !== ent) boxes = [ent];
     if (boxes.length > CONFIG.climber.maxCarry) {

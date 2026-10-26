@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { LAYOUT } from '../world/layout.js';
 import { createBox } from '../entities/box.js';
+import { createFreight } from '../entities/freight.js';
 import { createPallet } from '../entities/pallet.js';
 import { collectStack, buildWrapped } from './wrapping.js';
 import { labelPlane } from '../util/meshes.js';
@@ -34,6 +35,14 @@ export class Receiving {
     const serials = {};
     this.spec.pallets.forEach((manifest, index) => {
       const pos = [dock.center.x, floor + .025, dock.center.z + dock.half.z - 1.1 - index * 1.7];
+      const unit = game.level.order.find(line => line.line === manifest[0][0]);
+      if (unit.freight) {
+        const crate = createFreight(game, { ...unit, pos });
+        crate.receivingLine = unit.line; crate.incomingId = `${this.spec.id}:${unit.line}:1`;
+        crate.incomingPalletIds = [`${this.spec.id}:pallet-${index}`];
+        crate.home = { pos: { ...crate.body.translation() }, rot: { ...crate.body.rotation() } };
+        return;
+      }
       const pallet = createPallet(game, { pos });
       pallet.incomingPalletIds = [`${this.spec.id}:pallet-${index}`];
       pallet.home = { pos: { ...pallet.body.translation() }, rot: { ...pallet.body.rotation() } };
@@ -109,7 +118,7 @@ export class Receiving {
   palletsReturned() {
     const { x, z, half } = this.returns;
     return this.pallets.every((pallet) => {
-      if (pallet.removed || pallet.kind === 'wrapped' || collectStack(this.game, pallet).size > 1) return false;
+      if (pallet.removed || pallet.kind !== 'pallet' || collectStack(this.game, pallet).size > 1) return false;
       const p = pallet.body.translation(), v = pallet.body.linvel();
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(new THREE.Quaternion().copy(pallet.body.rotation()));
       return Math.abs(p.x - x) < half - .7 && Math.abs(p.z - z) < half - .7
@@ -147,12 +156,16 @@ export class Receiving {
     return this.parkingReason() === null;
   }
 
-  wrappedAtSlot(load, slot, supported) {
-    if (load.kind !== 'wrapped' || !supported.has(load)) return false;
-    if (load.contents.filter(r => r.kind === 'pallet').length !== 1) return false;
-    const records = load.contents.filter(r => r.kind === 'box');
-    if (records.length !== slot.line.qty || records.some(r => r.data.receivingLine !== slot.line.line || r.data.sku !== slot.line.sku || !r.data.incomingId?.startsWith(`${this.spec.id}:`))) return false;
-    if (new Set(records.map(r => r.data.incomingId)).size !== slot.line.qty) return false;
+  palletAtSlot(load, slot, supported) {
+    if (!supported.has(load)) return false;
+    if (slot.line.freight) {
+      if (load.kind !== 'freight' || load.sku !== slot.line.sku || load.receivingLine !== slot.line.line || !load.incomingId?.startsWith(`${this.spec.id}:`)) return false;
+    } else {
+      if (load.kind !== 'wrapped' || load.contents.filter(r => r.kind === 'pallet').length !== 1) return false;
+      const records = load.contents.filter(r => r.kind === 'box');
+      if (records.length !== slot.line.qty || records.some(r => r.data.receivingLine !== slot.line.line || r.data.sku !== slot.line.sku || !r.data.incomingId?.startsWith(`${this.spec.id}:`))) return false;
+      if (new Set(records.map(r => r.data.incomingId)).size !== slot.line.qty) return false;
+    }
     const storage = this.game.level.storage.slots.find(s => s.location === slot.line.location);
     if (!storage || !palletFitsSlot(load, storage)) return false;
     const rq = new THREE.Quaternion().copy(slot.rack.body.rotation());
@@ -184,7 +197,7 @@ export class Receiving {
       let count = 0;
       const candidates = slot.line.pallet ? this.pallets : this.boxes.filter(b => b.receivingLine === slot.line.line);
       for (const ent of candidates) {
-        const stable = slot.line.pallet ? this.wrappedAtSlot(ent, slot, supported) : this.correctlyPlaced(ent, slot, supported);
+        const stable = slot.line.pallet ? this.palletAtSlot(ent, slot, supported) : this.correctlyPlaced(ent, slot, supported);
         const key = `${slot.line.line}:${ent.body.handle}`;
         const time = stable ? (this.timers.get(key) || 0) + elapsed : 0;
         this.timers.set(key, time);

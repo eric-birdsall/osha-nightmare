@@ -19,7 +19,7 @@ export function collectStack(game, rootEnt) {
       const c = b.collider(i);
       world.contactPairsWith(c, (other) => {
         const oe = game.entityForCollider(other);
-        if (!oe || set.has(oe) || oe.carried || !['box', 'pallet', 'wrapped'].includes(oe.kind)) return;
+        if (!oe || set.has(oe) || oe.carried || !['box', 'pallet', 'wrapped', 'freight'].includes(oe.kind)) return;
         if (oe.body.translation().y <= by + 0.02) return;
         let touching = false;
         world.contactPair(c, other, (m) => {
@@ -103,6 +103,7 @@ export class WrapSystem {
 
   // Why a load in the square can't be wrapped yet (or null when it can).
   blockReason(ent) {
+    if ([...collectStack(this.game, ent)].some(e => e.kind === 'freight')) return 'Strapped crates ship as whole units; keep them out of the wrapper';
     const b = ent.body;
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(b.rotation()));
     if (up.y <= 0.9) return 'Stand the pallet upright to wrap it';
@@ -207,6 +208,7 @@ export class WrapSystem {
     const climber = game.climber;
     const climberOn =
       climber.state === 'walk' && climber.grounded && climber.support && set.has(game.entityForCollider(climber.support.collider));
+    if ([...set].some(e => e.kind === 'freight')) { game.toast('Strapped crates stay on their own pallet', 2); return; }
     const wrapped = buildWrapped(game, pallet, set);
     if (climberOn) climber.wrapInto(wrapped.body);
     sfx.wrapDone();

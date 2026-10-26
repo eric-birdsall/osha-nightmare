@@ -168,6 +168,9 @@ export class Forklift {
     this.liftJoint.configureMotor(this.height, 0, cfg.liftStiffness, cfg.liftDamping);
 
     this.buildMesh();
+    this.forkCamera = new THREE.PerspectiveCamera(68, 1, 0.035, 200);
+    this.forkCamera.layers.enable(1);
+    this.forkViewExpanded = false;
     this.camera = new THREE.PerspectiveCamera(FOV, 1, 0.05, 200);
     this.camera.layers.enable(1);
   }
@@ -446,13 +449,14 @@ export class Forklift {
     const liftDir = active ? a.liftUp - a.liftDown : 0;
     this.liftInput = liftDir; // drives the (cosmetic) lift lever
     let target = liftDir * (liftDir < 0 ? cfg.lowerSpeed : cfg.liftSpeed);
-    const maxUp = Math.sqrt(2 * cfg.liftAccel * Math.max(0, cfg.liftMax - this.height));
+    const maxUp = Math.sqrt(2 * cfg.liftStop * Math.max(0, cfg.liftMax - this.height));
     target = Math.min(maxUp, target); // no easing at the bottom: held down, the forks hit the ground at speed
     const dl = target - this.liftVel;
     // Going down: speed up gradually (tap to feather), stop hard; going up: ease in and out
     let rate = cfg.liftAccel;
     if (this.liftVel <= 0 && dl < 0) rate = cfg.lowerAccel;
     else if (this.liftVel < 0 && dl > 0) rate = cfg.lowerStop;
+    else if (this.liftVel > 0 && dl < 0) rate = cfg.liftStop;
     this.liftVel += Math.sign(dl) * Math.min(Math.abs(dl), rate * dt);
     const prevH = this.height;
     const impact = this.liftVel; // speed as they reach the end of travel
@@ -750,7 +754,7 @@ export class Forklift {
       g.font = 'bold 46px ui-monospace, Menlo, Consolas, monospace';
       g.fillText(o.location, 296, y);
       // The product's brand under it, with a swatch of its box colour (same on every box of it)
-      const look = boxLook(game.skus?.look(o.sku) ?? o.sku);
+      const look = o.freight ? { color: '#b58b52', name: 'STRAPPED CRATE', fragile: false } : boxLook(game.skus?.look(o.sku) ?? o.sku);
       g.fillStyle = look.color;
       g.fillRect(38, y + 30, 34, 34);
       g.strokeStyle = '#333';
@@ -759,9 +763,9 @@ export class Forklift {
       g.fillStyle = done ? '#8a8a8a' : '#333';
       g.font = 'italic bold 34px system-ui, sans-serif';
       g.fillText(look.name, 84, y + 48);
-      if (game.receiving && o.pallet) {
+      if (o.freight || (game.receiving && o.pallet)) {
         g.fillStyle = '#1d3f80'; g.font = 'bold 20px system-ui, sans-serif';
-        g.fillText('WRAPPED PALLET', 330, y + 74);
+        g.fillText(o.freight ? 'FORKLIFT ONLY · 1 UNIT' : 'WRAPPED PALLET', 300, y + 74);
       }
       if (look.fragile) {
         g.fillStyle = '#d0141b';
@@ -780,7 +784,7 @@ export class Forklift {
     g.fillStyle = '#333';
     g.font = '30px system-ui, sans-serif';
     g.textAlign = 'left';
-    g.fillText(game.receiving ? 'Unload truck at' : 'Wrap, then load at', 30, 650);
+    g.fillText(game.receiving ? 'Unload truck at' : 'DELIVERED · Dock', 30, 650);
     g.fillStyle = '#1a7f37';
     g.font = 'bold 30px system-ui, sans-serif';
     g.fillText((game.level.dock?.name || 'Dock').toUpperCase(), 290, 650);
@@ -952,6 +956,11 @@ export class Forklift {
   }
 
   updateCamera() {
+    // Outboard of the backrest: the blade tips and shelf remain visible together.
+    const carriageQ = quatToThree(this.carriage.rotation());
+    this.forkCamera.position.set(0.55, 0.45, -0.05).applyQuaternion(carriageQ).add(this.carriage.translation());
+    this.forkCamera.quaternion.copy(carriageQ).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.25, Math.PI, 0, 'YXZ')));
+
     const cfg = CONFIG.forklift;
     const q = quatToThree(this.body.rotation());
     const t = this.body.translation();

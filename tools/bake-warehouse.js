@@ -7,11 +7,12 @@
 // It's seeded, so it bakes the same thing every time. Change ORDER_SPECS or the seed only when you
 // mean to: that's a new warehouse version, and saved best times for it are reset.
 
+import { FREIGHT_STOCK } from '/src/world/freight-stock.js';
 import { LAYOUT } from '/src/world/layout.js';
 import { boxLook } from '/src/entities/box.js';
 import { CONFIG } from '/src/config.js';
 
-export const VERSION = 3;
+export const VERSION = 4;
 const SEED = 20261024;
 
 // What each order asks for: rack, bay (1-6 from the west end), shelf (1 = bottom), quantity, how
@@ -34,33 +35,36 @@ const ORDER_SPECS = [
   },
   {
     id: 3,
-    medals: { gold: 180, silver: 240, bronze: 330 }, // placeholder targets (s): set from playtests
+    medals: { gold: 300, silver: 360, bronze: 450 }, // placeholder targets (s): set from playtests
     title: 'Top shelf',
     dock: 'Dock 1',
     lines: [
       { rack: 'H', bay: 1, shelf: 3, qty: 2, short: 0, fragile: false, decoy: true },
       { rack: 'I', bay: 1, shelf: 5, qty: 1, short: 0, fragile: false, decoy: true },
+      { rack: 'H', bay: 1, shelf: 5, qty: 1, freight: true },
     ],
   },
   {
     id: 4,
-    medals: { gold: 240, silver: 330, bronze: 420 }, // placeholder targets (s): set from playtests
+    medals: { gold: 360, silver: 450, bronze: 540 }, // placeholder targets (s): set from playtests
     title: 'Handle with care',
     dock: 'Dock 2',
     lines: [
       { rack: 'E', bay: 3, shelf: 2, qty: 3, short: 1, fragile: false, decoy: true },
       { rack: 'F', bay: 5, shelf: 1, qty: 2, short: 0, fragile: true, decoy: true },
+      { rack: 'H', bay: 4, shelf: 1, qty: 1, freight: true },
     ],
   },
   {
     id: 5,
-    medals: { gold: 360, silver: 480, bronze: 600 }, // placeholder targets (s): set from playtests
+    medals: { gold: 480, silver: 600, bronze: 720 }, // placeholder targets (s): set from playtests
     title: 'The whole nightmare',
     dock: 'Dock 1',
     lines: [
       { rack: 'G', bay: 1, shelf: 3, qty: 3, short: 1, fragile: false, decoy: true },
       { rack: 'F', bay: 2, shelf: 2, qty: 2, short: 0, fragile: true, decoy: true },
       { rack: 'C', bay: 1, shelf: 3, qty: 2, short: 1, fragile: false, decoy: true },
+      { rack: 'I', bay: 2, shelf: 5, qty: 1, freight: true },
     ],
   },
 ];
@@ -81,7 +85,7 @@ export async function bake() {
   const cfg = CONFIG.order;
   const racks = LAYOUT.racks;
   const code = (rack, bay, shelf) => `${rack}-${bay + 1}-${shelf + 1}`;
-  const used = new Set();
+  const used = new Set(Object.values(FREIGHT_STOCK).map(item => item.sku));
   const takeSku = (n) => (n >= 100 && n <= 999 && !used.has(n) ? (used.add(n), n) : null);
   const newSku = (fragile) => {
     for (;;) {
@@ -114,7 +118,7 @@ export async function bake() {
 
   const faces = {}; // "A-1-1" -> [spot | null, spot | null, spot | null]
   const signs = {}; // pick face -> backstock location
-  const taken = (c) => c in faces;
+  const taken = (c) => c in faces || c in FREIGHT_STOCK;
   const high = racks.filter((r) => r.palletFromShelf != null).map((r) => r.name);
   const main = racks.filter((r) => r.palletFromShelf == null).map((r) => r.name);
   const freeFace = (names, shelf) => {
@@ -160,6 +164,10 @@ export async function bake() {
     medals: o.medals,
     lines: o.lines.map((l) => {
       const c = code(l.rack, l.bay - 1, l.shelf - 1);
+      if (l.freight) {
+        const item = FREIGHT_STOCK[c];
+        return { sku: item.sku, qty: l.qty, freight: true };
+      }
       if (taken(c)) throw new Error(`Order ${o.id}: ${c} is used twice`);
       const sku = newSku(l.fragile);
       fillFace(c, sku, l.qty - l.short, { gap: l.short > 0, decoy: l.decoy });

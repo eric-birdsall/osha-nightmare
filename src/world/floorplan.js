@@ -63,7 +63,7 @@ export function drawFloorPlan(svg, { idPrefix = 'fp', showPlayers = true } = {})
     text(conveyors[0].x0 - 1.2, (conveyors[0].z0 + conveyors[0].z1) / 2, 'CONVEYOR', 'fp-zone'),
     `<g class="fp-racks">${racks.map((r) => rect(r.x0, r.z0, rackX1(r) - r.x0, r.z1 - r.z0)).join('')}</g>`,
     `<g class="fp-labels">${racks.map((r) => text((r.x0 + rackX1(r)) / 2, (r.z0 + r.z1) / 2, r.name)).join('')}</g>`,
-    planLabel(-21.8, -20.9, ['HIGH RACKS'], .7),
+    planLabel(-21.8, -20.9, ['MIXED RACKS'], .7),
     rect(wrap.x - wrap.frame.half, wrap.z - wrap.frame.half, wrap.frame.half * 2, wrap.frame.half * 2, 'fp-room'),
     rect(wrap.x - wrap.size / 2, wrap.z - wrap.size / 2, wrap.size, wrap.size, 'fp-wrap'),
     planLabel(-wrap.z, wrap.x + wrap.frame.half + 1.15, ['WRAPPER'], 1.1), // below it: the ramp is above

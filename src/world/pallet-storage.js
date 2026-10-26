@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { LAYOUT } from './layout.js';
 import { CONFIG } from '../config.js';
 import { quatToThree } from '../physics.js';
+import { createFreight } from '../entities/freight.js';
 import { createPallet } from '../entities/pallet.js';
 import { createBox } from '../entities/box.js';
 import { buildWrapped } from '../systems/wrapping.js';
@@ -9,7 +10,7 @@ import { labelPlane } from '../util/meshes.js';
 
 // Slots are in the rack body's local frame, so guides and seating checks follow a tipped rack.
 export function palletFitsSlot(pallet, slot) {
-  if (pallet.removed || pallet.carried || !['pallet', 'wrapped'].includes(pallet.kind)) return false;
+  if (pallet.removed || pallet.carried || !['pallet', 'wrapped', 'freight'].includes(pallet.kind)) return false;
   const rotation = quatToThree(slot.rack.body.rotation());
   const local = new THREE.Vector3().copy(pallet.body.translation()).sub(slot.rack.body.translation()).applyQuaternion(rotation.clone().invert());
   const relative = rotation.clone().invert().multiply(quatToThree(pallet.body.rotation()));
@@ -27,17 +28,18 @@ export function palletFitsSlot(pallet, slot) {
 export class PalletStorage {
   constructor(game) { this.game = game; this.slots = []; this.timer = 0; }
 
-  stock(rack, spec, bay, shelf, spots, location, reservedSku) {
+  stock(rack, spec, bay, shelf, spots, location, { reservedSku, freight, empty = false } = {}) {
     const bayW = LAYOUT.racking.bayW;
     const x = spec.x0 + (bay + .5) * bayW;
     const z = (spec.z0 + spec.z1) / 2, y = spec.base + spec.shelves[shelf];
-    const pallet = spots.length ? createPallet(this.game, { pos: [x, y + .005, z] }) : null;
+    const pos = [x, y + .005, z];
+    const pallet = empty ? null : freight ? createFreight(this.game, { ...freight, pos }) : spots.length ? createPallet(this.game, { pos }) : null;
     if (pallet) {
       pallet.storageLocation = location;
       pallet.home = { pos: { ...pallet.body.translation() }, rot: { ...pallet.body.rotation() } };
     }
     const load = new Set(pallet ? [pallet] : []);
-    const slot = { rack, location, sku: reservedSku ?? spots.find(Boolean)?.[0], x: x - rack.home.x, y: spec.shelves[shelf], bayW, depth: spec.z1 - spec.z0, pallet: null, seated: false };
+    const slot = { rack, location, kind: freight ? 'freight' : 'wrapped', sku: reservedSku ?? freight?.sku ?? spots.find(Boolean)?.[0], x: x - rack.home.x, y: spec.shelves[shelf], bayW, depth: spec.z1 - spec.z0, pallet: null, seated: false };
     // A painted receiving outline on the deck: yellow when empty, green once resting on the rack.
     const guide = new THREE.Group();
     const mat = new THREE.MeshBasicMaterial({ color: 0xf5c518, side: THREE.DoubleSide });
@@ -48,21 +50,23 @@ export class PalletStorage {
     guide.position.set(slot.x, slot.y, 0); rack.mesh.add(guide); slot.material = mat;
     const label = labelPlane(`${location} · SKU ${slot.sku}`, 1.65, .2, { bg: '#f5c518', fg: '#111111' });
     label.position.set(slot.x, slot.y - .28, -slot.depth / 2 - .015); label.rotation.y = Math.PI; rack.mesh.add(label);
+    const typeLabel = labelPlane(freight ? 'FORKLIFT ONLY · 1 UNIT' : 'CARTON BACKSTOCK', 1.65, .14, { bg: freight ? '#f5c518' : '#d8efff', fg: '#111111' });
+    typeLabel.position.set(slot.x, slot.y - .48, -slot.depth / 2 - .016); typeLabel.rotation.y = Math.PI; rack.mesh.add(typeLabel);
     // Six cartons in a single 2-by-3 layer: inside the pallet edges, with ample lift clearance.
-    spots.filter(Boolean).forEach(([sku, , type], i) => {
+    (empty || freight ? [] : spots).filter(Boolean).forEach(([sku, , type], i) => {
       const box = createBox(this.game, { type, sku, pos: [x + (i % 2 ? .2 : -.2), y + .16, z + (Math.floor(i / 2) - 1) * .4] });
       box.storagePallet = pallet;
       box.storageOffset = new THREE.Vector3().copy(box.body.translation()).sub(pallet.body.translation());
       box.home = { rack: spec.name, pos: { ...box.body.translation() }, rot: { ...box.body.rotation() } };
       rack.stock.push(box); load.add(box);
     });
-    if (pallet) buildWrapped(this.game, pallet, load);
+    if (pallet && !freight) buildWrapped(this.game, pallet, load);
     this.slots.push(slot);
   }
 
   step(dt) {
     this.timer -= dt; if (this.timer > 0) return; this.timer = .15;
-    const pallets = this.game.entities.filter(e => ['pallet', 'wrapped'].includes(e.kind) && !e.removed);
+    const pallets = this.game.entities.filter(e => ['pallet', 'wrapped', 'freight'].includes(e.kind) && !e.removed);
     for (const slot of this.slots) {
       slot.pallet = pallets.find(p => palletFitsSlot(p, slot)) || null;
       let contact = false;
@@ -82,6 +86,6 @@ export class PalletStorage {
       const target = new THREE.Vector3(s.x, s.y, 0).applyQuaternion(quatToThree(s.rack.body.rotation())).add(s.rack.body.translation());
       return Math.abs(target.y - p.y) < .8 && Math.hypot(target.x - p.x, target.z - p.z) < 3.2;
     });
-    return near ? near.seated ? `${near.location} · pallet seated · lower forks to leave it, or lift to retrieve` : `${near.location} · align pallet inside the yellow outline, lower onto the deck` : '';
+    return near ? near.seated ? `${near.location} · ${near.pallet.kind === 'freight' ? 'crate' : 'pallet'} seated · lower forks to leave it, or lift to retrieve` : `${near.location} · align pallet inside the yellow outline, lower onto the deck` : '';
   }
 }

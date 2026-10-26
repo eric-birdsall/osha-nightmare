@@ -1198,3 +1198,11 @@ body[data-input="controller"] #controls td:nth-child(3) { display: none; }
 .view.split .basic-controls { width: 200px; right: 10px; bottom: 28px; padding: 7px 9px; font-size: 12px; }
 .view.split .basic-controls dl { gap: 3px; }
 @media (max-width: 650px) { .basic-controls { width: 180px; right: 8px; font-size: 12px; } .basic-controls kbd { padding: 1px 3px; } }
+
+.fork-readout { position: absolute; top: 70px; right: 12px; padding: 8px 12px; background: #12161bed; color: #f5c518; font: 15px var(--ui); text-align: right; }
+.fork-readout b { font-size: 23px; color: white; margin-left: 8px; font-variant-numeric: tabular-nums; }
+.fork-readout small { display: block; font-size: 12px; color: #c9cfd7; margin-top: 4px; }
+.fork-feed { position: absolute; box-sizing: border-box; border: 2px solid #f5c518; box-shadow: 0 2px 8px #0009; }
+.fork-feed span { position: absolute; left: -2px; bottom: 100%; background: #12161bed; color: #f5c518; padding: 3px 8px; font: 12px var(--ui); letter-spacing: 1px; }
+.view.split .fork-readout { top: 46px; padding: 4px 8px; }
+.view.split .fork-readout b { font-size: 18px; }

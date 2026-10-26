@@ -293,13 +293,13 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-const noEdges = (a) => ({ ...a, lookX: 0, lookY: 0, jump: false, interact: false, toss: false, swap: false, pause: false });
+const noEdges = (a) => ({ ...a, lookX: 0, lookY: 0, jump: false, interact: false, toss: false, swap: false, pause: false, forkView: false });
 
 // One-shot presses and look deltas collected since the last physics step.
 const latched = { climber: null, driver: null };
 function clearLatched() {
   latched.climber = { jump: false, interact: false, toss: false, lookX: 0, lookY: 0 };
-  latched.driver = { lookX: 0, lookY: 0 };
+  latched.driver = { lookX: 0, lookY: 0, forkView: false };
 }
 clearLatched();
 function latch(actions) {
@@ -309,6 +309,7 @@ function latch(actions) {
   c.toss ||= actions.climber.toss;
   c.lookX += actions.climber.lookX;
   c.lookY += actions.climber.lookY;
+  latched.driver.forkView ||= actions.driver.forkView;
   latched.driver.lookX += actions.driver.lookX;
   latched.driver.lookY += actions.driver.lookY;
 }

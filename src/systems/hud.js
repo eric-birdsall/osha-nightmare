@@ -1,3 +1,4 @@
+import { forkViewBounds, showForkFeed } from './fork-view.js';
 import { CONFIG } from '../config.js';
 
 // The reference belongs to this view's character and uses only its current input device.
@@ -10,6 +11,7 @@ export function basicControls(game, role) {
     ['Look', keyboard ? 'Mouse ↑ ↓ · I / K' : 'Right stick ↑ ↓'],
     ['Gas / brake', `${key('gas')} ${key('brake')}`],
     ['Forks ↑ / ↓', `${key('lift')} ${key('lower')}`],
+    ['Fork camera', key('forkView')],
     ['Drift', `Hold ${key('drift')}`],
     ['Reset truck', `Hold ${key('reset')}`],
   ] : [
@@ -41,7 +43,7 @@ const VIEW_HTML = (role) => `
     role === 'climber'
       ? `<div class="crosshair"></div><div class="prompt"></div>`
       : /* speed, gear and fork height are on the forklift's dashboard */
-        `<div class="driftmeter"><div class="bar"><div class="fill"></div></div><div class="label"></div></div><div class="prompt"></div>`
+        `<div class="fork-readout card"></div><div class="fork-feed"><span>FORK CAMERA</span></div><div class="driftmeter"><div class="bar"><div class="fill"></div></div><div class="label"></div></div><div class="prompt"></div>`
   }
   <div class="tutorial card" role="status"><strong></strong><p></p></div>
   <div class="holdring"><svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="18"/><circle class="fil" cx="22" cy="22" r="18"/></svg></div>
@@ -84,6 +86,8 @@ export class Hud {
         deviceHint: q('.devicehint'),
         controls: q('.basic-controls'),
         fade: q('.fade'),
+        forkReadout: q('.fork-readout'),
+        forkFeed: q('.fork-feed'),
         driftMeter: q('.driftmeter'),
         driftFill: q('.driftmeter .fill'),
         driftLabel: q('.driftmeter .label'),
@@ -182,6 +186,8 @@ export class Hud {
           const toss = `Punt${n > 1 ? ' top box' : ''}: hold <kbd>${key}</kbd>`;
           const fragile = c.carriedBoxes().some((b) => b.fragile) ? ' <b class="fragile">FRAGILE</b>' : '';
           p = (n > 1 ? `Put down ${n} boxes: tap <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku}: tap <kbd>${key}</kbd> · ${toss}`) + fragile;
+        } else if (c.target?.kind === 'freight') {
+          p = `SKU ${c.target.sku} · ${c.target.mass} kg · Forklift only`;
         } else if (c.target) {
           const n = c.targetStack;
           p = n > 1 && n <= CONFIG.climber.maxCarry
@@ -234,6 +240,11 @@ export class Hud {
         // Drift meter: fills orange while a drift charges, blue once the boost is earned,
         // then BOOST! while it fires (Ralph can't see the sparks from the seat)
         const f = game.forklift;
+        v.forkReadout.innerHTML = `FORKS <b>${f.measuredHeight().toFixed(2)} m</b><small>${f.forkViewExpanded ? 'FORK CAMERA' : 'SEAT VIEW'} · ${game.keyHint(role, 'forkView')} to ${f.forkViewExpanded ? 'return' : 'expand camera'}</small>`;
+        v.forkFeed.style.display = showForkFeed(f) ? '' : 'none';
+        const bounds = forkViewBounds(v.el.clientWidth, v.el.clientHeight);
+        for (const [key, value] of Object.entries(bounds)) v.forkFeed.style[key] = `${value}px`;
+
         // Ralph owns recovery, including when the truck is on its side.
         const tip = f.tipped ? `Forklift tipped · hold <kbd>${game.keyHint('driver', 'reset')}</kbd> to reset upright in parking` : '';
         const storageHint = game.level.storage?.hint(f) || '';

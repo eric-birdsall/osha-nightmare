@@ -180,3 +180,7 @@ between two decks:
 - Once the pallet is on the forks, the bottom boards hold it there, so it's harder to tip it off
   the blades in a turn or a sudden stop.
 - A bit more skill for picking up, a bit more forgiving once loaded.
+
+## Mixed West-wall storage
+
+Implemented: H/I mix sixteen upper carton-backstock pallets with eight single-unit strapped crates, plus two lower crate bays. Fixed freight SKU homes are in `src/world/freight-stock.js`. Orders 3–5 include crates and sum delivered quantities across separate loads in the active trailer; Full Shift ships all completed loads. PO-004 and PO-005 include heavy-crate putaway.

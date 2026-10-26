@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
 
 // Standard gamepad mapping indices
-const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, L3: 10, UP: 12, DOWN: 13 };
+const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, L3: 10, R3: 11, UP: 12, DOWN: 13 };
 
 function deadzone2(x, y) {
   const dz = CONFIG.input.deadZone;
@@ -230,6 +230,7 @@ export class Input {
     const cfg = CONFIG.forklift;
     for (const d of devices) {
       if (d === 'kbm') {
+        a.forkView ||= this.pressed.has('KeyC');
         a.steer += this.key('KeyD') - this.key('KeyA');
         a.throttle = Math.max(a.throttle, this.key('KeyW'));
         a.brake = Math.max(a.brake, this.key('KeyS'));
@@ -242,6 +243,7 @@ export class Input {
       } else {
         const p = this.pad(d);
         if (!p) continue;
+        a.forkView ||= this.padPressed(p, BTN.R3);
         // Left stick steers only; A drives, B brakes/reverses, and RT drifts.
         const [sx] = deadzone2(p.axes[0] || 0, p.axes[1] || 0);
         const [, ly] = deadzone2(p.axes[2] || 0, p.axes[3] || 0);

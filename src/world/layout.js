@@ -52,7 +52,8 @@ const rack = (name, x0, z0, face, base = 0, size = {}) => ({
 const pair = (north, south, x0, z0, base = 0, size = {}) => [rack(north, x0, z0, 'north', base, size), rack(south, x0, z0 + racking.depth + racking.flue, 'south', base, size)];
 // West-wall high storage (world +Z after the compass rotation): two normal rack
 // sections with a 2.6 m ladder gap. Bottom decks are pick faces; upper decks hold pallets.
-const HIGH = { shelves: [1.5, 3.0, 4.8, 6.6, 8.4], uprightH: 9.8 };
+// The lower first deck gives strapped crates the same usable fork clearance as upper bays.
+const HIGH = { shelves: [1.2, 3.0, 4.8, 6.6, 8.4], uprightH: 9.8 };
 const highRack = (name, x0) => ({
   ...rack(name, x0, SOUTH - 1.65, 'north', 0, HIGH),
   z1: SOUTH - 0.15, bays: 4, palletFromShelf: 2,
@@ -166,6 +167,8 @@ export const LAYOUT = {
     [E - 6, 0, 18],
     [E - 3, 0, -9],
   ],
+  // One forklift-only shipping crate for handling playtests, clear of the central rack ends.
+  freight: { pos: [5.8, 0, 0], yaw: 0, sku: 980, mass: 350 },
   // Loose boxes on the open floor for stacking: [type, x, y, z]
   looseBoxes: [
     ['medium', RACKS_E + 7.5, 0, -8.0],
