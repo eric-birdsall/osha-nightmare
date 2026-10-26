@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { COL, quatToThree } from '../physics.js';
+import { createPallet } from '../entities/pallet.js';
+import { createBox } from '../entities/box.js';
 import { sfx } from './audio.js';
 
 // Every box/pallet resting on rootEnt, directly or stacked.
@@ -17,7 +19,7 @@ export function collectStack(game, rootEnt) {
       const c = b.collider(i);
       world.contactPairsWith(c, (other) => {
         const oe = game.entityForCollider(other);
-        if (!oe || set.has(oe) || oe.carried || (oe.kind !== 'box' && oe.kind !== 'pallet')) return;
+        if (!oe || set.has(oe) || oe.carried || !['box', 'pallet', 'wrapped'].includes(oe.kind)) return;
         if (oe.body.translation().y <= by + 0.02) return;
         let touching = false;
         world.contactPair(c, other, (m) => {
@@ -124,7 +126,7 @@ export class WrapSystem {
       if (ent.kind !== 'pallet' && ent.kind !== 'wrapped') continue;
       const b = ent.body;
       const t = b.translation();
-      if (!zone.contains(t) || (ent.kind === 'wrapped' && collectStack(this.game, ent).size < 2)) {
+      if ((ent.kind === 'pallet' && collectStack(this.game, ent).size < 2) || !zone.contains(t) || (ent.kind === 'wrapped' && collectStack(this.game, ent).size < 2)) {
         this.rest.set(ent, 0);
         continue;
       }
@@ -169,6 +171,7 @@ export class WrapSystem {
 
   updateJob(dt) {
     const job = this.job;
+    if (job.pallet.removed) { this.cancel(); return; }
     const b = job.pallet.body;
     const t = b.translation();
     const moved = Math.hypot(t.x - job.start.x, t.z - job.start.z);
@@ -212,7 +215,7 @@ export class WrapSystem {
 }
 
 // Merge a pallet and its load into one compound rigid body.
-function buildWrapped(game, pallet, set) {
+export function buildWrapped(game, pallet, set) {
   const world = game.world;
   const pb = pallet.body;
   const pPos = new THREE.Vector3().copy(pb.translation());
@@ -233,6 +236,7 @@ function buildWrapped(game, pallet, set) {
   group.quaternion.copy(pRot);
   const skus = {}; // SKU -> boxes of it wrapped into this load
   const shapes = [];
+  const contents = [];
   const min = new THREE.Vector3(Infinity, Infinity, Infinity);
   const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
   const removed = new Set();
@@ -242,6 +246,19 @@ function buildWrapped(game, pallet, set) {
     const t = ent.body.translation();
     const relPos = new THREE.Vector3(t.x, t.y, t.z).sub(pPos).applyQuaternion(inv);
     const relRot = inv.clone().multiply(quatToThree(ent.body.rotation()));
+    if (ent.kind === 'wrapped') {
+      for (const record of ent.contents || []) {
+        const pos = new THREE.Vector3(...record.pos).applyQuaternion(relRot).add(relPos);
+        const rot = relRot.clone().multiply(new THREE.Quaternion(...record.rot));
+        contents.push({ ...record, pos: pos.toArray(), rot: rot.toArray() });
+      }
+    } else {
+      const data = {};
+      for (const key of ['type', 'sku', 'home', 'handled', 'receivingLine', 'incomingId', 'incomingPalletIds', 'storageLocation']) {
+        if (ent[key] !== undefined) data[key] = ent[key];
+      }
+      contents.push({ kind: ent.kind, data, pos: relPos.toArray(), rot: relRot.toArray() });
+    }
     for (const s of ent.shapes) {
       const pos = new THREE.Vector3(...s.pos).applyQuaternion(relRot).add(relPos);
       // Shapes from an earlier wrap carry their own rotation within that load
@@ -278,7 +295,7 @@ function buildWrapped(game, pallet, set) {
     world.removeRigidBody(ent.body);
     game.removeEntity(ent);
   }
-  game.climber.forgetBodies(removed);
+  game.climber?.forgetBodies(removed);
 
   // Translucent stretch wrap (stops just above the pallet runners)
   const lo = min.clone();
@@ -302,7 +319,47 @@ function buildWrapped(game, pallet, set) {
   game.scene.add(group);
 
   // bounds: its extent in its own frame (origin under the pallet's middle), for flipping it upright
-  const ent = { kind: 'wrapped', body, mesh: group, skus, shapes, mass: totalMass, bounds: { min: min.clone(), max: max.clone() } };
+  const ent = { kind: 'wrapped', body, mesh: group, skus, shapes, contents, mass: totalMass,
+    incomingPalletIds: [...new Set(contents.flatMap(r => r.data.incomingPalletIds || []))],
+    storageLocation: pallet.storageLocation, home: pallet.home || { pos: { ...pPos }, rot: { x: pRot.x, y: pRot.y, z: pRot.z, w: pRot.w } },
+    bounds: { min: min.clone(), max: max.clone() } };
   game.addEntity(ent);
   return ent;
+}
+
+// Cutting restores independent bodies at their current world poses, including on moving forks.
+// Identity tags survive wrapping so receiving counts only this PO's actual delivered stock.
+export function cutWrapped(game, wrapped) {
+  if (wrapped.kind !== 'wrapped' || wrapped.removed || !wrapped.contents?.length) return [];
+  if (game.wrap?.job?.pallet === wrapped) game.wrap.cancel();
+  const position = new THREE.Vector3().copy(wrapped.body.translation());
+  const rotation = quatToThree(wrapped.body.rotation());
+  const velocity = new THREE.Vector3().copy(wrapped.body.linvel());
+  const spin = new THREE.Vector3().copy(wrapped.body.angvel());
+  const restored = [];
+  for (const record of wrapped.contents) {
+    const offset = new THREE.Vector3(...record.pos).applyQuaternion(rotation);
+    const pos = position.clone().add(offset);
+    const rot = rotation.clone().multiply(new THREE.Quaternion(...record.rot));
+    const ent = record.kind === 'pallet'
+      ? createPallet(game, { pos: pos.toArray() })
+      : createBox(game, { type: record.data.type, sku: record.data.sku, pos: [pos.x, pos.y - CONFIG.objects[record.data.type].size[1] / 2, pos.z] });
+    Object.assign(ent, record.data);
+    ent.body.setRotation(rot, true); ent.mesh.position.copy(pos); ent.mesh.quaternion.copy(rot);
+    ent.body.setLinvel(velocity.clone().add(new THREE.Vector3().crossVectors(spin, offset)), true);
+    ent.body.setAngvel(spin, true);
+    restored.push(ent);
+  }
+  const pallet = restored.find(e => e.kind === 'pallet');
+  for (const box of restored.filter(e => e.kind === 'box')) {
+    box.storagePallet = pallet;
+    box.storageOffset = new THREE.Vector3().copy(box.body.translation()).sub(pallet.body.translation()).applyQuaternion(quatToThree(pallet.body.rotation()).invert());
+    const rack = box.home?.rack && game.level?.racks.find(r => r.name === box.home.rack);
+    if (rack) { rack.stock = rack.stock.filter(b => !b.removed); rack.stock.push(box); }
+  }
+  game.climber?.forgetBodies(new Set([wrapped.body.handle]));
+  game.world.removeRigidBody(wrapped.body); game.scene.remove(wrapped.mesh); game.removeEntity(wrapped);
+  const film = wrapped.mesh.children.find(c => c.userData.film);
+  if (film) { film.geometry.dispose(); film.material.dispose(); }
+  return restored;
 }

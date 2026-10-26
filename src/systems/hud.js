@@ -18,7 +18,7 @@ export function basicControls(game, role) {
     ['Jump', key('jump')],
     ['Crouch', `Hold ${key('crouch')}`],
     ['Use / carry', key('interact')],
-    ['Punt / drag', `Hold ${key('interact')}`],
+    ['Punt / drag / cut', `Hold ${key('interact')}`],
     ['Reset rack', `Hold ${key('toss')}`],
     ['Back to start', `Hold ${key('reset')}`],
   ];
@@ -165,6 +165,7 @@ export class Hud {
         const key = game.keyHint(role, 'interact');
         if (c.state === 'wrapped') p = 'You are wrapped. Wait for it…';
 
+        else if (c.cutTarget) p = c.cutTimer > 0 ? 'Cutting shrinkwrap…' : `Cut shrinkwrap: hold <kbd>${key}</kbd>`;
         else if (c.findDragPallet()) p = c.draggedPallet ? `Dragging pallet · release <kbd>${key}</kbd> to let go` : `Drag empty pallet: hold <kbd>${key}</kbd> and move`;
         else if (c.holdingOn && c.target?.kind !== 'box') p = `Holding on · Let go <kbd>${key}</kbd>`;
         else if (c.onLadder && !c.carried && !c.target) {
@@ -217,7 +218,7 @@ export class Hud {
         // The same ring fills while Q / Y is held to go back to the start
         if (respawn(role) > 0) p = p ? `${p}<br><small>Going back to the start…</small>` : 'Going back to the start…';
         const back = respawn(role);
-        const ring = Math.min(1, Math.max(back, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0, flipping ? c.flipTimer / flipHold : 0));
+        const ring = Math.min(1, Math.max(back, c.cutTimer || 0, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0, flipping ? c.flipTimer / flipHold : 0));
         v.holdRing.style.display = ring > 0 ? '' : 'none';
         if (ring > 0) v.holdFill.style.strokeDashoffset = String(113.1 * (1 - ring));
         v.prompt.innerHTML = p;

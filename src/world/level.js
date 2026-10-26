@@ -9,7 +9,6 @@ import { createLadderStand } from '../entities/ladder.js';
 import { buildParking, parkingRect } from './parking.js';
 import WAREHOUSE from './warehouse-v1.json';
 import ORDERS_FILE from './orders.json';
-import { RECEIVING_ORDER } from './receiving-orders.js';
 import { LAYOUT, rackX1, WALL_LABELS } from './layout.js';
 import { buildWrapper } from './wrapper.js';
 import { buildPacking, packingRect } from './packing.js';
@@ -315,9 +314,9 @@ function stockShelves(game, racks, storage) {
     for (let b = 0; b < rack.bays; b++) {
       for (let shelf = 0; shelf < rack.shelves.length; shelf++) {
         const at = locationCode(name, b, shelf);
-        const reserved = game.receiving && RECEIVING_ORDER.lines.some((line) => line.location === at);
+        const reserved = game.receiving && game.receivingSpec.lines.some((line) => line.location === at);
         if (rack.palletFromShelf != null && shelf >= rack.palletFromShelf) {
-          storage.stock(ent, rack, b, shelf, WAREHOUSE.faces[at] || [], at);
+          storage.stock(ent, rack, b, shelf, reserved ? [] : WAREHOUSE.faces[at] || [], at, game.receivingSpec?.lines.find(line => line.location === at)?.sku);
           continue;
         }
         (reserved ? [] : WAREHOUSE.faces[at] || []).forEach((sp, i) => {
@@ -350,7 +349,7 @@ function stockShelves(game, racks, storage) {
 // most of that SKU) and its BACKSTOCK pointer. Regular pick faces take priority over
 // their full reserve pallets; high-only SKUs point straight to their storage location.
 export function orderLines(spec) {
-  if (spec.activity === 'receiving') return spec.lines.map((line, i) => ({ ...line, line: 'ABC'[i], backstock: null }));
+  if (spec.activity === 'receiving') return spec.lines.map((line, i) => ({ ...line, line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], backstock: null }));
   const pickRacks = new Set(RACKS.filter((r) => r.palletFromShelf == null).map((r) => r.name));
   return spec.lines.map((l, i) => {
     let best = null;
@@ -361,7 +360,7 @@ export function orderLines(spec) {
       if (n && (rank > priority || (rank === priority && n > most))) [best, most, priority] = [at, n, rank];
     }
     if (!best) console.warn(`Order ${spec.id}: SKU ${l.sku} isn't stocked in any rack`);
-    return { line: 'ABC'[i], sku: l.sku, qty: l.qty, location: best, backstock: WAREHOUSE.signs[best] ?? null };
+    return { line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], sku: l.sku, qty: l.qty, location: best, backstock: WAREHOUSE.signs[best] ?? null };
   });
 }
 
@@ -1096,7 +1095,7 @@ function buildDocks(game) {
 
 export function buildLevel(game) {
   // The orders this run ships (orders.json): one level's, or all five in a Full Shift
-  const run = game.receiving ? [RECEIVING_ORDER] : game.shift ? ORDERS : [ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0]];
+  const run = game.receiving ? [game.receivingSpec] : game.shift ? ORDERS : [ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0]];
   const { scene } = game;
   const { halfX, halfZ, wallH } = ROOM;
 

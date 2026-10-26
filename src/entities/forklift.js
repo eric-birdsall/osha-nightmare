@@ -724,7 +724,7 @@ export class Forklift {
     g.textAlign = 'left';
     g.fillText(game.receiving ? 'PURCHASE ORDER' : 'PICK LIST', 28, 52);
     g.textAlign = 'right';
-    g.fillText(game.receiving ? 'PO-001' : `ORDER #${game.orderId ?? 1}`, W - 28, 52);
+    g.fillText(game.receiving ? game.receivingSpec.number : `ORDER #${game.orderId ?? 1}`, W - 28, 52);
     g.fillStyle = '#c62828';
     g.fillRect(28, 82, W - 56, 4);
     // Column headings on a yellow band
@@ -737,7 +737,7 @@ export class Forklift {
     g.fillText('QTY', 196, 123);
     g.fillText('LOCATION', 296, 123);
     order.forEach((o, i) => {
-      const y = 188 + i * 120;
+      const y = 188 + i * (order.length > 3 ? 105 : 120);
       const have = Math.min(o.qty, status[o.line] || 0);
       const done = have >= o.qty;
       g.fillStyle = done ? '#8a8a8a' : '#111';
@@ -759,6 +759,10 @@ export class Forklift {
       g.fillStyle = done ? '#8a8a8a' : '#333';
       g.font = 'italic bold 34px system-ui, sans-serif';
       g.fillText(look.name, 84, y + 48);
+      if (game.receiving && o.pallet) {
+        g.fillStyle = '#1d3f80'; g.font = 'bold 20px system-ui, sans-serif';
+        g.fillText('WRAPPED PALLET', 330, y + 74);
+      }
       if (look.fragile) {
         g.fillStyle = '#d0141b';
         g.font = 'bold 24px system-ui, sans-serif';

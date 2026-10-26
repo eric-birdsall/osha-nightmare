@@ -158,7 +158,7 @@ the returns cage, if lost boxes should matter.
 
 ## 5. Putaway mode
 
-**First version built:** Receiving → PO-001 in single player or couch co-op. Two single-SKU pallets arrive at Dock 2, destinations are reserved empty first-shelf bays, progress requires stable correct placement, and cleanup requires returning empty pallets and parking. Mixed pallets, additional purchase orders and Full Shift integration remain future work.
+**Built:** Five receiving purchase orders in single player and couch co-op: guided tutorial, shelf-2 cartons, mixed pallets, whole-pallet high storage and a combined delivery. All incoming and high-storage pallets start shrinkwrapped. Dave can cut wrap with hold E/X, including on the forks, and partial loads can be rewrapped in either mode. High putaway requires wrapped, seated pallets; carton lines require stable correct placement. Tutorial-only signs and arrows, clipboard counts on every PO, optional cleanup and parking. Full Shift integration remains future work.
 
 The reverse of picking. A purchase order arrives: a truck at a dock delivers pallets of new stock,
 and the crew has to put every box away on the shelves.

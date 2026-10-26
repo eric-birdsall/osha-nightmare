@@ -4,7 +4,7 @@ import { CONFIG } from '../config.js';
 import { COL, G, groups, castRay, yawQuat, quatToThree } from '../physics.js';
 import { floorHeightAt, floorHeightNear, ROOM } from '../world/level.js';
 import { buildLadderGhost, ladderFootprint } from './ladder.js';
-import { collectStack } from '../systems/wrapping.js';
+import { collectStack, cutWrapped } from '../systems/wrapping.js';
 import { flatMat } from '../util/meshes.js';
 import { spawnRagdoll } from '../systems/ragdoll.js';
 import { WorkerModel, firstPersonArm, firstPersonKick } from './worker.js';
@@ -90,6 +90,8 @@ export class Climber {
     this.onLadder = null; // { ent, h: metres up the steps, heading }
     this.resetTimer = 0; // holding R/RB near knocked-over racking
     this.uprightTimer = 0; // holding R/RB near a fallen ladder (-1: done, waiting for release)
+    this.cutTimer = 0;
+    this.cutTarget = null;
     this.flipTimer = 0; // holding E/X near a tipped-over pallet (-1: done, waiting for release)
     this.tippedPallet = null;
     this.fallenLadder = null;
@@ -197,6 +199,7 @@ export class Climber {
   preStep(a, dt, active) {
     const cfg = CONFIG.climber;
     this.jumpedThisStep = false;
+    if (this.state !== 'walk' || this.onLadder || this.mantle) { this.cutTimer = 0; this.cutTarget = null; }
     this.crouchStep(a, active);
     if (this.game.forklift.tipped) {
       if (this.holdingOn) this.letGo();
@@ -304,9 +307,11 @@ export class Climber {
     if (this.ladderCarry) this.holdLadder();
     this.resetStep(a, dt, active);
     this.uprightStep(a, dt, active);
+    const cutting = this.cutWrapStep(a, dt, active);
     this.palletFlipStep(a, dt, active);
     this.dragPalletStep(a, dt, active);
     this.puntStep(a, dt, active);
+    if (cutting) return;
     if (active && a.interact && !this.draggedPallet) {
       // A box in reach comes first, even from the forks: he lets go of the carriage to take it
       if (this.holdingOn && this.target?.kind === 'box') {
@@ -319,7 +324,7 @@ export class Climber {
       }
       else if (this.onBlades && !this.grounded) this.grab(); // mid-air, catching the forks comes first
       else if (this.target?.kind === 'ladder') this.pickUpLadder(this.target); // a set-up one folds onto the shoulder
-      else if (this.target) this.pickUp(this.target);
+      else if (this.target?.kind === 'box') this.pickUp(this.target);
       else if (this.onBlades) this.grab();
     }
   }
@@ -676,6 +681,43 @@ export class Climber {
     return best;
   }
 
+  // Cutting only affects shrinkwrap. Floor placement is not required: Dave can cut a load
+  // while Ralph holds it on the forks. Releasing, moving out of reach or swapping cancels.
+  wrappedInReach() {
+    if (this.state !== 'walk' || this.carried || this.ladderCarry || !(this.grounded || this.holdingOn)) return null;
+    const chest = this.feet.clone().add(new THREE.Vector3(0, this.height * .65, 0));
+    const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    let nearest = null, distance = CONFIG.climber.reach;
+    for (const ent of this.game.entities) {
+      if (ent.kind !== 'wrapped' || ent.removed || !ent.contents?.length) continue;
+      if (new THREE.Vector3(0, 1, 0).applyQuaternion(ent.body.rotation()).y < .85) continue;
+      for (let i = 0; i < ent.body.numColliders(); i++) {
+        const point = ent.body.collider(i).projectPoint(chest, true).point;
+        const delta = new THREE.Vector3().copy(point).sub(chest), d = delta.length();
+        const flat = delta.clone().setY(0);
+        if (d < distance && (flat.length() < .35 || flat.normalize().dot(forward) > .25)) {
+          nearest = ent; distance = d;
+        }
+      }
+    }
+    return nearest;
+  }
+
+  cutWrapStep(a, dt, active) {
+    const target = active ? this.wrappedInReach() : null;
+    if (!a.interactHeld || !target || target !== this.cutTarget) this.cutTimer = 0;
+    this.cutTarget = target;
+    if (!active || !target) return false;
+    if (!a.interactHeld) return !!a.interact;
+    this.cutTimer += dt;
+    if (this.cutTimer >= 1) {
+      cutWrapped(this.game, target);
+      this.cutTimer = 0; this.cutTarget = null; this.target = null;
+      this.game.toast('Wrap cut · cartons can now be picked', 2);
+    }
+    return true;
+  }
+
   // Holding E / X (hands empty) near a tipped-over pallet or wrapped load for a second sets it back
   // the right way up where it lies, keeping its heading. (A tap of E / X still picks things up.)
   palletFlipStep(a, dt, active) {
@@ -783,29 +825,6 @@ export class Climber {
     this.ladderGhost.quaternion.copy(quatToThree(yawQuat(p.yaw)));
     this.ladderGhost.userData.mat.color.setHex(p.ok ? 0x7cf0a0 : 0xff5a4a);
     this.ladderPlaceOk = p.ok;
-  }
-
-  // Initial passenger position: feet on the bare blades, already gripping the carriage.
-  spawnOnForks() {
-    const carriage = this.game.forklift.carriage;
-    const rotation = quatToThree(carriage.rotation());
-    this.holdLocal.set(BLADE_CENTRE.x, BLADE_CENTRE.y + .01, BLADE_CENTRE.z);
-    const feet = this.holdLocal.clone().applyQuaternion(rotation).add(carriage.translation());
-    const center = { x: feet.x, y: feet.y + this.centerOff, z: feet.z };
-    this.body.setTranslation(center, true);
-    this.body.setNextKinematicTranslation(center);
-    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(rotation);
-    this.yaw = Math.atan2(-forward.x, -forward.z);
-    this.pitch = 0;
-    this.holdingOn = this.onBlades = this.grounded = true;
-    this.holdTarget = null;
-    this.support = { body: carriage, collider: carriage.collider(1), point: feet.clone() };
-    this.relVel.set(0, 0, 0);
-    this.airVel.set(0, 0, 0);
-    this.launchVel.set(0, 0, 0);
-    this.vy = 0;
-    this.peakY = feet.y;
-    this.graceTimer = CONFIG.climber.respawnGrace;
   }
 
   // Grab the carriage: from now on we ride it rigidly and can't be thrown off.

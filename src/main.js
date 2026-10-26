@@ -9,7 +9,7 @@ import { DOCKS, ORDERS } from './world/level.js';
 import { drawFloorPlan } from './world/floorplan.js';
 import { best, submit, medalFor, nextMedal, fmtTime, FULL_SHIFT, levelDef } from './systems/records.js';
 import { settings } from './systems/settings.js';
-import { RECEIVING_ORDER } from './world/receiving-orders.js';
+import { RECEIVING_ORDERS } from './world/receiving-orders.js';
 
 await RAPIER.init();
 
@@ -138,7 +138,7 @@ document.addEventListener('click', (e) => {
     pickJob = act;
     showLevels();
   } else if (act === 'level') startGame(pickMode, b.dataset.level === 'shift' || b.dataset.level.startsWith('receiving-') ? b.dataset.level : Number(b.dataset.level));
-  else if (act === 'next') startGame(game.mode, game.orderId + 1);
+  else if (act === 'next') startGame(game.mode, game.receiving ? RECEIVING_ORDERS[RECEIVING_ORDERS.findIndex(o => o.id === game.levelId) + 1].id : game.orderId + 1);
   else if (act === 'levels') {
     pickMode = game.mode;
     pickJob = game.receiving ? 'receiving' : 'picking';
@@ -182,7 +182,7 @@ function showLevels() {
     return `<button class="btn level" data-act="level" data-level="${id}"><span class="osha-text osha-text--ivory" data-text="${label}">${label}</span><span class="lv-name">${name}</span><span class="lv-best">${right}</span></button>`;
   };
   document.querySelector('#levels .level-list').innerHTML =
-    pickJob === 'receiving' ? row(RECEIVING_ORDER.id, RECEIVING_ORDER.number, RECEIVING_ORDER.title)
+    pickJob === 'receiving' ? RECEIVING_ORDERS.map(o => row(o.id, o.number, o.title)).join('')
       : ORDERS.map((o) => row(o.id, `ORDER ${o.id}`, o.title)).join('') + row(FULL_SHIFT.id, 'FULL SHIFT', 'All five, back to back');
   overlay = 'levels';
   refreshScreens();
@@ -255,7 +255,7 @@ function showComplete({ time, falls }) {
   const head = document.querySelector('#complete .screen-title');
   head.textContent = head.dataset.text = game.receiving ? 'STOCK RECEIVED' : id === 'shift' ? 'SHIFT COMPLETE' : 'ORDER COMPLETE';
   document.querySelector('#complete .stamp').textContent = game.receiving ? 'RECEIVED' : 'SHIPPED';
-  $('c-order').textContent = `${game.receiving ? `${RECEIVING_ORDER.number} · ${order?.title ?? ''}` : id === 'shift' ? 'Full Shift · all five orders' : `Order ${id} · ${order?.title ?? ''}`} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
+  $('c-order').textContent = `${game.receiving ? `${order.number} · ${order?.title ?? ''}` : id === 'shift' ? 'Full Shift · all five orders' : `Order ${id} · ${order?.title ?? ''}`} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
   $('c-time').textContent = fmtTime(time);
   $('c-falls').textContent = falls;
   $('c-penalty').textContent = falls ? `+${fmtTime(run.total - time)}` : '';
@@ -268,7 +268,7 @@ function showComplete({ time, falls }) {
     (medal ? `<i class="medal ${medal}">${medal}</i> ` : '') + (next ? `${next.medal[0].toUpperCase() + next.medal.slice(1)} at ${fmtTime(next.at)}` : 'Top marks.');
   $('c-quip').textContent = QUIPS[Math.min(falls, 3)];
   // No order after the last one
-  document.querySelector('#complete [data-act="next"]').style.display = id !== 'shift' && ORDERS.some((o) => o.id === id + 1) ? '' : 'none';
+  document.querySelector('#complete [data-act="next"]').style.display = (game.receiving ? RECEIVING_ORDERS.some(o => o.id === `receiving-${game.orderId + 1}`) : id !== 'shift' && ORDERS.some((o) => o.id === id + 1)) ? '' : 'none';
   if (input.pointerLocked) document.exitPointerLock();
   refreshScreens();
 }

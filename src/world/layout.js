@@ -128,6 +128,8 @@ export const LAYOUT = {
   conveyors: CONVEYORS,
   breakRoom,
   staging: [{ x: -13.5, z: 17.2, w: 3.0, d: 2.4 }, { x: -0.1, z: 17.2, w: 3.0, d: 2.4 }],
+  // Player-facing West edge of the lower level, north of the forklift parking bay.
+  emptyPalletReturn: { x: lower.x0 + 12, z: lower.z1 - 1.85, half: 1.65 },
   // Forklift bay: its back against a wall, `width` along it and `depth` out from it, the truck
   // parked nose-out. In the basement's north-west corner, facing east along the ramp, so each
   // round starts with Ralph driving up it.
@@ -139,8 +141,7 @@ export const LAYOUT = {
     // Missing railing beside the main-floor ladder stand on the basement's east edge
     railingGap: { along: 'z', line: lower.x1, from: WRAP.z + FRAME + 0.1, to: lower.z1 },
     fireExits: [
-      { wall: 'west', at: 2.3, y: 0 }, // on the west lane
-      { wall: 'south', at: E - 4.1, y: 0 }, // south-east corner
+      { wall: 'south', at: E - 4.1, y: 0 }, // player-facing West wall, southwest corner
     ],
   },
   // yaw 0: the ladders hang on the south side of the stand; π: the north side; -π/2: the west side

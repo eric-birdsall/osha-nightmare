@@ -4,11 +4,12 @@ import { CONFIG } from '../config.js';
 import { quatToThree } from '../physics.js';
 import { createPallet } from '../entities/pallet.js';
 import { createBox } from '../entities/box.js';
+import { buildWrapped } from '../systems/wrapping.js';
 import { labelPlane } from '../util/meshes.js';
 
 // Slots are in the rack body's local frame, so guides and seating checks follow a tipped rack.
 export function palletFitsSlot(pallet, slot) {
-  if (pallet.removed || pallet.carried || pallet.kind !== 'pallet') return false;
+  if (pallet.removed || pallet.carried || !['pallet', 'wrapped'].includes(pallet.kind)) return false;
   const rotation = quatToThree(slot.rack.body.rotation());
   const local = new THREE.Vector3().copy(pallet.body.translation()).sub(slot.rack.body.translation()).applyQuaternion(rotation.clone().invert());
   const relative = rotation.clone().invert().multiply(quatToThree(pallet.body.rotation()));
@@ -26,13 +27,17 @@ export function palletFitsSlot(pallet, slot) {
 export class PalletStorage {
   constructor(game) { this.game = game; this.slots = []; this.timer = 0; }
 
-  stock(rack, spec, bay, shelf, spots, location) {
+  stock(rack, spec, bay, shelf, spots, location, reservedSku) {
     const bayW = LAYOUT.racking.bayW;
     const x = spec.x0 + (bay + .5) * bayW;
     const z = (spec.z0 + spec.z1) / 2, y = spec.base + spec.shelves[shelf];
-    const pallet = createPallet(this.game, { pos: [x, y + .005, z] });
-    pallet.storageLocation = location;
-    const slot = { rack, location, sku: spots.find(Boolean)?.[0], x: x - rack.home.x, y: spec.shelves[shelf], bayW, depth: spec.z1 - spec.z0, pallet: null, seated: false };
+    const pallet = spots.length ? createPallet(this.game, { pos: [x, y + .005, z] }) : null;
+    if (pallet) {
+      pallet.storageLocation = location;
+      pallet.home = { pos: { ...pallet.body.translation() }, rot: { ...pallet.body.rotation() } };
+    }
+    const load = new Set(pallet ? [pallet] : []);
+    const slot = { rack, location, sku: reservedSku ?? spots.find(Boolean)?.[0], x: x - rack.home.x, y: spec.shelves[shelf], bayW, depth: spec.z1 - spec.z0, pallet: null, seated: false };
     // A painted receiving outline on the deck: yellow when empty, green once resting on the rack.
     const guide = new THREE.Group();
     const mat = new THREE.MeshBasicMaterial({ color: 0xf5c518, side: THREE.DoubleSide });
@@ -49,14 +54,15 @@ export class PalletStorage {
       box.storagePallet = pallet;
       box.storageOffset = new THREE.Vector3().copy(box.body.translation()).sub(pallet.body.translation());
       box.home = { rack: spec.name, pos: { ...box.body.translation() }, rot: { ...box.body.rotation() } };
-      rack.stock.push(box);
+      rack.stock.push(box); load.add(box);
     });
+    if (pallet) buildWrapped(this.game, pallet, load);
     this.slots.push(slot);
   }
 
   step(dt) {
     this.timer -= dt; if (this.timer > 0) return; this.timer = .15;
-    const pallets = this.game.entities.filter(e => e.kind === 'pallet' && !e.removed);
+    const pallets = this.game.entities.filter(e => ['pallet', 'wrapped'].includes(e.kind) && !e.removed);
     for (const slot of this.slots) {
       slot.pallet = pallets.find(p => palletFitsSlot(p, slot)) || null;
       let contact = false;

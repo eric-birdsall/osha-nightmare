@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { LAYOUT } from '../world/layout.js';
-import { RECEIVING_ORDER } from '../world/receiving-orders.js';
 import { createBox } from '../entities/box.js';
 import { createPallet } from '../entities/pallet.js';
-import { collectStack } from './wrapping.js';
+import { collectStack, buildWrapped } from './wrapping.js';
 import { labelPlane } from '../util/meshes.js';
+import { palletFitsSlot } from '../world/pallet-storage.js';
 import { parkingRect } from '../world/parking.js';
 
 export function fitsReceivingSlot(min, max, slot) {
@@ -21,8 +21,8 @@ export function fitsReceivingSlot(min, max, slot) {
 export class Receiving {
   constructor(game) {
     this.game = game;
-    this.boxes = [];
-    this.pallets = [];
+    this.spec = game.receivingSpec;
+    this.putawaySigns = [];
     this.timers = new Map();
     this.stage = 0;
     this.read = false;
@@ -31,21 +31,29 @@ export class Receiving {
     this.scanIn = 0;
     const dock = game.level.dockZone;
     const floor = LAYOUT.lower.y;
-    game.level.order.forEach((line, index) => {
+    const serials = {};
+    this.spec.pallets.forEach((manifest, index) => {
       const pos = [dock.center.x, floor + .025, dock.center.z + dock.half.z - 1.1 - index * 1.7];
       const pallet = createPallet(game, { pos });
-      this.pallets.push(pallet);
-      for (let i = 0; i < line.qty; i++) {
-        const box = createBox(game, { type: line.type, sku: line.sku,
-          pos: [pos[0] + (i % 2 ? .23 : -.23), pos[1] + CONFIG.objects.pallet.size[1] + Math.floor(i / 2) * .4 + .01, pos[2]] });
-        box.receivingLine = line.line;
-        const t = box.body.translation();
-        box.home = { pos: { ...t }, rot: { x: 0, y: 0, z: 0, w: 1 } };
-        this.boxes.push(box);
+      pallet.incomingPalletIds = [`${this.spec.id}:pallet-${index}`];
+      pallet.home = { pos: { ...pallet.body.translation() }, rot: { ...pallet.body.rotation() } };
+      const load = new Set([pallet]);
+      let spot = 0;
+      for (const [letter, quantity] of manifest) {
+        const line = game.level.order.find(l => l.line === letter);
+        for (let i = 0; i < quantity; i++, spot++) {
+          const box = createBox(game, { type: line.type, sku: line.sku,
+            pos: [pos[0] + (spot % 2 ? .2 : -.2), pos[1] + CONFIG.objects.pallet.size[1] + .01 + Math.floor(spot / 6) * .4, pos[2] + (Math.floor(spot / 2) % 3 - 1) * .4] });
+          box.receivingLine = line.line;
+          box.incomingId = `${this.spec.id}:${line.line}:${serials[line.line] = (serials[line.line] || 0) + 1}`;
+          box.home = { pos: { ...box.body.translation() }, rot: { ...box.body.rotation() } };
+          load.add(box);
+        }
       }
+      buildWrapped(game, pallet, load);
     });
     // A dedicated empty-pallet return area on the lower floor, clear of the dock and parking.
-    this.returns = { x: LAYOUT.lower.x0 + 12, z: LAYOUT.lower.z0 + 7, half: 1.65 };
+    this.returns = { ...LAYOUT.emptyPalletReturn };
     const { x, z, half } = this.returns;
     for (const [w, d, dx, dz] of [[half * 2, .08, 0, -half], [half * 2, .08, 0, half], [.08, half * 2, -half, 0], [.08, half * 2, half, 0]]) {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: 0x31d07a }));
@@ -53,17 +61,22 @@ export class Receiving {
     }
     const sign = labelPlane('EMPTY PALLETS', 2.8, .45, { bg: 'rgba(0,0,0,0)', fg: '#31d07a', transparent: true });
     sign.rotation.x = -Math.PI / 2; sign.position.set(x, floor + .014, z); game.scene.add(sign);
-    const marker = new THREE.Mesh(new THREE.ConeGeometry(.13, .3, 4), new THREE.MeshBasicMaterial({ color: 0xffdc35 }));
-    marker.rotation.z = Math.PI; game.scene.add(marker); this.marker = marker;
+    if (this.spec.tutorial) {
+      const marker = new THREE.Mesh(new THREE.ConeGeometry(.13, .3, 4), new THREE.MeshBasicMaterial({ color: 0xffdc35 }));
+      marker.rotation.z = Math.PI; game.scene.add(marker); this.marker = marker;
+    }
     this.slots = game.level.order.map((line) => this.makeSlot(line));
-    // Empty destinations are clearly identified without highlighting unrelated stock.
-    for (const slot of this.slots) {
+    // Only the tutorial identifies destinations with extra PUTAWAY signs.
+    for (const slot of this.spec.tutorial ? this.slots : []) {
       const label = labelPlane(`PUTAWAY · ${slot.line.location} · SKU ${slot.line.sku}`, 2.3, .2, { bg: '#f5c518', fg: '#16171a' });
       label.position.set((slot.x0 + slot.x1) / 2, slot.y - .28, slot.spec.face === 'south' ? slot.spec.z1 + .03 : slot.spec.z0 - .03);
       label.rotation.y = slot.spec.face === 'south' ? 0 : Math.PI;
-      game.scene.add(label);
+      game.scene.add(label); this.putawaySigns.push(label);
     }
   }
+
+  get boxes() { return this.game.entities.filter(e => e.kind === 'box' && e.incomingId?.startsWith(`${this.spec.id}:`)); }
+  get pallets() { return this.game.entities.filter(e => e.incomingPalletIds?.some(id => id.startsWith(`${this.spec.id}:`)) || (e.kind === 'wrapped' && e.contents.some(r => r.data.incomingId?.startsWith(`${this.spec.id}:`)))); }
 
   makeSlot(line) {
     const [name, bayText, shelfText] = line.location.split('-');
@@ -76,7 +89,7 @@ export class Receiving {
   }
 
   correctlyPlaced(box, slot, supported) {
-    if (box.removed || box.carried || box.armed || !supported.has(box)) return false;
+    if (!box.incomingId?.startsWith(`${this.spec.id}:`) || box.removed || box.carried || box.armed || !supported.has(box)) return false;
     const rack = slot.rack, rq = new THREE.Quaternion().copy(rack.body.rotation());
     if (new THREE.Vector3(0, 1, 0).applyQuaternion(rq).y < .95) return false;
     if (new THREE.Vector3().copy(rack.body.translation()).distanceTo(new THREE.Vector3().copy(rack.home)) > .4) return false;
@@ -96,7 +109,7 @@ export class Receiving {
   palletsReturned() {
     const { x, z, half } = this.returns;
     return this.pallets.every((pallet) => {
-      if (pallet.removed || collectStack(this.game, pallet).size > 1) return false;
+      if (pallet.removed || pallet.kind === 'wrapped' || collectStack(this.game, pallet).size > 1) return false;
       const p = pallet.body.translation(), v = pallet.body.linvel();
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(new THREE.Quaternion().copy(pallet.body.rotation()));
       return Math.abs(p.x - x) < half - .7 && Math.abs(p.z - z) < half - .7
@@ -134,74 +147,99 @@ export class Receiving {
     return this.parkingReason() === null;
   }
 
+  wrappedAtSlot(load, slot, supported) {
+    if (load.kind !== 'wrapped' || !supported.has(load)) return false;
+    if (load.contents.filter(r => r.kind === 'pallet').length !== 1) return false;
+    const records = load.contents.filter(r => r.kind === 'box');
+    if (records.length !== slot.line.qty || records.some(r => r.data.receivingLine !== slot.line.line || r.data.sku !== slot.line.sku || !r.data.incomingId?.startsWith(`${this.spec.id}:`))) return false;
+    if (new Set(records.map(r => r.data.incomingId)).size !== slot.line.qty) return false;
+    const storage = this.game.level.storage.slots.find(s => s.location === slot.line.location);
+    if (!storage || !palletFitsSlot(load, storage)) return false;
+    const rq = new THREE.Quaternion().copy(slot.rack.body.rotation());
+    if (new THREE.Vector3(0, 1, 0).applyQuaternion(rq).y < .95 || new THREE.Vector3().copy(slot.rack.body.translation()).distanceTo(new THREE.Vector3().copy(slot.rack.home)) > .4) return false;
+    const min = new THREE.Vector3(Infinity, Infinity, Infinity), max = min.clone().negate();
+    const inverse = rq.clone().invert(), rotation = new THREE.Quaternion().copy(load.body.rotation());
+    for (const x of [load.bounds.min.x, load.bounds.max.x]) for (const y of [load.bounds.min.y, load.bounds.max.y]) for (const z of [load.bounds.min.z, load.bounds.max.z]) {
+      const point = new THREE.Vector3(x, y, z).applyQuaternion(rotation).add(load.body.translation()).sub(slot.rack.body.translation()).applyQuaternion(inverse).add(slot.rack.home);
+      min.min(point); max.max(point);
+    }
+    if (!fitsReceivingSlot(min, max, slot)) return false;
+    const v = load.body.linvel(), a = load.body.angvel();
+    if (Math.hypot(v.x, v.y, v.z) > .2 || Math.hypot(a.x, a.y, a.z) > .4) return false;
+    return true;
+  }
+
   step(dt) {
     if (this.game.complete) return;
-    this.scanIn -= dt;
-    if (this.scanIn > 0) return;
+    this.scanIn -= dt; if (this.scanIn > 0) return;
     const elapsed = .15; this.scanIn = elapsed;
     const g = this.game;
+    for (const ent of [...this.boxes, ...this.pallets]) {
+      if (ent.carried || ent.body.translation().y >= -5 || !ent.home) continue;
+      ent.body.setTranslation(ent.home.pos, true); ent.body.setRotation(ent.home.rot, true);
+      ent.body.setLinvel({ x: 0, y: 0, z: 0 }, true); ent.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
     for (const slot of this.slots) {
       const supported = collectStack(g, slot.rack);
       let count = 0;
-      for (const box of this.boxes.filter((b) => b.receivingLine === slot.line.line)) {
-        // A box lost below the world is returned to the truck, just like damaged incoming stock.
-        if (!box.carried && box.body.translation().y < -5) {
-          box.body.setTranslation(box.home.pos, true); box.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-        }
-        const stable = this.correctlyPlaced(box, slot, supported);
-        const time = stable ? (this.timers.get(box) || 0) + elapsed : 0;
-        this.timers.set(box, time);
-        if (time >= .75) count++;
+      const candidates = slot.line.pallet ? this.pallets : this.boxes.filter(b => b.receivingLine === slot.line.line);
+      for (const ent of candidates) {
+        const stable = slot.line.pallet ? this.wrappedAtSlot(ent, slot, supported) : this.correctlyPlaced(ent, slot, supported);
+        const key = `${slot.line.line}:${ent.body.handle}`;
+        const time = stable ? (this.timers.get(key) || 0) + elapsed : 0;
+        this.timers.set(key, time);
+        if (time >= .75) count += slot.line.pallet ? slot.line.qty : 1;
       }
+      count = Math.min(count, slot.line.qty);
       if (count > (g.itemStatus[slot.line.line] || 0)) g.toast(`${slot.line.location}: ${count}/${slot.line.qty} put away`, 2);
       g.itemStatus[slot.line.line] = count;
     }
-    const stocked = g.level.order.every((line) => g.itemStatus[line.line] >= line.qty);
-    const unloaded = this.pallets.every((p) => !g.level.dockZone.contains(p.body.translation()));
-    this.stage = stocked ? (this.palletsReturned() ? 4 : 3) : unloaded ? 2 : this.read ? 1 : 0;
-    if (stocked && this.palletsReturned() && this.parked()) this.finishTime += elapsed;
-    else this.finishTime = 0;
+    const stocked = g.level.order.every(line => g.itemStatus[line.line] >= line.qty);
+    const unloaded = this.pallets.every(p => !g.level.dockZone.contains(p.body.translation()));
+    const needsCut = this.pallets.some(p => p.kind === 'wrapped' && p.contents.some(r => r.data.receivingLine && !g.level.order.find(l => l.line === r.data.receivingLine)?.pallet));
+    this.stage = stocked ? 4 : !unloaded ? (this.read ? 1 : 0) : needsCut ? 2 : 3;
+    this.finishTime = stocked ? this.finishTime + elapsed : 0;
     if (this.finishTime >= 1) g.finishOrder(null);
   }
 
   update(dt) {
+    if (!this.spec.tutorial) return;
     const g = this.game;
     if (!this.read) {
       const point = g.forklift.clipboard.group.getWorldPosition(new THREE.Vector3());
       const cameras = g.mode === 'single' ? [g.active === 'driver' ? g.forklift.camera : g.climber.camera] : [g.forklift.camera, g.climber.camera];
-      const looking = cameras.some((camera) => {
+      const looking = cameras.some(camera => {
         const delta = point.clone().sub(camera.getWorldPosition(new THREE.Vector3()));
         return delta.length() < 3 && delta.normalize().dot(camera.getWorldDirection(new THREE.Vector3())) > .94;
       });
       this.readTime = looking ? this.readTime + dt : 0;
-      if (this.readTime > .7 || this.boxes.some((b) => b.carried)) this.read = true;
+      if (this.readTime > .7 || this.boxes.some(b => b.carried)) this.read = true;
     }
     let target;
-    if (this.stage < 2) target = this.pallets.find((p) => g.level.dockZone.contains(p.body.translation()))?.body.translation();
-    else if (this.stage === 2) {
-      const carrying = g.climber.carriedBoxes().find((b) => b.receivingLine);
-      const slot = this.slots.find((s) => s.line.line === carrying?.receivingLine)
-        || this.slots.find((s) => g.itemStatus[s.line.line] < s.line.qty);
+    if (this.stage < 2) target = this.pallets.find(p => g.level.dockZone.contains(p.body.translation()))?.body.translation();
+    else if (this.stage === 2) target = this.pallets.find(p => p.kind === 'wrapped')?.body.translation();
+    else {
+      const carrying = g.climber.carriedBoxes().find(b => b.incomingId);
+      const slot = this.slots.find(s => s.line.line === carrying?.receivingLine) || this.slots.find(s => g.itemStatus[s.line.line] < s.line.qty);
       if (slot) target = { x: (slot.x0 + slot.x1) / 2, y: slot.y + .4, z: (slot.z0 + slot.z1) / 2 };
-    } else if (this.stage === 3) target = { ...this.returns, y: LAYOUT.lower.y };
-    else target = g.level.forkliftSpawn.pos;
+    }
     this.marker.visible = !!target && !g.complete;
     if (target) this.marker.position.set(target.x, target.y + .65 + Math.sin(g.clock * 4) * .08, target.z);
   }
 
   content(role) {
     const g = this.game;
-    if (g.complete) return null;
+    if (!this.spec.tutorial || g.complete) return null;
     const button = (action, who = role) => `<kbd>${g.keyHint(who, action)}</kbd>`;
-    const swap = (who) => g.mode === 'single' && role !== who ? `Switch to ${who === 'driver' ? 'Ralph' : 'Dave'} with ${button('swap')}. ` : '';
-    const list = g.level.order.map((line) => `${g.itemStatus[line.line] || 0}/${line.qty} × SKU ${line.sku} → ${line.location}`).join(' · ');
+    const swap = who => g.mode === 'single' && role !== who ? `Switch to ${who === 'driver' ? 'Ralph' : 'Dave'} with ${button('swap')}. ` : '';
+    const list = g.level.order.map(line => `${g.itemStatus[line.line] || 0}/${line.qty} × SKU ${line.sku} → ${line.location}`).join(' · ');
     const details = [
-      `Read ${RECEIVING_ORDER.number} on the forklift clipboard: ${list}. The incoming pallets are in ${RECEIVING_ORDER.dock}. Each pallet holds one SKU. Look at the clipboard briefly, or begin unloading.`,
-      `${swap('driver')}Ralph: drive into ${RECEIVING_ORDER.dock} with forks low. Slide under each pallet, raise with ${button('lift', 'driver')}, then reverse out. Unload both pallets; carry them up the ramp to the rack aisles.`,
-      `${swap('climber')}Dave: take boxes with ${button('interact', 'climber')} and tap again to place them in their labelled shelf slots. Any stable orientation counts. Wrong locations stay incomplete. ${list}.`,
-      `${swap('driver')}All stock is put away. Return both empty delivery pallets to the green EMPTY PALLETS square on the lower floor. Set them side by side, upright and flat; keep the forks out from underneath.`,
-      `${swap('driver')}Pallets returned. ${this.parkingReason() || 'Parked correctly! Stay stopped for one second to finish receiving.'}`,
+      `Read ${this.spec.number} on the forklift clipboard: ${list}. The wrapped incoming pallets are in ${this.spec.dock}. Look at the clipboard briefly, or begin unloading.`,
+      `${swap('driver')}Drive into ${this.spec.dock} with forks low. Slide into the pallet pockets, raise with ${button('lift', 'driver')}, then reverse out. Bring both pallets up the ramp. Wrap keeps the cartons together.`,
+      `${swap('climber')}Dave: empty your hands, stand close to a pallet and hold ${button('interact', 'climber')} for one second to cut its shrinkwrap. You can cut while Ralph holds the pallet on his forks.`,
+      `${swap('climber')}Take cartons with ${button('interact', 'climber')} and tap again to place them at the labelled locations. Wrong locations stay incomplete. ${list}. Cleanup and parking are optional.`,
+      'All stock is put away. Cleanup and parking are optional.',
     ];
-    return { title: `${RECEIVING_ORDER.number} · ${['Read the purchase order', 'Unload the truck', 'Put away the stock', 'Return empty pallets', 'Park the forklift'][this.stage]}`, detail: details[this.stage] };
+    return { title: `${this.spec.number} · ${['Read the purchase order', 'Unload the truck', 'Cut the shrinkwrap', 'Put away the stock', 'Stock received'][this.stage]}`, detail: details[this.stage] };
   }
 }

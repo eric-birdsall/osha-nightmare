@@ -10,6 +10,7 @@ import { Recorder, ReplayDirector, buildCctvFixtures } from './replay.js';
 import { settings } from './settings.js';
 import { Tutorial } from './tutorial.js';
 import { Receiving } from './receiving.js';
+import { receivingOrder } from '../world/receiving-orders.js';
 import { describeLocation } from '../world/level.js';
 import { quatToThree } from '../physics.js';
 import { disposeTree } from '../util/meshes.js';
@@ -119,10 +120,11 @@ export class Game {
   // order: one of the fixed orders (its id in orders.json), or 'shift' for a Full Shift (all five
   // back to back in the same warehouse, one clock)
   constructor({ mode, hud, order = 1 }) {
-    this.receiving = order === 'receiving-1';
+    this.receivingSpec = receivingOrder(order);
+    this.receiving = !!this.receivingSpec;
     this.levelId = order; // what was picked on the level screen: an order id or 'shift'
     this.shift = order === 'shift';
-    this.orderId = this.receiving ? 1 : this.shift ? ORDERS[0].id : order; // the order being picked now
+    this.orderId = this.receiving ? Number(order.split('-')[1]) : this.shift ? ORDERS[0].id : order; // the order being picked now
     this.mode = mode; // 'single' | 'coop'
     this.hud = hud;
     this.world = new RAPIER.World({ x: 0, y: CONFIG.physics.gravity, z: 0 });
@@ -136,7 +138,6 @@ export class Game {
     this.level = buildLevel(this);
     this.forklift = new Forklift(this, this.level.forkliftSpawn);
     this.climber = new Climber(this, this.level.climberSpawn);
-    this.climber.spawnOnForks();
     this.wrap = new WrapSystem(this);
     buildCctvFixtures(this.scene);
     this.clock = 0; // simulation time, for the replay buffer
@@ -271,11 +272,9 @@ export class Game {
     this.watchRacks(dt);
     this.level.storage.step(dt);
     this.watchFragile(dt);
+    this.wrap.step(dt);
     if (this.receiving) this.receivingSystem.step(dt);
-    else {
-      this.wrap.step(dt);
-      this.orderStep(dt);
-    }
+    else this.orderStep(dt);
     if (this.started && !this.complete) this.time += dt;
     this.dayTimer += dt;
     if (this.dayTimer >= CONFIG.hud.secondsPerDay) {
