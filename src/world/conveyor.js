@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { COL } from '../physics.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
+import { Sparks } from './hazards.js';
+import { sfx } from '../systems/audio.js';
 import { LAYOUT } from './layout.js';
 
 // Powered roller conveyors (LAYOUT.conveyors): waist-high belts that carry anything resting on
@@ -106,9 +108,53 @@ function buildConveyor(game, c) {
     game.world.createCollider(RAPIER.ColliderDesc.cuboid(0.65, 0.6, 0.04).setTranslation(cx, 0.6, bz).setFriction(0.4).setCollisionGroups(COL.static), game.staticBody);
   }
   const velocity = new THREE.Vector3(0, 0, -speed); // north
+  let powerSwitch = null;
+  if (c.powerSwitch) {
+    const position = new THREE.Vector3(x0 - .12, 1.25, cz);
+    const housing = add(boxMesh(.18, .5, .42, 0x434c57), position.x, position.y, position.z);
+    housing.name = 'Conveyor power switch';
+    const switchCollider = game.world.createCollider(RAPIER.ColliderDesc.cuboid(.09, .25, .21)
+      .setTranslation(position.x, position.y, position.z).setCollisionGroups(COL.static), game.staticBody);
+    const lever = add(boxMesh(.05, .22, .06, YELLOW), x0 - .24, 1.25, cz);
+    lever.rotation.x = -.6;
+    const labels = ['LOW POWER', 'HIGH · SHORTED'].map((text, i) => {
+      const label = labelPlane(text, .95, .2, { bg: i ? '#942626' : '#f5c518', fg: i ? '#ffffff' : '#16171a' });
+      label.rotation.y = -Math.PI / 2;
+      add(label, x0 - .23, 1.67, cz);
+      label.visible = i === 0;
+      return label;
+    });
+    const sparks = new Sparks(scene, 30);
+    const source = position.clone().add(new THREE.Vector3(-.15, .05, 0));
+    const out = new THREE.Vector3(-1, .4, 0).normalize();
+    const flash = new THREE.PointLight(0xffcf62, 0, 3);
+    flash.position.copy(source); scene.add(flash);
+    let sparkTime = 0, burstIn = 0;
+    powerSwitch = {
+      kind: 'conveyorSwitch', collider: switchCollider, position, high: false,
+      activate() {
+        if (this.high) return false;
+        this.high = true;
+        velocity.z = -speed * 3;
+        lever.rotation.x = .6;
+        lever.material.color.setHex(0x242424);
+        labels[0].visible = false; labels[1].visible = true;
+        sparkTime = 1.2;
+        sparks.burst(source, out, 26); sfx.zap(.6);
+        return true;
+      },
+      update(dt) {
+        sparkTime = Math.max(0, sparkTime - dt); burstIn -= dt;
+        if (sparkTime > 0 && burstIn <= 0) { sparks.burst(source, out, 8); burstIn = .15; }
+        flash.intensity = sparkTime > 0 ? 1 + Math.random() * 3 : 0;
+        sparks.update(dt);
+      },
+    };
+  }
   return {
     collider,
     velocity,
+    powerSwitch,
     // Is this the belt (what Dave is standing on, say)?
     owns: (col) => col?.handle === collider.handle,
     // Before each physics step: drive everything resting on the belt along at belt speed
@@ -126,7 +172,8 @@ function buildConveyor(game, c) {
     },
     // Each frame: scroll the belt
     update(dt) {
-      tex.offset.y -= (speed * dt) / 0.5; // texture v runs north here, so this slides the cleats north
+      powerSwitch?.update(dt);
+      tex.offset.y += (velocity.z * dt) / 0.5; // texture v runs north here, so this slides the cleats north
     },
   };
 }

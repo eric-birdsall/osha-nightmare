@@ -11,7 +11,7 @@ import { sfx } from '../systems/audio.js';
 import { WorkerModel } from './worker.js';
 
 // Body-local frame: forward = +Z, up = +Y, origin on the floor between the wheels.
-const FOV = 72; // the cab camera's normal field of view
+const FOV = 84; // include lowered blade tips while the driver looks level // the cab camera's normal field of view
 const WHEEL_R = 0.28;
 const WHEELS = [
   { pos: [0.48, WHEEL_R, 0.55], front: true },
@@ -96,7 +96,7 @@ export class Forklift {
     this.steer = 0;
     this.gear = 1;
     this.lookYaw = 0;
-    this.lookPitch = -0.12;
+    this.lookPitch = 0;
     this.wheelSpin = 0;
     this.beepTimer = 0;
     this.groundFrac = 0;
@@ -386,7 +386,7 @@ export class Forklift {
       carriage.add(b);
     };
     frame(0.9, 0.1, 0, 0.05, 0x444a52); // lower fork bar
-    frame(0.9, 0.08, 0, 0.42, 0x444a52); // upper fork bar
+    frame(0.9, 0.045, 0, 0.36, 0x444a52); // upper fork bar
     frame(0.9, 0.05, 0, 0.97); // backrest top rail
     for (const x of [-0.43, 0.43]) frame(0.05, 1.0, x, 0.5); // side frames
     for (let i = -3; i <= 3; i++) frame(0.025, 0.5, i * 0.12, 0.71); // backrest bars
@@ -648,9 +648,9 @@ export class Forklift {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
-    // Slope rises toward the front: from the dash top (y 1.05, z 0.54) to (y 1.17, z 0.72)
-    const back = new THREE.Vector3(0, 1.05, 0.54);
-    const front = new THREE.Vector3(0, 1.17, 0.72);
+    // Low instrument binnacle keeps the forward sightline to the fork tips clear.
+    const back = new THREE.Vector3(0, 0.87, 0.54);
+    const front = new THREE.Vector3(0, 0.99, 0.72);
     const along = front.clone().sub(back);
     const slopeLen = along.length();
     along.normalize();
@@ -692,7 +692,8 @@ export class Forklift {
     clip.position.set(0, 0.19, 0.012);
     group.add(board, paper, clip);
     // On the inside of the left post, facing the driver's eye
-    const pos = new THREE.Vector3(0.24, 1.52, 0.62);
+    const pos = new THREE.Vector3(0.36, 1.44, 0.69);
+    group.scale.setScalar(0.82);
     const eye = new THREE.Vector3(...CONFIG.forklift.seatEye);
     group.position.copy(pos);
     group.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(eye, pos, new THREE.Vector3(0, 1, 0)));

@@ -184,3 +184,11 @@ between two decks:
 ## Mixed West-wall storage
 
 Implemented: H/I mix sixteen upper carton-backstock pallets with eight single-unit strapped crates, plus two lower crate bays. Fixed freight SKU homes are in `src/world/freight-stock.js`. Orders 3–5 include crates and sum delivered quantities across separate loads in the active trailer; Full Shift ships all completed loads. PO-004 and PO-005 include heavy-crate putaway.
+
+## Warehouse lighting and damage
+
+**Future idea — not built yet.**
+
+- Reduce the number of warehouse lights; start with one or more fixtures out.
+- Allow Ralph to damage overhead light fixtures by hitting them with the forklift when its forks/mast are fully raised.
+- A damaged fixture stops lighting its area, leaving a darker patch for the rest of the run.

@@ -11,11 +11,11 @@ import { createLadderStand } from '../entities/ladder.js';
 import { buildParking, parkingRect } from './parking.js';
 import WAREHOUSE from './warehouse-v1.json';
 import ORDERS_FILE from './orders.json';
-import { LAYOUT, rackX1, WALL_LABELS } from './layout.js';
+import { LAYOUT, rackX1 } from './layout.js';
 import { buildWrapper } from './wrapper.js';
 import { buildPacking, packingRect } from './packing.js';
 import { PalletStorage } from './pallet-storage.js';
-import { buildBreakRoom } from './breakroom.js';
+import { buildDecorativeDoors } from './decorative-doors.js';
 import { buildConveyors } from './conveyor.js';
 import { buildHazards, hazardZones } from './hazards.js';
 
@@ -146,9 +146,11 @@ function labelRack(group, rack, cx, cz) {
     mesh.rotation.y = ry;
     group.add(mesh);
   };
-  // End caps face west and east, mounted on the outside of the end uprights
-  add(endCapSign(name, 1.0, 1.1), x0 - 0.05, 2.3, cz, -Math.PI / 2);
-  add(endCapSign(name, 1.0, 1.1), x1 + 0.05, 2.3, cz, Math.PI / 2);
+  // Tall West-wall rack names live above them on the wall; central rack signs stay on end caps.
+  if (rack.palletFromShelf == null) {
+    add(endCapSign(name, 1.0, 1.1), x0 - 0.05, 2.3, cz, -Math.PI / 2);
+    add(endCapSign(name, 1.0, 1.1), x1 + 0.05, 2.3, cz, Math.PI / 2);
+  }
   if (rack.palletFromShelf != null) {
     const z = face === 'south' ? z1 + 0.025 : z0 - 0.025;
     add(labelPlane('MIXED STORAGE · CHECK SKU', 3.8, 0.36, { bg: '#f5c518', fg: '#111111' }), (x0 + x1) / 2, 4.2, z, face === 'south' ? 0 : Math.PI);
@@ -905,7 +907,6 @@ export function describeLocation(p) {
     const name = lowerName[0].toUpperCase() + lowerName.slice(1);
     return r ? `${name}, by Rack ${r.name}, bay ${bayOf(r)}${up}` : lower ? `${name}, open floor` : name;
   }
-  if (inRect(LAYOUT.breakRoom, p.x, p.z)) return 'The break room';
   const zone = LAYOUT.zones.find((zn) => p.x >= zn.x0 && p.x <= zn.x1 && p.z >= zn.z0 && p.z <= zn.z1);
   return zone ? zone.name : 'Open floor';
 }
@@ -1248,25 +1249,18 @@ export function buildLevel(game) {
   const wrapper = buildWrapper(game);
   buildPacking(game);
   const conveyors = buildConveyors(game);
-  buildBreakRoom(game);
+  buildDecorativeDoors(game);
 
   // Loading docks: this order's is open with a trailer backed up to it
   const docks = buildDocks(game);
 
-  // Wall-mounted incident sign (updated by the game)
-  game.incidentSign = makeIncidentSign(scene);
-
-  // A big compass letter high up in the middle of each wall, so the walls are easy to name
-  for (const [letter, x, z, ry] of [
-    [WALL_LABELS.north, 0, -halfZ + 0.03, 0],
-    [WALL_LABELS.south, 0, halfZ - 0.03, Math.PI],
-    [WALL_LABELS.west, -halfX + 0.03, 0, Math.PI / 2],
-    [WALL_LABELS.east, halfX - 0.03, 0, -Math.PI / 2],
-  ]) {
-    const badge = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: compassTexture(letter), transparent: true }));
-    badge.position.set(x, 7.5, z);
-    badge.rotation.y = ry;
-    scene.add(badge);
+  // Fixed wall signs remain above each tall rack even if its frame is knocked over.
+  for (const rack of RACKS.filter(r => r.palletFromShelf != null)) {
+    const sign = endCapSign(rack.name, 2.0, 1.4);
+    sign.name = `wall-rack-sign-${rack.name}`;
+    sign.position.set((rack.x0 + rackX1(rack)) / 2, rack.uprightH + .9, halfZ - .035);
+    sign.rotation.y = Math.PI;
+    scene.add(sign);
   }
 
   // The forklift's parking bay and charger
@@ -1329,60 +1323,4 @@ export function buildLevel(game) {
   };
   level.setOrder(run[0]);
   return level;
-}
-
-// A yellow disc with a black ring and a big black letter on it.
-function compassTexture(letter) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
-  const g = c.getContext('2d');
-  g.fillStyle = '#16171a';
-  g.beginPath();
-  g.arc(128, 128, 126, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = '#f5c518';
-  g.beginPath();
-  g.arc(128, 128, 112, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = '#16171a';
-  g.font = 'bold 170px system-ui, sans-serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(letter, 128, 140);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
-}
-
-function makeIncidentSign(scene) {
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 256;
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshBasicMaterial({ map: tex }));
-  mesh.position.set(LAYOUT.incidentSign.x, LAYOUT.incidentSign.y, -ROOM.halfZ + 0.03);
-  scene.add(mesh);
-  let last = null;
-  return {
-    set(days) {
-      if (days === last) return;
-      last = days;
-      const g = c.getContext('2d');
-      g.fillStyle = '#fff';
-      g.fillRect(0, 0, 512, 256);
-      g.strokeStyle = '#1a7f37';
-      g.lineWidth = 14;
-      g.strokeRect(7, 7, 498, 242);
-      g.fillStyle = '#1a7f37';
-      g.font = 'bold 34px system-ui, sans-serif';
-      g.textAlign = 'center';
-      g.fillText('DAYS SINCE LAST INCIDENT', 256, 62);
-      g.fillStyle = days === 0 ? '#c62828' : '#111';
-      g.font = 'bold 150px system-ui, sans-serif';
-      g.fillText(String(days), 256, 210);
-      tex.needsUpdate = true;
-    },
-  };
 }

@@ -163,7 +163,6 @@ export class Game {
     this.hintCooldown = 0;
     this.complete = false;
     this.onComplete = null;
-    this.incidentSign.set(this.days);
     this.receivingSystem = this.receiving ? new Receiving(this) : null;
     this.tutorial = this.receivingSystem || (!this.shift && this.orderId === 1 ? new Tutorial(this) : null);
   }
@@ -890,7 +889,6 @@ export class Game {
     this.climber.updateCamera(dt);
     this.forklift.updateCamera();
     this.tutorial?.update(dt);
-    this.incidentSign.set(this.days);
     this.recorder.capture(this.clock);
     if (this.pendingReplay && this.clock >= this.pendingReplay.at) {
       this.replay = new ReplayDirector(this, this.pendingReplay);

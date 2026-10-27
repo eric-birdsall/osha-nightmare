@@ -12,7 +12,7 @@ import { LAYOUT } from '/src/world/layout.js';
 import { boxLook } from '/src/entities/box.js';
 import { CONFIG } from '/src/config.js';
 
-export const VERSION = 4;
+export const VERSION = 6;
 const SEED = 20261024;
 
 // What each order asks for: rack, bay (1-6 from the west end), shelf (1 = bottom), quantity, how
@@ -39,9 +39,9 @@ const ORDER_SPECS = [
     title: 'Top shelf',
     dock: 'Dock 1',
     lines: [
-      { rack: 'H', bay: 1, shelf: 3, qty: 2, short: 0, fragile: false, decoy: true },
-      { rack: 'I', bay: 1, shelf: 5, qty: 1, short: 0, fragile: false, decoy: true },
-      { rack: 'H', bay: 1, shelf: 5, qty: 1, freight: true },
+      { rack: 'Z', bay: 1, shelf: 3, qty: 2, short: 0, fragile: false, decoy: true },
+      { rack: 'Y', bay: 1, shelf: 5, qty: 1, short: 0, fragile: false, decoy: true },
+      { rack: 'Z', bay: 1, shelf: 5, qty: 1, freight: true },
     ],
   },
   {
@@ -52,7 +52,7 @@ const ORDER_SPECS = [
     lines: [
       { rack: 'E', bay: 3, shelf: 2, qty: 3, short: 1, fragile: false, decoy: true },
       { rack: 'F', bay: 5, shelf: 1, qty: 2, short: 0, fragile: true, decoy: true },
-      { rack: 'H', bay: 4, shelf: 1, qty: 1, freight: true },
+      { rack: 'Z', bay: 4, shelf: 1, qty: 1, freight: true },
     ],
   },
   {
@@ -64,7 +64,7 @@ const ORDER_SPECS = [
       { rack: 'G', bay: 1, shelf: 3, qty: 3, short: 1, fragile: false, decoy: true },
       { rack: 'F', bay: 2, shelf: 2, qty: 2, short: 0, fragile: true, decoy: true },
       { rack: 'C', bay: 1, shelf: 3, qty: 2, short: 1, fragile: false, decoy: true },
-      { rack: 'I', bay: 2, shelf: 5, qty: 1, freight: true },
+      { rack: 'Y', bay: 2, shelf: 5, qty: 1, freight: true },
     ],
   },
 ];

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as THREE_FOR_VIEW_TEST from 'three';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { readFileSync } from 'node:fs';
@@ -263,20 +264,20 @@ test('five-shelf West-wall racks stock real loaded pallets and preserve backstoc
   const { floorHeightNear, orderLines, ORDERS } = await import('../src/world/level.js');
   const game = new Game({ mode: 'single', order: 3 });
   game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
-  assert.deepEqual(game.level.order.map(line => line.location), ['H-1-3', 'I-1-5', 'H-1-5']);
+  assert.deepEqual(game.level.order.map(line => line.location), ['Z-1-3', 'Y-1-5', 'Z-1-5']);
   assert.equal(LAYOUT.mezzanine, undefined);
   assert.equal(game.level.landingRailing, undefined);
   assert.equal(floorHeightNear(-12, 19, 3), 0, 'No invisible mezzanine floor');
   const high = LAYOUT.racks.filter(r => r.palletFromShelf != null);
-  assert.equal(high.length, 2);
+  assert.equal(high.length, 3);
   for (const rack of high) {
     assert.equal(rack.shelves.length, 5);
     assert.equal(rack.base, 0);
     assert.ok(CONFIG.forklift.liftMax > rack.shelves[4] + .15);
   }
-  assert.equal(game.level.storage.slots.length, 26);
+  assert.equal(game.level.storage.slots.length, 38);
   assert.equal(game.level.storage.slots.filter(s => s.kind === 'freight').length, 10);
-  assert.equal(game.level.storage.slots.filter(s => s.kind === 'wrapped').length, 16);
+  assert.equal(game.level.storage.slots.filter(s => s.kind === 'wrapped').length, 28);
   settle(game, 4);
   for (const slot of game.level.storage.slots) {
     assert.ok(slot.seated, `${slot.location} must rest squarely on its deck`);
@@ -292,13 +293,13 @@ test('five-shelf West-wall racks stock real loaded pallets and preserve backstoc
     assert.ok(!game.rackDisturbed(slot.rack), 'Stable wrapped stock does not need a rack reset');
   }
   assert.equal(orderLines(ORDERS.find(o => o.id === 4))[0].location, 'E-3-2');
-  assert.match(orderLines(ORDERS.find(o => o.id === 4))[0].backstock, /^[HI]-[1-4]-[3-5]$/);
+  assert.match(orderLines(ORDERS.find(o => o.id === 4))[0].backstock, /^[XYZ]-[1-4]-[3-5]$/);
   game.dispose();
 });
 
 test('Ralph can lift a loaded storage pallet clear and back out without losing the cartons', async () => {
   const { collectStack } = await import('../src/systems/wrapping.js');
-  for (const location of ['H-1-3', 'I-1-5']) {
+  for (const location of ['Z-1-3', 'Y-1-5']) {
     const game = new Game({ mode: 'single', order: 3 });
     game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
     game.climber.resetToStart();
@@ -420,7 +421,7 @@ test('Dave cuts wrap with a sustained hold on fork blades, cancels on release, a
   const game = new Game({ mode: 'single', order: 3 });
   game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
   settle(game, 1);
-  const load = game.level.storage.slots.find(s => s.location === 'H-1-3').pallet;
+  const load = game.level.storage.slots.find(s => s.location === 'Z-1-3').pallet;
   const originalIds = loadCartons(load).map(r => r.data.sku);
   game.forklift.height = .8; game.forklift.teleport({ x: 5, z: -5 }, 0);
   move(load.body, 5, .705, -3.4);
@@ -571,7 +572,7 @@ test('Full Shift ships every delivered load and clears delivery progress before 
 });
 
 test('Ralph can retrieve strapped crates from both low and high West-wall bays without snagging the rack', () => {
-  for (const location of ['H-4-1', 'H-1-5', 'H-4-4']) {
+  for (const location of ['Z-4-1', 'Z-1-5', 'Z-4-4']) {
     const game = new Game({ mode: 'single', order: 1 });
     game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' }); settle(game, 1);
     const slot = game.level.storage.slots.find(s => s.location === location), crate = slot.pallet;
@@ -686,4 +687,94 @@ test('sustained lifting reaches high racks quickly while taps and release stay p
   tick(0.3, 0);
   assert.ok(f.height - released < 0.1, 'release should arrest upward motion promptly');
   game.dispose();
+});
+
+
+test('Ralph sees both lowered fork tips looking level in single-player and split-screen', () => {
+  const game = createGame(), f = game.forklift;
+  settle(game, 0.5);
+  assert.equal(f.lookPitch, 0);
+  f.updateCamera();
+  const { Vector3, Quaternion } = THREE_FOR_VIEW_TEST;
+  const q = f.carriage.rotation(), t = f.carriage.translation();
+  for (const aspect of [16 / 9, 32 / 9, 4 / 3]) {
+    f.camera.aspect = aspect;
+    f.camera.updateProjectionMatrix(); f.camera.updateMatrixWorld(true);
+    for (const x of [-0.225, 0.225]) {
+      const tip = new Vector3(x, 0, 1.06).applyQuaternion(new Quaternion(q.x, q.y, q.z, q.w)).add(t).project(f.camera);
+      assert.ok(Math.abs(tip.x) < 0.9 && tip.y > -0.98 && tip.y < -0.4 && tip.z < 1, `tip remains comfortably inside forward view at aspect ${aspect}: ${tip.y}`);
+    }
+  }
+  assert.equal(f.clipboard.group.scale.x, 0.82);
+  game.dispose();
+});
+
+test('approved layout preserves rack, cage, conveyor and stair clearances', async () => {
+  const { LAYOUT, rackX1 } = await import('../src/world/layout.js');
+  const { STAIRS, floorHeightAt } = await import('../src/world/level.js');
+  const [x, y, z] = LAYOUT.racks.filter(r => r.palletFromShelf != null);
+  assert.deepEqual([x.name, y.name, z.name], ['Z', 'Y', 'X']);
+  assert.ok(Math.abs(y.x0 - rackX1(x) - 2.6) < 1e-8);
+  assert.ok(Math.abs(z.x0 - rackX1(y) - 2.6) < 1e-8);
+  const gaps = LAYOUT.ladderStands.filter(s => s.z > 20);
+  assert.deepEqual(gaps.map(s => s.x), [-6.7, 6.7]);
+  const cage = LAYOUT.hazards.fireExits[0], belt = LAYOUT.conveyors[0];
+  assert.equal(cage.wall, 'east');
+  assert.ok(Math.abs(z.z0 - (cage.at + cage.width / 2) - 10) < 1e-8);
+  assert.ok(belt.z1 < cage.at - cage.width / 2);
+  assert.equal(belt.backstop, false);
+  assert.equal(belt.z0 + LAYOUT.room.halfZ, 2);
+  const pallet = LAYOUT.pallets.find(p => Math.abs(p[2] - (belt.z0 - .75)) < .001);
+  assert.ok(pallet && pallet[2] - .5 > -LAYOUT.room.halfZ, 'receiving pallet fits beyond the open conveyor end');
+  assert.equal(LAYOUT.breakRoom, undefined);
+  assert.deepEqual(LAYOUT.decorativeDoors.map(d => d.label), ['OFFICE', 'BATHROOM', 'BATHROOM']);
+  assert.ok(LAYOUT.decorativeDoors.every(d => d.at > LAYOUT.ramp.x1 && d.at + d.width / 2 < belt.x0));
+  assert.equal(STAIRS.from, -LAYOUT.room.halfX);
+  assert.ok(Math.abs(STAIRS.to - LAYOUT.racks[0].x0) < 1e-8);
+  const across = (STAIRS.from + STAIRS.to) / 2;
+  assert.ok(floorHeightAt(across, STAIRS.edge - .15) < 0);
+  assert.ok(floorHeightAt(across, STAIRS.edge - 1.7) <= -.8);
+});
+
+
+test('incident sign is removed and leaking pipe is above the long conveyor', () => {
+  const game = createGame(), belt = LAYOUT_FOR_TEST.conveyors[0];
+  assert.equal(game.incidentSign, undefined);
+  assert.equal(LAYOUT_FOR_TEST.incidentSign, undefined);
+  const pipe = game.scene.getObjectByName('Leaking conveyor pipe');
+  assert.ok(pipe);
+  game.scene.updateMatrixWorld(true);
+  const point = pipe.getWorldPosition(new THREE_FOR_VIEW_TEST.Vector3());
+  assert.ok(point.x > belt.x0 && point.x < belt.x1);
+  assert.ok(point.z > belt.z0 + 4.5 && point.z < belt.z1 - 4.5, 'whole pipe run sits over the belt');
+  assert.ok(point.y > belt.height + 2);
+  game.dispose();
+});
+
+test('Dave switches the long conveyor to permanent triple-speed high power', () => {
+  const game = createGame(), belt = game.level.conveyors[0], control = belt.powerSwitch;
+  const low = belt.velocity.z;
+  assert.ok(control); assert.equal(control.high, false);
+  assert.equal(game.level.conveyors[1].powerSwitch, null);
+  game.active = 'climber';
+  game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  const c = game.climber, p = control.position;
+  move(c.body, p.x - 1, c.centerOff, p.z);
+  settle(game, .2);
+  c.yaw = -Math.PI / 2;
+  c.pitch = Math.atan2(p.y - c.eye.y, p.x - c.eye.x);
+  c.grounded = true; c.updateTarget();
+  assert.equal(c.target, control, 'real sightline and reach select the switch');
+  const blank = Input.prototype.climberActions.call({ invertY: false }, []);
+  game.step(1 / 60, { driver: blank, climber: { ...blank, interact: true } });
+  assert.equal(control.high, true);
+  assert.ok(Math.abs(belt.velocity.z - low * 3) < 1e-8);
+  assert.equal(control.activate(), false, 'shorted switch cannot be toggled back');
+  belt.update(2);
+  assert.equal(control.high, true);
+  assert.ok(Math.abs(belt.velocity.z - low * 3) < 1e-8);
+  game.dispose();
+  const next = createGame();
+  assert.equal(next.level.conveyors[0].powerSwitch.high, false, 'new run starts at low power');
+  next.dispose();
 });

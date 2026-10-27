@@ -186,6 +186,8 @@ export class Hud {
           const toss = `Punt${n > 1 ? ' top box' : ''}: hold <kbd>${key}</kbd>`;
           const fragile = c.carriedBoxes().some((b) => b.fragile) ? ' <b class="fragile">FRAGILE</b>' : '';
           p = (n > 1 ? `Put down ${n} boxes: tap <kbd>${key}</kbd> · ${toss}` : `Put down SKU ${c.carried.sku}: tap <kbd>${key}</kbd> · ${toss}`) + fragile;
+        } else if (c.target?.kind === 'conveyorSwitch') {
+          p = c.target.high ? 'HIGH POWER · Switch shorted · Cannot return to low' : `Conveyor: LOW → HIGH (3× speed) <kbd>${key}</kbd><br><small>Warning: high power permanently shorts the switch</small>`;
         } else if (c.target?.kind === 'freight') {
           p = `SKU ${c.target.sku} · ${c.target.mass} kg · Forklift only`;
         } else if (c.target) {

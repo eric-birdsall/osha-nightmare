@@ -87,7 +87,7 @@ export function hazardZones() {
 }
 
 // A pool of little additive sprites for cartoon spark bursts.
-class Sparks {
+export class Sparks {
   constructor(scene, n = 80) {
     // A soft round glow for each spark
     const dot = canvasTexture(32, 32, (g) => {
@@ -200,6 +200,7 @@ function buildPanel(game, sparks) {
   // The water pipe along the wall over it, with a duct-taped joint right above the panel
   const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 9, 14), flatMat(0x7d9db3));
   pipe.rotation.z = Math.PI / 2;
+  pipe.name = 'Leaking conveyor pipe';
   put(g, pipe, 0, 3.4, 0.3);
   const joint = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.22, 14), flatMat(0xb8bcc2));
   joint.rotation.z = Math.PI / 2;
@@ -295,27 +296,29 @@ function buildPanel(game, sparks) {
 
 // ---------------------------------------------------------------- blocked fire exits
 
-function buildFireExit(game, { wall, at, y }) {
+function buildFireExit(game, { wall, at, y, width: cageWidth = 2.8, depth: cageDepth = 2.0 }) {
   const g = wallGroup(game, wall, at, y);
+  // Keep the caged exit beside the leaking panel rather than painting both on one spot.
+  const door = new THREE.Group();
+  const doorOffset = cageWidth > 3 ? 1.8 : 0;
+  door.position.x = doorOffset;
+  g.add(door);
   // Door in its frame, with a push bar and a KEEP CLEAR sign
-  put(g, boxMesh(1.2, 2.3, 0.05, 0x3c4249, { edges: false }), 0, 1.15, 0.025);
-  put(g, boxMesh(1.0, 2.15, 0.04, 0x8c2b2b), 0, 1.08, 0.06);
-  put(g, boxMesh(0.8, 0.06, 0.06, 0xc9ced6, { edges: false }), 0, 1.0, 0.11);
+  put(door, boxMesh(1.2, 2.3, 0.05, 0x3c4249, { edges: false }), 0, 1.15, 0.025);
+  put(door, boxMesh(1.0, 2.15, 0.04, 0x8c2b2b), 0, 1.08, 0.06);
+  put(door, boxMesh(0.8, 0.06, 0.06, 0xc9ced6, { edges: false }), 0, 1.0, 0.11);
   const keep = labelPlane('FIRE EXIT · KEEP CLEAR', 0.86, 0.17, { bg: '#ffffff', fg: '#d0141b' });
-  put(g, keep, 0, 2.0, 0.082); // visible through the cage
+  put(door, keep, 0, 2.0, 0.082); // visible through the cage
   // Lit EXIT sign over it
-  put(g, boxMesh(0.55, 0.24, 0.08, 0xf4f4f4, { edges: false }), 0, 2.55, 0.04);
+  put(door, boxMesh(0.55, 0.24, 0.08, 0xf4f4f4, { edges: false }), 0, 2.55, 0.04);
   const exit = labelPlane('EXIT ➜', 0.5, 0.2, { bg: '#0f8a3c', fg: '#ffffff' });
-  put(g, exit, 0, 2.55, 0.082);
+  put(door, exit, 0, 2.55, 0.082);
   // A welded steel cage surrounds the door: barred front, side panels and a roof.
   // Continuous panel colliders prevent Dave or the forklift slipping through the bars.
   const steel = 0x555f68;
-  // The south-east enclosure reaches the east wall (local -X on the south wall).
-  const cornerCage = wall === 'south';
-  const minX = cornerCage ? at - LAYOUT.room.halfX + 0.04 : -1.4;
-  const maxX = cornerCage ? 1.8 : 1.4;
-  const width = maxX - minX, midX = (minX + maxX) / 2;
-  const depth = cornerCage ? 3.2 : 2.0, height = 3.1;
+  const minX = -cageWidth / 2, maxX = cageWidth / 2;
+  const width = cageWidth, midX = 0;
+  const depth = cageDepth, height = 3.1;
   const bar = (w, h, d, x, y, z) => put(g, boxMesh(w, h, d, steel, { edges: false }), x, y, z);
   for (const x of [minX, maxX]) {
     for (const z of [0.08, depth]) bar(0.08, height, 0.08, x, height / 2, z);
@@ -355,13 +358,13 @@ function buildFireExit(game, { wall, at, y }) {
   const plywood = put(g, boxMesh(0.42, 1.55, 0.04, 0xd8b98a), -0.93, 0.8, 0.58);
   plywood.rotation.x = -0.14;
   solidIn(game, g, [2.3, 1.6, 1.25], [0, 0.8, 0.75]);
-  if (cornerCage) {
+  if (cageWidth > 3) {
     // Fixed varied storage piles fill the corner without changing on every restart.
     let pile = 0;
     for (let x = minX + 0.7; x < maxX - 0.5; x += 1.25) {
       for (const z of [0.72, 2.3]) {
         // The original pile already occupies the space directly in front of the door.
-        if (z < 1 && Math.abs(x) < 1.2) continue;
+        if (z < 1 && Math.abs(x - doorOffset) < .7) continue;
         const layers = 2 + pile % 4;
         const stack = new THREE.Group();
         stack.position.set(x, 0, z);
@@ -377,7 +380,7 @@ function buildFireExit(game, { wall, at, y }) {
         for (let n = 0; n < boxes; n++) {
           const h = 0.3 + ((pile + n) % 3) * 0.1;
           // Keep the center below the KEEP CLEAR sign's sightline.
-          if (Math.abs(x) < 0.8 && top + h > 1.55) break;
+          if (Math.abs(x - doorOffset) < 0.8 && top + h > 1.55) break;
           const d = 0.48 + (n % 2) * 0.16;
           const carton = put(stack, boxMesh(0.65 + (pile % 2) * 0.15, h, d, [0xc49a6c, 0xa88050, 0xd1ae79][(pile + n) % 3]), (n % 2 ? 0.1 : -0.1), top + h / 2, 0);
           carton.rotation.y = (n % 3 - 1) * 0.16;

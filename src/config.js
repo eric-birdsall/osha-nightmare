@@ -110,8 +110,8 @@ export const CONFIG = {
     lookPitchLimit: deg(60),
     lookSensitivity: 0.0022,
     stickLookSpeed: 2.4,
-    seatEye: [0, 1.85, -0.25],
-    leanOffset: [0, 0.08, 0.45], // eye shift when looking down at the forks
+    seatEye: [0, 1.70, 0.05],
+    leanOffset: [0, 0.08, 0.20], // eye shift when looking down at the forks
   },
 
   objects: {

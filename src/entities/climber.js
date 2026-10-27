@@ -313,6 +313,10 @@ export class Climber {
     this.puntStep(a, dt, active);
     if (cutting) return;
     if (active && a.interact && !this.draggedPallet) {
+      if (this.target?.kind === 'conveyorSwitch' && !this.carried && !this.ladderCarry && !this.holdingOn) {
+        this.target.activate();
+        return;
+      }
       // A box in reach comes first, even from the forks: he lets go of the carriage to take it
       if (this.holdingOn && this.target?.kind === 'box') {
         this.letGo();
@@ -1227,6 +1231,8 @@ export class Climber {
     const chest = eye.clone().setY(eye.y - cfg.chestDrop);
     const reach = cfg.reach + (this.onBlades ? cfg.forkReachBonus : 0);
     if (hit && chest.distanceTo(tmp.set(hit.point.x, hit.point.y, hit.point.z)) <= reach) {
+      const control = this.game.level.conveyors.map(b => b.powerSwitch).find(s => s?.collider.handle === hit.collider.handle);
+      if (control) { this.target = control; return; }
       const ent = this.game.entityForCollider(hit.collider);
       if (ent && ent.kind === 'box') {
         this.target = ent;

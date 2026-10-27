@@ -223,7 +223,7 @@ export class Receiving {
       const cameras = g.mode === 'single' ? [g.active === 'driver' ? g.forklift.camera : g.climber.camera] : [g.forklift.camera, g.climber.camera];
       const looking = cameras.some(camera => {
         const delta = point.clone().sub(camera.getWorldPosition(new THREE.Vector3()));
-        return delta.length() < 3 && delta.normalize().dot(camera.getWorldDirection(new THREE.Vector3())) > .94;
+        return delta.length() < 3 && delta.normalize().dot(camera.getWorldDirection(new THREE.Vector3())) > (camera === g.forklift.camera ? 0.84 : 0.94);
       });
       this.readTime = looking ? this.readTime + dt : 0;
       if (this.readTime > .7 || this.boxes.some(b => b.carried)) this.read = true;
