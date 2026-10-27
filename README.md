@@ -185,7 +185,7 @@ A compact bottom-right controls reference shows only the current character’s c
 
 At the start of each picking or receiving round, Dave stands beside the main-floor ladder at Rack A’s endcap, facing south. He can pick up the ladder with E / X without moving. This applies to single player and couch co-op.
 
-One forklift-only test crate (SKU 980, one unit, 350 kg including its pallet) sits in the open main-floor aisle at world x=5.8, z=0, between the central racks and packing stations. It is a wooden shipping crate permanently strapped to a standard pallet: approach its labelled front or back with forks low, insert into the normal pockets, then lift and transport the entire load. Dave can read its handling label but cannot carry, punt, drag or cut it open. It is not part of any order yet.
+The main floor starts without loose spare pallets or the standalone test crate. Conveyor catch pallets and the basement supply stacks remain available. Strapped freight stock still lives in its rack bays.
 
 Ralph has a carriage-mounted fork camera: above 2.5 m it appears automatically as an inset. Press **C** / **R3** to expand it or return to the seat. The fork-height readout stays visible while looking up, including in split-screen.
 
@@ -196,3 +196,15 @@ The long South-wall conveyor has a wall-mounted power switch at the cage-side en
 Hanging light fixtures can be knocked down by the raised forklift. Their chains detach, the fixture falls as a physical prop, and it ignites with animated flames and firelight after reaching the floor.
 
 A shared DAMAGE counter tracks the dollar cost of the run and appears on the completion screen. Broken ceiling lights cost $200. Packages have deterministic SKU values from $50 to $250. An uncontrolled fall of at least 1 m from shelf-2 height or higher damages a package; a toppled rack charges its full remaining package inventory. Each physical package is charged once, including through wrapping/unwrapping and rack resets, so cascading accidents do not double-charge the same stock. Normal carried/fork-supported lowering is exempt. Damage continues through Full Shift and resets for a new run.
+
+## Combined shifts and Practice
+
+Single Player and Couch Co-op now lead to five main levels: Tutorial, then Levels 1–4. Each pairs the corresponding shipping and receiving task, shipping first, in the same live warehouse. Time, incidents, damaged stock, toppled racks, scattered pallets, broken lights and conveyor state carry into receiving. The tutorial receives one pallet of two cartons; Level 1 receives four cartons across two pallets to keep early shifts shorter. Higher levels retain mixed/high freight challenges. Medal targets combine the two tasks and remain provisional pending playtesting.
+
+The shipping-to-receiving handoff saves a browser checkpoint. Restarting or selecting an unfinished level resumes the start of its receiving phase, including warehouse state and accumulated scores. Progress and checkpoints are separate for single player and co-op; completed shifts clear their checkpoint. Best times for combined shifts are separate from Practice records. Browsers that block localStorage retain checkpoints in memory for the current session.
+
+Practice contains the individual shipping orders and receiving POs, plus the original shipping-only Full Shift. The combined tutorial teaches movement during shipping and proceeds directly to unloading/cutting/putaway during receiving. Cleanup and parking remain optional.
+
+Fork entry uses thin tip colliders matching the visible steel tips, preserving full-width support farther along each blade. Ralph gets contextual pocket-height, centering, approach-angle and insertion guidance. Shelf guides select the closest deck and explain alignment or height corrections without snapping loads into place. Receiving shows nearby incoming-stock feedback in both character views: destination, unwrap/rewrap requirements, shelf support, movement, seating and counted quantity. These hints do not change putaway acceptance rules.
+
+Automatic fork tilt: once an upright pallet, wrapped load or strapped crate rests on the blades clear of floor/shelf support, the physical fork assembly gently tilts back 4°. Lowering first levels the assembly, then descends; it stays level until the next upward lift input. Empty forks return to level, and supported shelf stock is never tilted in place. Dave's grip and the fork camera follow the tilted assembly. The fork readout shows AUTO TILT or LEVELING while active. No additional control is required.

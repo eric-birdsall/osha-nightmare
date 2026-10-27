@@ -469,14 +469,14 @@ test('the stretch wrapper accepts partial stock pallets in picking and receiving
   }
 });
 
-test('one strapped freight crate is forklift-only and Ralph can lift and transport its full weight', () => {
+test('strapped freight crates are forklift-only and Ralph can lift and transport their full weight', () => {
   for (const order of [1, 'receiving-1']) {
     const game = new Game({ mode: 'single', order });
     game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
     settle(game, .5);
     const crates = game.entities.filter(e => e.kind === 'freight' && !e.storageLocation);
-    assert.equal(crates.length, 1);
-    const crate = crates[0], start = { ...crate.body.translation() };
+    assert.equal(crates.length, 0, 'no prototype crate spawns on the floor');
+    const crate = createFreightForTest(game, { pos: [5.8, .005, 0], yaw: 0, sku: 980, mass: 350 }), start = { ...crate.body.translation() };
     assert.equal(crate.sku, 980); assert.ok(Math.abs(crate.body.mass() - 350) < .1);
     game.climber.pickUp(crate);
     assert.equal(game.climber.carried, null); assert.equal(crate.body.isDynamic(), true);
@@ -724,8 +724,7 @@ test('approved layout preserves rack, cage, conveyor and stair clearances', asyn
   assert.ok(belt.z1 < cage.at - cage.width / 2);
   assert.equal(belt.backstop, false);
   assert.equal(belt.z0 + LAYOUT.room.halfZ, 2);
-  const pallet = LAYOUT.pallets.find(p => Math.abs(p[2] - (belt.z0 - .75)) < .001);
-  assert.ok(pallet && pallet[2] - .5 > -LAYOUT.room.halfZ, 'receiving pallet fits beyond the open conveyor end');
+  assert.equal(LAYOUT.pallets.length, LAYOUT.conveyors.length, 'only conveyor catch pallets remain on the main floor');
   assert.equal(LAYOUT.breakRoom, undefined);
   assert.deepEqual(LAYOUT.decorativeDoors.map(d => d.label), ['OFFICE', 'BATHROOM', 'BATHROOM']);
   assert.ok(LAYOUT.decorativeDoors.every(d => d.at > LAYOUT.ramp.x1 && d.at + d.width / 2 < belt.x0));
@@ -953,5 +952,288 @@ test('damage identities survive shrinkwrap and unwrapping and repeated light hit
   ledger.charge('light:test', 200, 'Ceiling light broken');
   ledger.charge('light:test', 200, 'Repeated light contact');
   assert.equal(ledger.total, value + 200);
+  game.dispose();
+});
+
+test('combined tutorial hands off shipping to receiving in the same world and resumes its saved checkpoint', async () => {
+  const { campaignProgress, saveCampaignProgress } = await import('../src/world/campaign.js');
+  saveCampaignProgress('single', 'campaign-1', {});
+  const game = new Game({ mode: 'single', order: 'campaign-1' });
+  game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  assert.equal(game.receiving, false); assert.equal(game.orderId, 1);
+  const world = game.world;
+  const pallet = game.entities.find(e => e.basementStack);
+  pallet.body.setTranslation({ x: -10, y: -.5, z: -14 }, true);
+  game.damage.charge('light:checkpoint', 200, 'Test damage');
+  game.time = 45; game.falls = 2;
+  const removed = game.entities.find(e => e.kind === 'box' && e.sku === 355);
+  const removedId = removed.damageId;
+  game.shipLoad(removed);
+  game.finishOrder(null);
+  assert.equal(game.world, world); assert.equal(game.receiving, true);
+  assert.equal(game.phase, 'receiving'); assert.equal(game.receivingSystem.read, true);
+  assert.equal(game.time, 45); assert.equal(game.damage.total, 200);
+  assert.ok(campaignProgress('single', 'campaign-1').checkpoint);
+  const incoming = game.receivingSystem.pallets.length;
+  const count = game.entities.length;
+  game.dispose();
+  const resumed = new Game({ mode: 'single', order: 'campaign-1' });
+  assert.equal(resumed.receiving, true);
+  assert.equal(resumed.time, 45); assert.equal(resumed.falls, 2); assert.equal(resumed.damage.total, 200);
+  assert.equal(resumed.receivingSystem.pallets.length, incoming);
+  assert.equal(resumed.entities.length, count, 'restore recreates exactly the saved physical stock');
+  assert.ok(!resumed.entities.some(e => e.damageId === removedId), 'shipped stock stays gone');
+  assert.ok(resumed.entities.some(e => e.basementStack && Math.abs(e.body.translation().z + 14) < .01), 'warehouse mess survives');
+  let complete = false; resumed.onComplete = () => { complete = true; };
+  resumed.finishOrder(null);
+  assert.equal(complete, true); assert.equal(campaignProgress('single', 'campaign-1').complete, true);
+  assert.equal(campaignProgress('single', 'campaign-1').checkpoint, undefined);
+  resumed.dispose();
+});
+
+test('five combined levels preserve shipping stock, prepare receiving bays, and keep practice separate', async () => {
+  const { CAMPAIGN_LEVELS, saveCampaignProgress } = await import('../src/world/campaign.js');
+  assert.equal(CAMPAIGN_LEVELS.length, 5);
+  for (const definition of CAMPAIGN_LEVELS) {
+    saveCampaignProgress('coop', definition.id, {});
+    const game = new Game({ mode: 'coop', order: definition.id });
+    assert.equal(game.level.order.length, definition.shipping.lines.length);
+    for (const line of game.level.order) assert.ok(game.entities.some(e => e.sku === line.sku || e.skus?.[line.sku]), 'outgoing stock remains available');
+    game.finishOrder(null);
+    assert.equal(game.receivingSystem.spec.id, definition.receiving.id);
+    assert.equal(game.level.order.length, definition.receiving.lines.length);
+    game.dispose();
+  }
+  const practice = createGame(); assert.equal(practice.campaign, undefined); assert.equal(practice.receiving, true); practice.dispose();
+});
+
+test('every combined shift completes shipping and receiving through the physical completion rules', async () => {
+  const { CAMPAIGN_LEVELS, saveCampaignProgress } = await import('../src/world/campaign.js');
+  for (const definition of CAMPAIGN_LEVELS) {
+    saveCampaignProgress('single', definition.id, {});
+    const game = new Game({ mode: 'single', order: definition.id });
+    game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+    const lines = [...game.level.order];
+    for (const load of [...game.entities]) if (load.kind === 'wrapped' && lines.some(l => !l.freight && load.skus[l.sku])) cutWrapped(game, load);
+    const pallet = createPalletForTest(game, { pos: [8, .005, -3] }), set = new Set([pallet]);
+    let index = 0;
+    for (const line of lines.filter(l => !l.freight)) {
+      const boxes = game.entities.filter(e => e.kind === 'box' && e.sku === line.sku).slice(0, line.qty);
+      assert.equal(boxes.length, line.qty);
+      for (const box of boxes) {
+        move(box.body, 8 + (index % 2 ? .3 : -.3), .16 + Math.floor(index / 4) * .95 + box.size[1] / 2, -3 + (Math.floor(index / 2) % 2 ? .3 : -.3));
+        set.add(box); index++;
+      }
+    }
+    deliver(game, buildWrapped(game, pallet, set), -1.5);
+    for (const line of lines.filter(l => l.freight)) deliver(game, game.entities.find(e => e.kind === 'freight' && e.sku === line.sku), 1.5);
+    settle(game, 1.2);
+    assert.equal(game.receiving, true, `${definition.title} reaches receiving`);
+    assert.equal(game.complete, false);
+    const receiving = game.receivingSystem;
+    for (const load of [...receiving.pallets]) if (load.kind === 'wrapped' && load.contents.some(r => r.data.receivingLine && !game.level.order.find(l => l.line === r.data.receivingLine).pallet)) cutWrapped(game, load);
+    for (const slot of receiving.slots) {
+      if (slot.line.pallet) {
+        const load = receiving.pallets.find(p => slot.line.freight ? p.kind === 'freight' && p.receivingLine === slot.line.line : p.kind === 'wrapped' && loadCartons(p).every(r => r.data.receivingLine === slot.line.line));
+        move(load.body, (slot.x0 + slot.x1) / 2, slot.y + .005, (slot.z0 + slot.z1) / 2);
+      } else receiving.boxes.filter(b => b.receivingLine === slot.line.line).forEach((box, i) => {
+        const x = definition.id === 'campaign-1' ? (slot.x0 + slot.x1) / 2 + (i ? .23 : -.23) : slot.x0 + .5 + i * .85;
+        move(box.body, x, slot.y + .205, (slot.z0 + slot.z1) / 2);
+      });
+    }
+    settle(game, 2.5);
+    assert.equal(game.complete, true, `${definition.title} finishes both tasks`);
+    game.dispose();
+  }
+});
+
+test('receiving checkpoint preserves custom wrapped loads, toppled racks, high conveyor and burning lights', async () => {
+  const { saveCampaignProgress } = await import('../src/world/campaign.js');
+  saveCampaignProgress('coop', 'campaign-3', {});
+  const game = new Game({ mode: 'coop', order: 'campaign-3' });
+  const custom = shippingLoad(game, [{ sku: 355, qty: 2 }]);
+  const damageIds = loadCartons(custom).map(r => r.data.damageId);
+  const rack = game.level.racks.find(r => r.name === 'B');
+  rack.body.setRotation(new THREE_FOR_VIEW_TEST.Quaternion().setFromAxisAngle(new THREE_FOR_VIEW_TEST.Vector3(0, 0, 1), 1), true);
+  game.watchRacks(1 / 60);
+  game.level.conveyors[0].powerSwitch.activate();
+  const id = game.nextEntityId;
+  game.level.lighting.restore(game.level.lighting.units.map((u, i) => ({ broken: i === 0, burning: i === 0, id, p: { x: 6, y: .06, z: 5 }, q: { x: 0, y: 0, z: 0, w: 1 } })));
+  game.finishOrder(null);
+  const count = game.entities.length, damage = game.damage.total;
+  game.dispose();
+  const restored = new Game({ mode: 'coop', order: 'campaign-3' });
+  assert.equal(restored.entities.length, count);
+  assert.equal(new Set(restored.entities.map(e => e.runId)).size, count, 'every restored entity has a unique identity');
+  assert.ok(restored.level.racks.find(r => r.name === 'B').fallen);
+  assert.ok(restored.level.conveyors[0].powerSwitch.high);
+  assert.ok(restored.level.lighting.units[0].burning);
+  assert.equal(restored.damage.total, damage);
+  assert.ok(restored.entities.some(e => e.kind === 'wrapped' && damageIds.every(id => e.contents.some(r => r.data.damageId === id))));
+  restored.assignDevices({ padCount: () => 0, lastDevice: 'kbm' }); settle(restored, .2);
+  restored.dispose();
+  saveCampaignProgress('coop', 'campaign-3', {});
+});
+
+test('combined shift best times use both tasks and remain separate from Practice', async () => {
+  const { CAMPAIGN_LEVELS } = await import('../src/world/campaign.js');
+  const practiceBefore = best('single', 1);
+  const definition = levelDef('campaign-1');
+  assert.equal(definition.title, 'Tutorial');
+  assert.equal(definition.medals.gold, definition.shipping.medals.gold + definition.receiving.medals.gold);
+  assert.equal(CAMPAIGN_LEVELS[0].receiving.pallets.length, 1);
+  assert.equal(CAMPAIGN_LEVELS[1].receiving.lines.reduce((sum, l) => sum + l.qty, 0), 4);
+  submit('single', 'campaign-1', { time: 75, incidents: 1 });
+  assert.equal(best('single', 'campaign-1').total, 90);
+  assert.deepEqual(best('single', 1), practiceBefore);
+});
+
+test('main floor retains only conveyor catch pallets, with basement supplies and no prototype crate', () => {
+  const game = new Game({ mode: 'single', order: 1 });
+  assert.ok(!game.scene.children.some(o => o.name === 'Warehouse structural pillar'));
+  const floorPallets = game.entities.filter(e => e.kind === 'pallet' && e.body.translation().y >= -.1);
+  assert.equal(floorPallets.length, LAYOUT_FOR_TEST.conveyors.length);
+  for (const belt of LAYOUT_FOR_TEST.conveyors) assert.ok(floorPallets.some(p => {
+    const pos = p.body.translation();
+    return Math.abs(pos.x - (belt.x0 + belt.x1) / 2) < .01 && Math.abs(pos.z - (belt.z0 - .75)) < .01;
+  }), 'each conveyor keeps its catch pallet');
+  assert.equal(game.entities.filter(e => e.kind === 'freight' && !e.storageLocation).length, 0);
+  assert.equal(game.entities.filter(e => e.basementStack).length, 15);
+  game.dispose();
+});
+
+
+test('putaway feedback explains wrap, destination, release, and confirmed quantity', () => {
+  const game = createGame(), receiving = game.receivingSystem;
+  const load = receiving.pallets[0], pos = load.body.translation();
+  move(game.forklift.carriage, pos.x, pos.y, pos.z - 1);
+  assert.match(receiving.placementHint('driver'), /cut the shrinkwrap/);
+  openIncoming(game);
+  const box = receiving.boxes[0], slot = receiving.slots.find(s => s.line.line === box.receivingLine);
+  move(box.body, 7, .2, -4);
+  move(game.climber.body, 7, 1, -4);
+  assert.match(receiving.placementHint('climber'), /assigned bay/);
+  box.carried = true;
+  assert.match(receiving.placementHint('climber'), /Put the carton down/);
+  box.carried = false;
+  game.itemStatus[slot.line.line] = slot.line.qty;
+  assert.match(receiving.placementHint('climber'), /2\/2 put away/);
+  move(game.climber.body, -18, 1, 18);
+  assert.equal(receiving.placementHint('climber'), '', 'no distant stock prompts');
+  game.dispose();
+});
+
+test('shelf alignment diagnostics agree with seating validation', async () => {
+  const { palletSlotIssue, palletFitsSlot } = await import('../src/world/pallet-storage.js');
+  const game = new Game({ mode: 'single', order: 3 });
+  const slot = game.level.storage.slots[0];
+  const pallet = game.entities.find(e => e.storageLocation === slot.location);
+  const x = slot.rack.home.x + slot.x, z = slot.rack.home.z, y = slot.rack.home.y + slot.y;
+  move(pallet.body, x, y, z);
+  assert.equal(palletSlotIssue(pallet, slot), null);
+  assert.equal(palletFitsSlot(pallet, slot), true);
+  for (const [dx, dy, dz, message] of [[1, 0, 0, /Center/], [0, .2, 0, /Lower/], [0, -.2, 0, /Raise/], [0, 0, .25, /whole pallet/]]) {
+    move(pallet.body, x + dx, y + dy, z + dz);
+    assert.match(palletSlotIssue(pallet, slot), message);
+    assert.equal(palletFitsSlot(pallet, slot), false);
+  }
+  game.dispose();
+});
+
+test('fork-entry guidance distinguishes height, centering, and insertion depth', () => {
+  const game = new Game({ mode: 'single', order: 1 });
+  const f = game.forklift, storage = game.level.storage;
+  const pallet = createPalletForTest(game, { pos: [7, 0, -4] });
+  move(f.body, 7, 0, -6.45);
+  move(f.carriage, 7, .08, -5.5);
+  assert.match(storage.pickupHint(f), /height aligned/);
+  move(f.carriage, 7, .2, -5.5);
+  assert.match(storage.pickupHint(f), /Lower forks/);
+  move(f.carriage, 7, .02, -5.5);
+  assert.match(storage.pickupHint(f), /Raise forks/);
+  move(f.carriage, 7.3, .08, -5.5);
+  assert.match(storage.pickupHint(f), /Center both/);
+  move(f.carriage, 7, .08, -4.6);
+  assert.match(storage.pickupHint(f), /inserted/);
+  pallet.body.setRotation({ x: 0, y: Math.sin(Math.PI / 4), z: 0, w: Math.cos(Math.PI / 4) }, true);
+  assert.match(storage.pickupHint(f), /squarely/);
+  game.dispose();
+});
+
+
+test('carried pallets suppress entry prompts while driving, including brief contact gaps', () => {
+  const game = new Game({ mode: 'single', order: 1 });
+  game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  const f = game.forklift, storage = game.level.storage;
+  f.height = .8; f.teleport({ x: 5, z: -5 }, 0);
+  const pallet = createPalletForTest(game, { pos: [5, .705, -3.4] });
+  settle(game, .4);
+  assert.equal(storage.pickupHint(f), '', 'supported load has no pickup instructions');
+  const blank = Input.prototype.climberActions.call({ invertY: false }, []);
+  for (let i = 0; i < 90; i++) {
+    game.step(1 / 60, { climber: blank, driver: { ...blank, throttle: .2 } });
+    assert.equal(storage.pickupHint(f), '', 'driving does not alternate height/insertion prompts');
+  }
+  const origin = f.carriage.translation();
+  move(pallet.body, origin.x, origin.y - .14, origin.z + .65);
+  assert.equal(storage.pickupHint(f), '', 'brief bounce retains carried state');
+  move(pallet.body, origin.x, origin.y - .2, origin.z + 1.6);
+  assert.match(storage.pickupHint(f), /Lower forks/, 'entry guidance returns after unloading');
+  game.dispose();
+});
+
+test('automatic tilt cradles lifted pallets, stays level while lowering, and resets without a load', () => {
+  for (const kind of ['pallet', 'wrapped', 'freight']) {
+    const game = new Game({ mode: 'single', order: 3 });
+    game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+    const f = game.forklift, blank = Input.prototype.climberActions.call({ invertY: false }, []);
+    f.height = .8; f.teleport({ x: 5, z: -5 }, 0);
+    const load = kind === 'wrapped' ? game.entities.find(e => e.kind === 'wrapped')
+      : kind === 'freight' ? createFreightForTest(game, { pos: [5, .705, -3.4], sku: 980, mass: 350 })
+      : createPalletForTest(game, { pos: [5, .705, -3.4] });
+    move(load.body, 5, .705, -3.4);
+    settle(game, 2);
+    assert.ok(f.tilt > .05, `${kind} automatically tilts back: ${f.tilt} ready ${f.tiltReadyTime} origin ${JSON.stringify(f.carriage.translation())} load ${JSON.stringify(load.body.translation())} target ${f.tiltTarget}`);
+    assert.ok(load.body.translation().y > .6, 'load remains on the raised blades');
+    const forkUp = new THREE_FOR_VIEW_TEST.Vector3(0, 0, 1).applyQuaternion(f.forkQuaternion());
+    assert.ok(forkUp.y > .05, 'backward tilt raises the blade tips');
+    for (let i = 0; i < 110; i++) game.step(1 / 60, { climber: blank, driver: { ...blank, liftDown: .1 } });
+    assert.equal(f.tilt, 0, 'lowering levels the forks');
+    settle(game, .5);
+    assert.equal(f.tilt, 0, 'releasing lower does not immediately tilt back');
+    for (let i = 0; i < 120; i++) game.step(1 / 60, { climber: blank, driver: { ...blank, liftUp: .3 } });
+    assert.ok(f.tilt > .05, 'a new lift re-enables backward tilt');
+    move(load.body, 10, .01, -3);
+    settle(game, 2);
+    assert.equal(f.tilt, 0, 'unloaded forks return to level');
+    game.dispose();
+  }
+});
+
+test('automatic tilt leaves shelf-supported stock level and Dave follows the tilted fork frame', () => {
+  const game = new Game({ mode: 'single', order: 3 });
+  game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  settle(game, 1);
+  const f = game.forklift, slot = game.level.storage.slots.find(s => s.location === 'Z-1-3');
+  const load = slot.pallet;
+  f.height = slot.y + .055; f.teleport({ x: slot.rack.home.x + slot.x, z: 20.5 }, 0);
+  settle(game, .8);
+  assert.equal(f.tilt, 0, 'do not tilt a pallet while it still rests on its shelf');
+  const blank = Input.prototype.climberActions.call({ invertY: false }, []);
+  for (let i = 0; i < 90; i++) game.step(1 / 60, { climber: blank, driver: { ...blank, liftUp: 1 } });
+  assert.ok(f.tilt > .03, 'tilt begins only after lifting the pallet clear');
+  for (let i = 0; i < 120; i++) game.step(1 / 60, { climber: blank, driver: { ...blank, brake: 1 } });
+  game.active = 'climber'; settle(game, 1.5);
+  const dave = game.climber;
+  const top = load.body.translation();
+  move(dave.body, top.x, top.y + .8 + dave.centerOff, top.z);
+  dave.body.setNextKinematicTranslation(dave.body.translation());
+  dave.grab();
+  settle(game, 1);
+  assert.ok(dave.holdingOn, 'Dave can still hold on to the tilted forks');
+  const local = dave.carriageLocal(dave.feet);
+  assert.ok(Math.abs(local.x) < .15 && Math.abs(local.z - .58) < .15 && local.y > .4, 'Dave rides the load in the actual tilted assembly');
+  f.teleport({ x: 5, z: -5 }, 0);
+  assert.equal(f.tilt, 0, 'reset/teleport levels the assembly');
   game.dispose();
 });

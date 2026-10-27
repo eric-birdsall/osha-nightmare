@@ -5,7 +5,6 @@ import { CONFIG } from '../config.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { createBox } from '../entities/box.js';
 import { FREIGHT_STOCK, freightHome } from './freight-stock.js';
-import { createFreight } from '../entities/freight.js';
 import { createPallet } from '../entities/pallet.js';
 import { createLadderStand } from '../entities/ladder.js';
 import { buildParking, parkingRect } from './parking.js';
@@ -313,10 +312,10 @@ function stockShelves(game, racks, storage) {
     for (let b = 0; b < rack.bays; b++) {
       for (let shelf = 0; shelf < rack.shelves.length; shelf++) {
         const at = locationCode(name, b, shelf);
-        const reserved = game.receiving && game.receivingSpec.lines.some((line) => line.location === at);
+        const reserved = game.reservedLocations?.has(at) || (game.receiving && game.receivingSpec.lines.some((line) => line.location === at));
         const freight = FREIGHT_STOCK[at];
         if (freight || (rack.palletFromShelf != null && shelf >= rack.palletFromShelf)) {
-          storage.stock(ent, rack, b, shelf, WAREHOUSE.faces[at] || [], at, { empty: reserved, freight, reservedSku: game.receivingSpec?.lines.find(line => line.location === at)?.sku });
+          storage.stock(ent, rack, b, shelf, WAREHOUSE.faces[at] || [], at, { empty: reserved, freight, reservedSku: (game.receivingSpec || game.campaign?.receiving)?.lines.find(line => line.location === at)?.sku });
           continue;
         }
         (reserved ? [] : WAREHOUSE.faces[at] || []).forEach((sp, i) => {
@@ -1294,7 +1293,6 @@ export function buildLevel(game) {
   for (const st of LAYOUT.ladderStands) createLadderStand(game, { pos: [st.x, st.y, st.z], yaw: st.yaw, count: st.count, showLabel: st.showLabel });
   const climberStart = new THREE.Vector3(...LAYOUT.climberSpawn.pos);
   const hazards = buildHazards(game);
-  createFreight(game, LAYOUT.freight);
 
   // Empty pallets (fork pockets open toward ±local Z)
   for (const [x, y, z, yaw] of LAYOUT.pallets) createPallet(game, { pos: [x, y, z], yaw });

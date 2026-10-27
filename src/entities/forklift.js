@@ -144,19 +144,23 @@ export class Forklift {
         .setAdditionalSolverIterations(8)
         .setCanSleep(true),
     );
+    this.tilt = 0; this.tiltTarget = 0; this.tiltReadyTime = 0; this.tiltLowered = false;
+    this.tiltColliders = [];
     const addCarriageCol = (desc, mass) => {
       const c = world.createCollider(desc.setMass(mass).setCollisionGroups(COL.fork), this.carriage);
       this.collidersSet.add(c.handle);
+      this.tiltColliders.push({ collider: c, position: new THREE.Vector3().copy(c.translationWrtParent()) });
       return c;
     };
     addCarriageCol(RAPIER.ColliderDesc.cuboid(0.45, 0.5, 0.03).setTranslation(0, 0.45, 0).setFriction(0.6), 90); // carriage + load backrest
+    // Match the visible thin tips: a full-thickness invisible nose used to snag pocket entries.
+    const tipLength = .14;
     for (const sx of [-1, 1]) {
-      addCarriageCol(
-        RAPIER.ColliderDesc.cuboid(FORK_W / 2, FORK_T / 2, FORK_LEN / 2)
-          .setTranslation(sx * FORK_X, -FORK_T / 2, FORK_Z - PLATE_Z)
-          .setFriction(0.7),
-        35,
-      );
+      for (const [width, thickness, length, center, mass] of [
+        [FORK_W, FORK_T, FORK_LEN - tipLength, FORK_Z - PLATE_Z - tipLength / 2, 35 * (1 - tipLength / FORK_LEN)],
+        [FORK_W * .9, FORK_T * .55, tipLength, FORK_Z - PLATE_Z + FORK_LEN / 2 - tipLength / 2, 35 * tipLength / FORK_LEN],
+      ]) addCarriageCol(RAPIER.ColliderDesc.cuboid(width / 2, thickness / 2, length / 2)
+        .setTranslation(sx * FORK_X, -thickness / 2, center).setFriction(.7), mass);
     }
     const jd = RAPIER.JointData.prismatic({ x: 0, y: 0, z: PLATE_Z }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 });
     jd.limitsEnabled = true;
@@ -234,6 +238,7 @@ export class Forklift {
   teleport(pos, yaw) {
     const q = yawQuat(yaw);
     const floor = floorHeightAt(pos.x, pos.z); // upper or lower level, or partway down the ramp
+    this.tiltTarget = 0; this.tiltReadyTime = 0; this.tiltLowered = false; this.setTilt(0);
     this.body.setTranslation({ x: pos.x, y: floor + 0.02, z: pos.z }, true);
     this.body.setRotation(q, true);
     const c = new THREE.Vector3(0, this.height + 0.02, PLATE_Z).applyQuaternion(quatToThree(q)).add(new THREE.Vector3(pos.x, floor, pos.z));
@@ -244,6 +249,52 @@ export class Forklift {
       b.setLinvel({ x: 0, y: 0, z: 0 }, true);
       b.setAngvel({ x: 0, y: 0, z: 0 }, true);
     }
+  }
+
+  forkQuaternion() {
+    return quatToThree(this.carriage.rotation()).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -this.tilt));
+  }
+
+  setTilt(angle) {
+    this.tilt = angle;
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -angle);
+    for (const { collider, position } of this.tiltColliders) {
+      collider.setTranslationWrtParent(position.clone().applyQuaternion(q));
+      collider.setRotationWrtParent(q);
+    }
+    if (this.carriageMesh) this.carriageMesh.rotation.x = -angle;
+  }
+
+  updateAutoTilt(liftDir, dt) {
+    // Tilt only an upright load resting on both blades, clear of floor/rack support.
+    const inverse = quatToThree(this.carriage.rotation()).invert(), origin = this.carriage.translation();
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(this.body.rotation())).y;
+    let supported = false, clear = false;
+    for (const ent of this.game.entities) {
+      if (ent.removed || !['pallet', 'wrapped', 'freight'].includes(ent.kind)) continue;
+      const p = new THREE.Vector3().copy(ent.body.translation()).sub(origin).applyQuaternion(inverse);
+      if (Math.abs(p.x) > .25 || p.z < .25 || p.z > 1.1 || p.y < -.25 || p.y > .15) continue;
+      let onForks = false, onSurface = false;
+      for (let i = 0; i < ent.body.numColliders(); i++) this.game.world.contactPairsWith(ent.body.collider(i), other => {
+        if (other.parent()?.handle === this.carriage.handle) onForks = true;
+        else if (other.parent()?.handle !== this.body.handle) {
+          const otherEnt = this.game.entityForCollider(other);
+          if (!otherEnt || !['box'].includes(otherEnt.kind)) onSurface = true;
+        }
+      });
+      if (onForks) { supported = true; if (!onSurface) clear = true; }
+    }
+    if (liftDir < 0) { this.tiltLowered = true; this.tiltTarget = 0; }
+    if (liftDir > 0) this.tiltLowered = false;
+    if (!supported) this.tiltReadyTime = Math.max(0, this.tiltReadyTime - dt);
+    else if (clear) this.tiltReadyTime = Math.min(.4, this.tiltReadyTime + dt);
+    else this.tiltReadyTime = 0;
+    if (up < .8 || this.tiltReadyTime === 0) this.tiltTarget = 0;
+    else if (clear && this.tiltReadyTime >= .2 && !this.tiltLowered) this.tiltTarget = CONFIG.forklift.autoTiltAngle;
+    const difference = this.tiltTarget - this.tilt;
+    const angle = this.tilt + Math.sign(difference) * Math.min(Math.abs(difference), CONFIG.forklift.autoTiltRate * dt);
+    if (angle !== this.tilt) { this.setTilt(angle); this.carriage.wakeUp(); }
+    return liftDir < 0 && this.tilt > .001;
   }
 
   updateMast(height) {
@@ -427,6 +478,9 @@ export class Forklift {
       shank.position.set(s * FORK_X, 0.24, PLATE_Z + 0.03 + FORK_T / 2);
       carriage.add(shank);
     }
+    // Pivot the visible assembly at the same point as its physical colliders.
+    for (const child of carriage.children) child.position.z -= PLATE_Z;
+    carriage.position.z = PLATE_Z;
     root.add(carriage);
     this.carriageMesh = carriage;
     // The driver: same worker as the climber, a bit heavier, seated at the wheel.
@@ -466,7 +520,8 @@ export class Forklift {
     // Lift (always simulated; parked = no input)
     const liftDir = active ? a.liftUp - a.liftDown : 0;
     this.liftInput = liftDir; // drives the (cosmetic) lift lever
-    let target = liftDir * (liftDir < 0 ? cfg.lowerSpeed : cfg.liftSpeed);
+    const leveling = this.updateAutoTilt(liftDir, dt);
+    let target = (leveling ? 0 : liftDir) * (liftDir < 0 ? cfg.lowerSpeed : cfg.liftSpeed);
     const maxUp = Math.sqrt(2 * cfg.liftStop * Math.max(0, cfg.liftMax - this.height));
     target = Math.min(maxUp, target); // no easing at the bottom: held down, the forks hit the ground at speed
     const dl = target - this.liftVel;
@@ -973,7 +1028,7 @@ export class Forklift {
 
   updateCamera() {
     // Outboard of the backrest: the blade tips and shelf remain visible together.
-    const carriageQ = quatToThree(this.carriage.rotation());
+    const carriageQ = this.forkQuaternion();
     this.forkCamera.position.set(0.55, 0.45, -0.05).applyQuaternion(carriageQ).add(this.carriage.translation());
     this.forkCamera.quaternion.copy(carriageQ).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.25, Math.PI, 0, 'YXZ')));
 

@@ -1212,3 +1212,14 @@ body[data-input="controller"] #controls td:nth-child(3) { display: none; }
 .view.split .fork-readout { top: 85px; }
 
 .topright .timer-pen { position: absolute; top: 0; right: calc(100% + 10px); white-space: nowrap; }
+
+.lv-progress { display: block; margin-top: 4px; color: #f5c518; font-size: 12px; line-height: 1.2; }
+
+.campaign-phase { position: absolute; top: 12px; left: 16px; padding: 6px 10px; background: #12161be6; color: #f5c518; font: 14px var(--ui); }
+.view.campaign .tutorial { top: 52px; }
+.view.split.campaign .tutorial { top: 48px; }
+
+#levels .lv-best { flex-direction: column; align-items: flex-start; gap: 2px; }
+#levels .lv-progress { margin-top: 0; font-size: 11px; white-space: normal; max-width: 160px; }
+.btn.level.focus .lv-progress, .btn.level:hover .lv-progress { color: #352a0a; }
+.stamp.combined { font-size: 22px; letter-spacing: 3px; }

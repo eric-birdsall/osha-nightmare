@@ -211,7 +211,7 @@ export class Climber {
     if (this.holdingOn) {
       // Back to the carriage, hands behind him gripping the backrest: no looking round (in
       // exchange he can't be thrown off). Eases round to face out along the forks, eyes level.
-      const out = new THREE.Vector3(0, 0, 1).applyQuaternion(quatToThree(this.game.forklift.carriage.rotation()));
+      const out = new THREE.Vector3(0, 0, 1).applyQuaternion(this.game.forklift.forkQuaternion());
       const want = Math.atan2(-out.x, -out.z);
       const d = Math.atan2(Math.sin(want - this.yaw), Math.cos(want - this.yaw));
       this.yaw += d * Math.min(1, dt * 10);
@@ -350,7 +350,7 @@ export class Climber {
     return feet
       .clone()
       .sub(new THREE.Vector3(ct.x, ct.y, ct.z))
-      .applyQuaternion(quatToThree(car.rotation()).invert());
+      .applyQuaternion(this.game.forklift.forkQuaternion().invert());
   }
 
   // ---------------------------------------------------------------- A-frame ladders
@@ -854,7 +854,7 @@ export class Climber {
     // a load on them), so letting go always leaves him on the forks. Caught mid-air (jumped off a
     // shelf, say), that also eases him down rather than leaving him hanging.
     const car = this.game.forklift.carriage;
-    const q = quatToThree(car.rotation());
+    const q = this.game.forklift.forkQuaternion();
     const ct = car.translation();
     const toWorld = (l) => new THREE.Vector3(l.x, l.y, l.z).applyQuaternion(q).add(new THREE.Vector3(ct.x, ct.y, ct.z));
     // The highest surface under him there: down the middle, and down each blade (the middle is the
@@ -881,7 +881,7 @@ export class Climber {
     const t = car.translation();
     const v = car.linvel();
     const w = car.angvel();
-    const q = quatToThree(car.rotation());
+    const q = this.game.forklift.forkQuaternion();
     const wl = Math.hypot(w.x, w.y, w.z);
     if (wl > 1e-6) q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(w.x / wl, w.y / wl, w.z / wl), wl * dt));
     const target = this.holdLocal.clone().applyQuaternion(q).add(new THREE.Vector3(t.x + v.x * dt, t.y + v.y * dt, t.z + v.z * dt));

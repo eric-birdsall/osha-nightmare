@@ -1,3 +1,4 @@
+import { campaignLevel } from '../world/campaign.js';
 import { receivingOrder } from '../world/receiving-orders.js';
 import { CONFIG } from '../config.js';
 import { ORDERS, WAREHOUSE_VERSION } from '../world/level.js';
@@ -19,12 +20,13 @@ function hash(text) {
 // the five orders' added up)
 const sum = (k) => ORDERS.reduce((t, o) => t + (o.medals?.[k] ?? 0), 0);
 export const FULL_SHIFT = { id: 'shift', title: 'Full Shift', medals: { gold: sum('gold'), silver: sum('silver'), bronze: sum('bronze') } };
-export const levelDef = (id) => (receivingOrder(id) || (id === 'shift' ? FULL_SHIFT : ORDERS.find((o) => o.id === id)));
+export const levelDef = (id) => (campaignLevel(id) || receivingOrder(id) || (id === 'shift' ? FULL_SHIFT : ORDERS.find((o) => o.id === id)));
 
 // What a run of the level depends on: the warehouse, and the orders' lines and docks (not the
 // medal targets, which can be retuned without making old times incomparable)
 function levelVersion(id) {
-  const orders = receivingOrder(id) ? [receivingOrder(id)] : id === 'shift' ? ORDERS : ORDERS.filter((x) => x.id === id);
+  const combined = campaignLevel(id);
+  const orders = combined ? [combined.shipping, combined.receiving] : receivingOrder(id) ? [receivingOrder(id)] : id === 'shift' ? ORDERS : ORDERS.filter((x) => x.id === id);
   return `${WAREHOUSE_VERSION}:wrap-v2:${hash(JSON.stringify(orders.map((o) => [o.lines, o.dock, o.pallets, !!o.tutorial])))}`;
 }
 

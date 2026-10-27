@@ -161,8 +161,6 @@ export const LAYOUT = {
     [E - 6, 0, 18],
     [E - 3, 0, -9],
   ],
-  // One forklift-only shipping crate for handling playtests, clear of the central rack ends.
-  freight: { pos: [5.8, 0, 0], yaw: 0, sku: 980, mass: 350 },
   // No random loose cartons at the start; rack stock and incoming loads remain.
   looseBoxes: [],
   // Slightly untidy, accessible stacks beside the basement edge, clear of the stair run.
@@ -171,16 +169,8 @@ export const LAYOUT = {
     { x: -10, z: -10.4, count: 4, yaw: .04 },
     { x: -7.4, z: -10.3, count: 6, yaw: -.02 },
   ],
-  // Empty pallets: [x, y, z, yaw] (fork pockets open toward ±local Z)
-  pallets: [
-    [RACKS_E + 5.0, 0, 6.0, 0],
-    [RACKS_E + 6.8, 0, 6.0, 0],
-    [RACKS_E + 3.5, 0, 9.0, 0],
-    [RACKS_E + 3.5, 0, 11.0, 0],
-    // One just off the north end of each conveyor, so what rides off the end drops onto it (fork
-    // pockets facing west, for the forklift to come in from the open side)
-    ...CONVEYORS.map((c) => [(c.x0 + c.x1) / 2, 0, c.z0 - 0.75, Math.PI / 2]),
-  ],
+  // Only conveyor catch pallets start on the main floor; spare supply stays in the basement.
+  pallets: CONVEYORS.map(c => [(c.x0 + c.x1) / 2, 0, c.z0 - 0.75, Math.PI / 2]),
   // Named stretches of the main floor for incident reports (first match wins).
   zones: [
     { name: 'The conveyor', x0: E - 2.6, z0: CONVEYORS[0].z0, x1: E, z1: CONVEYORS[0].z1 },

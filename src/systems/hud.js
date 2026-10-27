@@ -30,6 +30,7 @@ export function basicControls(game, role) {
 // Per-view HUD overlays (DOM). One view per character; single player shows only the active one.
 
 const VIEW_HTML = (role) => `
+  <div class="campaign-phase card"></div>
   <div class="topright">
     <div class="timer card">00:00</div>
     <div class="damage-total card" aria-label="Total property damage">DAMAGE $0</div>
@@ -74,6 +75,7 @@ export class Hud {
       const q = (s) => el.querySelector(s);
       this.views[role] = {
         el,
+        phase: q('.campaign-phase'),
         tutorial: q('.tutorial'),
         timer: q('.timer'),
         damage: q('.damage-total'),
@@ -138,6 +140,9 @@ export class Hud {
       v.el.classList.toggle('top', !single && role === 'climber');
       v.el.classList.toggle('bottom', !single && role === 'driver');
       if (!visible) continue;
+      v.el.classList.toggle('campaign', !!game.campaign);
+      v.phase.style.display = game.campaign ? '' : 'none';
+      if (game.campaign) v.phase.textContent = `${game.campaign.title} · ${game.receiving ? '2/2 RECEIVING' : '1/2 SHIPPING'} · ${game.level.dock.name}`;
       const controlsKey = `${role}:${game.usesKeyboard(role)}`;
       if (v.controlsKey !== controlsKey) {
         v.controlsKey = controlsKey;
@@ -232,6 +237,8 @@ export class Hud {
         const ring = Math.min(1, Math.max(back, c.cutTimer || 0, resetting ? c.resetTimer / hold : 0, uprighting ? c.uprightTimer / upHold : 0, flipping ? c.flipTimer / flipHold : 0));
         v.holdRing.style.display = ring > 0 ? '' : 'none';
         if (ring > 0) v.holdFill.style.strokeDashoffset = String(113.1 * (1 - ring));
+        const receivingHint = game.receivingSystem?.placementHint(role);
+        if (receivingHint) p += `${p ? '<br>' : ''}<small>${receivingHint}</small>`;
         v.prompt.innerHTML = p;
         v.prompt.style.display = p ? '' : 'none';
         v.crosshair.classList.toggle('hot', !!c.target);
@@ -245,14 +252,16 @@ export class Hud {
         // Drift meter: fills orange while a drift charges, blue once the boost is earned,
         // then BOOST! while it fires (Ralph can't see the sparks from the seat)
         const f = game.forklift;
-        v.forkReadout.innerHTML = `FORKS <b>${f.measuredHeight().toFixed(2)} m</b><small>${f.forkViewExpanded ? 'FORK CAMERA' : 'SEAT VIEW'} · ${game.keyHint(role, 'forkView')} to ${f.forkViewExpanded ? 'return' : 'expand camera'}</small>`;
+        v.forkReadout.innerHTML = `FORKS <b>${f.measuredHeight().toFixed(2)} m</b><small>${f.tilt > .002 ? (f.tiltTarget === 0 ? 'LEVELING · ' : 'AUTO TILT · ') : ''}${f.forkViewExpanded ? 'FORK CAMERA' : 'SEAT VIEW'} · ${game.keyHint(role, 'forkView')} to ${f.forkViewExpanded ? 'return' : 'expand camera'}</small>`;
         v.forkFeed.style.display = showForkFeed(f) ? '' : 'none';
         const bounds = forkViewBounds(v.el.clientWidth, v.el.clientHeight);
         for (const [key, value] of Object.entries(bounds)) v.forkFeed.style[key] = `${value}px`;
 
         // Ralph owns recovery, including when the truck is on its side.
         const tip = f.tipped ? `Forklift tipped · hold <kbd>${game.keyHint('driver', 'reset')}</kbd> to reset upright in parking` : '';
-        const storageHint = game.level.storage?.hint(f) || '';
+        const placement = game.receivingSystem?.placementHint(role) || game.level.storage?.hint(f) || '';
+        const pickup = game.level.storage?.pickupHint(f) || '';
+        const storageHint = [placement, pickup].filter(Boolean).join('<br><small>') + (placement && pickup ? '</small>' : '');
         v.prompt.innerHTML = tip || storageHint;
         v.prompt.style.display = (tip || storageHint) ? '' : 'none';
         const need = CONFIG.forklift.drift.boostCharge;

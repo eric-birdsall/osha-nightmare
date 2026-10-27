@@ -9,6 +9,7 @@ import { DOCKS, ORDERS } from './world/level.js';
 import { drawFloorPlan } from './world/floorplan.js';
 import { best, submit, medalFor, nextMedal, fmtTime, FULL_SHIFT, levelDef } from './systems/records.js';
 import { settings } from './systems/settings.js';
+import { CAMPAIGN_LEVELS, campaignLevel, campaignProgress } from './world/campaign.js';
 import { RECEIVING_ORDERS } from './world/receiving-orders.js';
 
 await RAPIER.init();
@@ -121,6 +122,8 @@ function refreshCctv() {
 refreshCctv();
 
 function closeOverlay() {
+  if (overlay === 'jobs') { pickJob = 'campaign'; showLevels(); return; }
+  if (overlay === 'levels' && pickJob !== 'campaign') { overlay = 'jobs'; refreshScreens(); return; }
   overlay = null;
   refreshScreens();
 }
@@ -132,16 +135,18 @@ document.addEventListener('click', (e) => {
   const act = b.dataset.act;
   if (act === 'single' || act === 'coop') {
     pickMode = act;
-    overlay = 'jobs';
-    refreshScreens();
+    pickJob = 'campaign';
+    showLevels();
+  } else if (act === 'practice') {
+    overlay = 'jobs'; refreshScreens();
   } else if (act === 'picking' || act === 'receiving') {
     pickJob = act;
     showLevels();
-  } else if (act === 'level') startGame(pickMode, b.dataset.level === 'shift' || b.dataset.level.startsWith('receiving-') ? b.dataset.level : Number(b.dataset.level));
-  else if (act === 'next') startGame(game.mode, game.receiving ? RECEIVING_ORDERS[RECEIVING_ORDERS.findIndex(o => o.id === game.levelId) + 1].id : game.orderId + 1);
+  } else if (act === 'level') startGame(pickMode, b.dataset.level === 'shift' || b.dataset.level.startsWith('receiving-') || b.dataset.level.startsWith('campaign-') ? b.dataset.level : Number(b.dataset.level));
+  else if (act === 'next') startGame(game.mode, game.campaign ? CAMPAIGN_LEVELS[CAMPAIGN_LEVELS.findIndex(l => l.id === game.levelId) + 1].id : game.receiving ? RECEIVING_ORDERS[RECEIVING_ORDERS.findIndex(o => o.id === game.levelId) + 1].id : game.orderId + 1);
   else if (act === 'levels') {
     pickMode = game.mode;
-    pickJob = game.receiving ? 'receiving' : 'picking';
+    pickJob = game.campaign ? 'campaign' : game.receiving ? 'receiving' : 'picking';
     quitToTitle();
     showLevels();
   } else if (act === 'controls' || act === 'howto') {
@@ -173,16 +178,18 @@ function quitToTitle() {
 
 // The level list for the chosen mode: Order 1-5 with this mode's best time and medal, then Full Shift
 function showLevels() {
-  document.querySelector('#levels .selection-title').textContent = pickJob === 'receiving' ? 'SELECT PURCHASE ORDER' : 'SELECT ORDER';
+  document.querySelector('#levels .selection-title').textContent = pickJob === 'campaign' ? 'SELECT LEVEL' : pickJob === 'receiving' ? 'RECEIVING PRACTICE' : 'SHIPPING PRACTICE';
   document.getElementById('lv-mode').textContent = pickMode === 'coop' ? 'Couch co-op · split screen' : 'Single player · swap with Tab / View';
   const tag = (m) => (m ? `<i class="medal ${m}">${m}</i>` : '');
   const row = (id, label, name) => {
     const b = best(pickMode, id);
+    const progress = campaignLevel(id) ? campaignProgress(pickMode, id) : null;
+    const status = campaignLevel(id) ? (progress?.complete ? 'Shipping ✓ · Receiving ✓' : progress?.shipping ? 'Shipping ✓ · Resume receiving' : 'Ship → Receive') : '';
     const right = b ? `${fmtTime(b.total)} ${tag(medalFor(id, b.total))}` : '<span class="none">No time yet</span>';
-    return `<button class="btn level" data-act="level" data-level="${id}"><span class="osha-text osha-text--ivory" data-text="${label}">${label}</span><span class="lv-name">${name}</span><span class="lv-best">${right}</span></button>`;
+    return `<button class="btn level" data-act="level" data-level="${id}"><span class="osha-text osha-text--ivory" data-text="${label}">${label}</span><span class="lv-name">${name}</span><span class="lv-best">${right}${status ? `<small class="lv-progress">${status}</small>` : ''}</span></button>`;
   };
   document.querySelector('#levels .level-list').innerHTML =
-    pickJob === 'receiving' ? RECEIVING_ORDERS.map(o => row(o.id, o.number, o.title)).join('')
+    pickJob === 'campaign' ? CAMPAIGN_LEVELS.map(l => row(l.id, l.title.toUpperCase(), l.challenge)).join('') + '<button class="btn" data-act="practice">PRACTICE</button>' : pickJob === 'receiving' ? RECEIVING_ORDERS.map(o => row(o.id, o.number, o.title)).join('')
       : ORDERS.map((o) => row(o.id, `ORDER ${o.id}`, o.title)).join('') + row(FULL_SHIFT.id, 'FULL SHIFT', 'All five, back to back');
   overlay = 'levels';
   refreshScreens();
@@ -253,9 +260,10 @@ function showComplete({ time, falls }) {
   const run = submit(game.mode, id, { time, incidents: falls });
   const $ = (x) => document.getElementById(x);
   const head = document.querySelector('#complete .screen-title');
-  head.textContent = head.dataset.text = game.receiving ? 'STOCK RECEIVED' : id === 'shift' ? 'SHIFT COMPLETE' : 'ORDER COMPLETE';
-  document.querySelector('#complete .stamp').textContent = game.receiving ? 'RECEIVED' : 'SHIPPED';
-  $('c-order').textContent = `${game.receiving ? `${order.number} · ${order?.title ?? ''}` : id === 'shift' ? 'Full Shift · all five orders' : `Order ${id} · ${order?.title ?? ''}`} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
+  head.textContent = head.dataset.text = game.campaign ? 'SHIFT COMPLETE' : game.receiving ? 'STOCK RECEIVED' : id === 'shift' ? 'SHIFT COMPLETE' : 'ORDER COMPLETE';
+  document.querySelector('#complete .stamp').classList.toggle('combined', !!game.campaign);
+  document.querySelector('#complete .stamp').textContent = game.campaign ? 'SHIPPED + RECEIVED' : game.receiving ? 'RECEIVED' : 'SHIPPED';
+  $('c-order').textContent = `${game.campaign ? `${order.title} · ${order.challenge}` : game.receiving ? `${order.number} · ${order?.title ?? ''}` : id === 'shift' ? 'Full Shift · all five orders' : `Order ${id} · ${order?.title ?? ''}`} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
   $('c-time').textContent = fmtTime(time);
   $('c-falls').textContent = falls;
   $('c-damage').textContent = `$${game.damage.total.toLocaleString('en-US')}`;
@@ -269,7 +277,7 @@ function showComplete({ time, falls }) {
     (medal ? `<i class="medal ${medal}">${medal}</i> ` : '') + (next ? `${next.medal[0].toUpperCase() + next.medal.slice(1)} at ${fmtTime(next.at)}` : 'Top marks.');
   $('c-quip').textContent = QUIPS[Math.min(falls, 3)];
   // No order after the last one
-  document.querySelector('#complete [data-act="next"]').style.display = (game.receiving ? RECEIVING_ORDERS.some(o => o.id === `receiving-${game.orderId + 1}`) : id !== 'shift' && ORDERS.some((o) => o.id === id + 1)) ? '' : 'none';
+  document.querySelector('#complete [data-act="next"]').style.display = (game.campaign ? CAMPAIGN_LEVELS.some(l => l.id === `campaign-${game.orderId + 1}`) : game.receiving ? RECEIVING_ORDERS.some(o => o.id === `receiving-${game.orderId + 1}`) : id !== 'shift' && ORDERS.some((o) => o.id === id + 1)) ? '' : 'none';
   if (input.pointerLocked) document.exitPointerLock();
   refreshScreens();
 }

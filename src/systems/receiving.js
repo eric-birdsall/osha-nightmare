@@ -6,7 +6,7 @@ import { createFreight } from '../entities/freight.js';
 import { createPallet } from '../entities/pallet.js';
 import { collectStack, buildWrapped } from './wrapping.js';
 import { labelPlane } from '../util/meshes.js';
-import { palletFitsSlot } from '../world/pallet-storage.js';
+import { palletFitsSlot, palletSlotIssue } from '../world/pallet-storage.js';
 import { parkingRect } from '../world/parking.js';
 
 export function fitsReceivingSlot(min, max, slot) {
@@ -113,6 +113,42 @@ export class Receiving {
       min.min(point); max.max(point);
     }
     return fitsReceivingSlot(min, max, slot);
+  }
+
+  // Explain the same physical checks used for scoring, only for nearby incoming stock.
+  placementHint(role) {
+    const g = this.game;
+    if (g.complete) return '';
+    const origin = role === 'driver' ? g.forklift.carriage.translation() : g.climber.body.translation();
+    const candidates = [...new Set([...this.boxes, ...this.pallets])].filter(e => !e.removed);
+    const distance = e => new THREE.Vector3().copy(e.body.translation()).distanceTo(origin);
+    const ent = candidates.sort((a, b) => distance(a) - distance(b))[0];
+    if (!ent || distance(ent) > 3) return '';
+    const letter = ent.receivingLine || ent.contents?.find(r => r.data.receivingLine)?.data.receivingLine;
+    const slot = this.slots.find(s => s.line.line === letter);
+    if (!slot) return '';
+    const prefix = `SKU ${slot.line.sku} → ${slot.line.location}`;
+    const have = g.itemStatus[letter] || 0;
+    if (have >= slot.line.qty) return `${prefix} · ${have}/${slot.line.qty} put away`;
+    if (ent.kind === 'wrapped' && !slot.line.pallet) return `${prefix} · Dave must cut the shrinkwrap before shelving cartons`;
+    if (slot.line.pallet && ent.kind === 'box') return `${prefix} · Rewrap the complete load before putting it away`;
+    if (ent.carried) return `${prefix} · Put the carton down on its shelf`;
+    const p = ent.body.translation();
+    if (p.x < slot.x0 || p.x > slot.x1 || p.z < slot.z0 - .8 || p.z > slot.z1 + .8)
+      return `${prefix} · Move to the assigned bay`;
+    if (p.y < slot.y - .12 || p.y > slot.ceiling - .08) return `${prefix} · Move to shelf ${slot.line.location.split('-')[2]}`;
+    if (g.rackKnocked(slot.rack)) return `${prefix} · Reset the displaced rack first`;
+    const supported = collectStack(g, slot.rack);
+    const valid = slot.line.pallet ? this.palletAtSlot(ent, slot, supported) : this.correctlyPlaced(ent, slot, supported);
+    if (valid) return `${prefix} · Settling… ${have}/${slot.line.qty} counted`;
+    if (!supported.has(ent)) return `${prefix} · Lower onto the shelf and withdraw the forks`;
+    const velocity = ent.body.linvel(), spin = ent.body.angvel();
+    if (Math.hypot(velocity.x, velocity.y, velocity.z) > .2 || Math.hypot(spin.x, spin.y, spin.z) > .4)
+      return `${prefix} · Let the stock stop moving`;
+    if (slot.line.pallet && ent.kind === 'wrapped' && ent.contents.filter(r => r.kind === 'box').length !== slot.line.qty)
+      return `${prefix} · Complete pallet required: ${slot.line.qty} matching cartons`;
+    const storage = slot.line.pallet && g.level.storage.slots.find(s => s.location === slot.line.location);
+    return `${prefix} · ${storage ? palletSlotIssue(ent, storage) || 'Check matching cartons and clearance above the load' : 'Move the carton fully inside the bay, clear of the shelf above'}`;
   }
 
   palletsReturned() {
@@ -248,7 +284,7 @@ export class Receiving {
     const list = g.level.order.map(line => `${g.itemStatus[line.line] || 0}/${line.qty} × SKU ${line.sku} → ${line.location}`).join(' · ');
     const details = [
       `Read ${this.spec.number} on the forklift clipboard: ${list}. The wrapped incoming pallets are in ${this.spec.dock}. Look at the clipboard briefly, or begin unloading.`,
-      `${swap('driver')}Drive into ${this.spec.dock} with forks low. Slide into the pallet pockets, raise with ${button('lift', 'driver')}, then reverse out. Bring both pallets up the ramp. Wrap keeps the cartons together.`,
+      `${swap('driver')}Drive into ${this.spec.dock} with forks low. Slide into the pallet pockets, raise with ${button('lift', 'driver')}, then reverse out. Bring ${this.spec.pallets.length === 1 ? 'the pallet' : 'the pallets'} up the ramp. Wrap keeps the cartons together.`,
       `${swap('climber')}Dave: empty your hands, stand close to a pallet and hold ${button('interact', 'climber')} for one second to cut its shrinkwrap. You can cut while Ralph holds the pallet on his forks.`,
       `${swap('climber')}Take cartons with ${button('interact', 'climber')} and tap again to place them at the labelled locations. Wrong locations stay incomplete. ${list}. Cleanup and parking are optional.`,
       'All stock is put away. Cleanup and parking are optional.',

@@ -41,24 +41,37 @@ export function buildHangingLights(game, fixtures, outIndices, faultyIndex, roof
     const glow = new THREE.PointLight(0xff8b25, 2, 4); glow.position.y = .3; fire.add(glow);
     game.scene.add(fire); unit.fire = fire;
   }
+  function detach(unit) {
+    if (unit.broken) return;
+    game.damage?.charge(`light:${units.indexOf(unit)}`, 200, 'Ceiling light broken');
+    unit.broken = true; unit.chains.visible = false;
+    unit.material.color.setHex(0x555960);
+    unit.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+    unit.collider.setCollisionGroups(COL.dyn);
+    unit.body.enableCcd(true);
+    unit.body.setLinvel({ x: game.forklift.body.linvel().x * .5, y: -.4, z: game.forklift.body.linvel().z * .5 }, true);
+    unit.body.setAngvel({ x: .8, y: .3, z: .5 }, true);
+    game.addEntity({ kind: 'prop', name: 'Fallen light', body: unit.body, mesh: unit.mesh, mass: 8 });
+    sparks.burst(new THREE.Vector3().copy(unit.body.translation()), new THREE.Vector3(0, -1, 0), 24);
+  }
   return {
     units,
+    restore(records) {
+      records.forEach((record, i) => {
+        if (!record.broken) return;
+        const unit = units[i]; detach(unit);
+        unit.body.setTranslation(record.p, true); unit.body.setRotation(record.q, true);
+        const ent = game.entities.find(e => e.body === unit.body); ent.runId = record.id;
+        if (record.burning) ignite(unit);
+      });
+    },
     step() {
       for (const unit of units) {
         if (!unit.broken) {
           let hit = false;
           game.world.contactPairsWith(unit.collider, other => { if (game.forklift.ownsCollider(other)) hit = true; });
           if (!hit) continue;
-          game.damage?.charge(`light:${units.indexOf(unit)}`, 200, 'Ceiling light broken');
-          unit.broken = true; unit.chains.visible = false;
-          unit.material.color.setHex(0x555960);
-          unit.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
-          unit.collider.setCollisionGroups(COL.dyn);
-          unit.body.enableCcd(true);
-          unit.body.setLinvel({ x: game.forklift.body.linvel().x * .5, y: -.4, z: game.forklift.body.linvel().z * .5 }, true);
-          unit.body.setAngvel({ x: .8, y: .3, z: .5 }, true);
-          game.addEntity({ kind: 'prop', name: 'Fallen light', body: unit.body, mesh: unit.mesh, mass: 8 });
-          sparks.burst(new THREE.Vector3().copy(unit.body.translation()), new THREE.Vector3(0, -1, 0), 24);
+          detach(unit);
         } else if (!unit.burning) {
           const p = unit.body.translation();
           if (p.y > floorAt(p.x, p.z) + .4) continue;

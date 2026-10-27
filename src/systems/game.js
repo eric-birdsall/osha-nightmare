@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { campaignLevel, campaignProgress, saveCampaignProgress, reservedCampaignLocations } from '../world/campaign.js';
+import { captureCheckpoint, restoreCheckpoint } from './checkpoint.js';
 import { DamageLedger } from './damage.js';
 import { forkViewBounds, showForkFeed } from './fork-view.js';
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -122,11 +124,14 @@ export class Game {
   // order: one of the fixed orders (its id in orders.json), or 'shift' for a Full Shift (all five
   // back to back in the same warehouse, one clock)
   constructor({ mode, hud, order = 1 }) {
+    this.campaign = campaignLevel(order);
+    this.phase = 'shipping';
+    this.reservedLocations = this.campaign ? reservedCampaignLocations(this.campaign) : new Set();
     this.receivingSpec = receivingOrder(order);
     this.receiving = !!this.receivingSpec;
     this.levelId = order; // what was picked on the level screen: an order id or 'shift'
     this.shift = order === 'shift';
-    this.orderId = this.receiving ? Number(order.split('-')[1]) : this.shift ? ORDERS[0].id : order; // the order being picked now
+    this.orderId = this.receiving ? Number(order.split('-')[1]) : this.shift ? ORDERS[0].id : this.campaign ? this.campaign.shipping.id : order; // the order being picked now
     this.mode = mode; // 'single' | 'coop'
     this.hud = hud;
     this.world = new RAPIER.World({ x: 0, y: CONFIG.physics.gravity, z: 0 });
@@ -135,6 +140,7 @@ export class Game {
     this.scene = new THREE.Scene();
     this.staticBody = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     this.damage = new DamageLedger(this);
+    this.nextEntityId = 1;
     this.entities = [];
     this.bodyMap = new Map();
 
@@ -168,11 +174,18 @@ export class Game {
     this.receivingSystem = this.receiving ? new Receiving(this) : null;
     this.tutorial = this.receivingSystem || (!this.shift && this.orderId === 1 ? new Tutorial(this) : null);
     this.damage.step(0, true);
+    const checkpoint = this.campaign && campaignProgress(this.mode, this.levelId)?.checkpoint;
+    if (checkpoint) {
+      this.beginReceiving(false);
+      restoreCheckpoint(this, checkpoint);
+      this.toast('Receiving checkpoint restored · shipping complete', 3);
+    }
   }
 
   // ---------------------------------------------------------------- entities
 
   addEntity(ent) {
+    ent.runId ??= this.nextEntityId++;
     this.entities.push(ent);
     this.bodyMap.set(ent.body.handle, ent);
   }
@@ -387,6 +400,12 @@ export class Game {
   // or after the last order, the level's done.
   finishOrder(load) {
     sfx.complete();
+    if (this.campaign && !this.receiving) {
+      for (const ent of Array.isArray(load) ? load : load ? [load] : []) if (!ent.removed) this.shipLoad(ent);
+      this.beginReceiving();
+      return;
+    }
+    if (this.campaign) saveCampaignProgress(this.mode, this.levelId, { complete: true, shipping: true });
     const next = this.shift && ORDERS[ORDERS.findIndex((o) => o.id === this.orderId) + 1];
     if (!next) {
       this.complete = true;
@@ -403,6 +422,25 @@ export class Game {
       `<span class="osha-text osha-text--yellow" data-text="ORDER ${next.id}">ORDER ${next.id}</span><small>Shipped! Next up: ${next.title} · ${next.dock}</small>`,
       3.5,
     );
+  }
+
+  beginReceiving(save = true) {
+    this.phase = 'receiving';
+    this.receiving = true;
+    this.receivingSpec = this.campaign.receiving;
+    this.climber.dropAll({ x: 0, y: 0, z: 0 });
+    this.climber.dropLadder();
+    if (this.tutorial?.marker) this.tutorial.marker.visible = false;
+    this.level.setOrder(this.receivingSpec);
+    this.itemStatus = Object.fromEntries(this.level.order.map(line => [line.line, 0]));
+    this.statusTimer = 0; this.dockRest = new Map(); this.deliveredLoads = new Set();
+    this.receivingSystem = new Receiving(this);
+    this.receivingSystem.read = true; // movement and clipboard controls were taught during shipping
+    this.receivingSystem.stage = 1;
+    this.tutorial = this.receivingSystem;
+    this.forklift.clipboard.key = null;
+    if (save) saveCampaignProgress(this.mode, this.levelId, { shipping: true, checkpoint: captureCheckpoint(this) });
+    this.hud?.banner(save ? `Shipping complete<small>Delivery arriving at ${this.receivingSpec.dock} · Receiving checkpoint saved</small>` : `Receiving checkpoint<small>Shipping complete · Continue at ${this.receivingSpec.dock}</small>`, 4);
   }
 
   // The truck pulls away with a delivered load: it's gone from the warehouse
