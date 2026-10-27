@@ -270,6 +270,7 @@ export class Game {
     this.climber.preStep(actions.climber, dt, climberOn);
     for (const c of this.level.conveyors) c.step(); // the belts carry whatever's on them
     this.world.step();
+    this.level.lighting?.step();
     this.puntedStep(dt);
     this.climber.postStep(dt);
     this.watchRacks(dt);
@@ -882,6 +883,7 @@ export class Game {
     // Hazards spark and drip; the cameras in use hear the zaps
     const ears = this.mode === 'single' ? [this.active === 'driver' ? this.forklift.camera.position : this.climber.camera.position] : [this.forklift.camera.position, this.climber.camera.position];
     this.level.hazards?.update(dt, ears);
+    this.level.lighting?.update(dt);
     for (const c of this.level.conveyors) c.update(dt);
     this.forklift.updateVisuals(dt);
     this.climber.updateTarget();

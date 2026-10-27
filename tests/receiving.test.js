@@ -737,7 +737,7 @@ test('approved layout preserves rack, cage, conveyor and stair clearances', asyn
 });
 
 
-test('incident sign is removed and leaking pipe is above the long conveyor', () => {
+test('incident sign is removed and leaking pipe is beside the conveyor wall switch', () => {
   const game = createGame(), belt = LAYOUT_FOR_TEST.conveyors[0];
   assert.equal(game.incidentSign, undefined);
   assert.equal(LAYOUT_FOR_TEST.incidentSign, undefined);
@@ -746,12 +746,17 @@ test('incident sign is removed and leaking pipe is above the long conveyor', () 
   game.scene.updateMatrixWorld(true);
   const point = pipe.getWorldPosition(new THREE_FOR_VIEW_TEST.Vector3());
   assert.ok(point.x > belt.x0 && point.x < belt.x1);
-  assert.ok(point.z > belt.z0 + 4.5 && point.z < belt.z1 - 4.5, 'whole pipe run sits over the belt');
+  const control = game.level.conveyors[0].powerSwitch;
+  assert.ok(Math.abs(point.z - control.position.z) < 1.6, 'pipe and panel are at the switch end');
+  const slow = game.scene.getObjectByName('Conveyor switch LOW');
+  const fast = game.scene.getObjectByName('Conveyor switch HIGH');
+  assert.ok(slow.position.z < control.position.z && fast.position.z > control.position.z);
+  assert.equal(slow.visible, true); assert.equal(fast.visible, true);
   assert.ok(point.y > belt.height + 2);
   game.dispose();
 });
 
-test('Dave switches the long conveyor to permanent triple-speed high power', () => {
+test('Dave switches the long conveyor to permanent high power', () => {
   const game = createGame(), belt = game.level.conveyors[0], control = belt.powerSwitch;
   const low = belt.velocity.z;
   assert.ok(control); assert.equal(control.high, false);
@@ -768,13 +773,100 @@ test('Dave switches the long conveyor to permanent triple-speed high power', () 
   const blank = Input.prototype.climberActions.call({ invertY: false }, []);
   game.step(1 / 60, { driver: blank, climber: { ...blank, interact: true } });
   assert.equal(control.high, true);
-  assert.ok(Math.abs(belt.velocity.z - low * 3) < 1e-8);
+  assert.ok(Math.abs(belt.velocity.z - low * 10) < 1e-8);
   assert.equal(control.activate(), false, 'shorted switch cannot be toggled back');
   belt.update(2);
   assert.equal(control.high, true);
-  assert.ok(Math.abs(belt.velocity.z - low * 3) < 1e-8);
+  assert.ok(Math.abs(belt.velocity.z - low * 10) < 1e-8);
   game.dispose();
   const next = createGame();
   assert.equal(next.level.conveyors[0].powerSwitch.high, false, 'new run starts at low power');
   next.dispose();
+});
+
+test('high conveyor throws Dave into the East wall and records one incident; low stays safe', () => {
+  for (const high of [false, true]) {
+    const game = createGame(), c = game.climber, belt = game.level.conveyors[0], spec = LAYOUT_FOR_TEST.conveyors[0];
+    const control = belt.powerSwitch;
+    assert.ok(control.position.x > spec.x1 - .1, 'switch is mounted on the wall');
+    assert.ok(control.position.z > spec.z1 && control.position.z < spec.z1 + 1.5, 'switch is at the cage-side end');
+    if (high) control.activate();
+    game.active = 'climber'; game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+    move(c.body, (spec.x0 + spec.x1) / 2, spec.height + c.centerOff + .02, spec.z0 + 5);
+    let incidents = 0, hitAt;
+    game.onIncident = () => { incidents++; hitAt = { ...c.body.translation() }; };
+    const blank = Input.prototype.climberActions.call({ invertY: false }, []);
+    for (let i = 0; i < 420 && !incidents; i++) game.step(1 / 60, { driver: blank, climber: blank });
+    if (high) {
+      assert.equal(c.state, 'ragdoll'); assert.equal(incidents, 1);
+      assert.ok(hitAt.z < -LAYOUT_FOR_TEST.room.halfZ + .7, `impact occurs at the East wall: ${hitAt.z}`);
+      let lateSpark = false;
+      for (let i = 0; i < 90; i++) {
+        belt.update(.1);
+        if (i > 15 && game.scene.children.some(o => o.isPointLight && o.intensity > 0 && o.position.distanceTo(control.position) < .5)) lateSpark = true;
+      }
+      assert.ok(lateSpark, 'shorted switch continues sparking after initial burst');
+    } else assert.equal(incidents, 0);
+    game.dispose();
+  }
+});
+
+test('ceiling keeps half its rows clear of ducts, with dead lights and one sparking light', () => {
+  const game = createGame(), lighting = game.level.lighting;
+  assert.equal(lighting.rows.length, Math.floor(lighting.originalRowCount / 2));
+  assert.equal(new Set(lighting.fixtures.map(p => p[2])).size, lighting.rows.length);
+  for (const z of lighting.rows) for (const duct of LAYOUT_FOR_TEST.ceiling.ducts) {
+    assert.ok(Math.abs(z - duct.z) >= duct.r + .45, 'fixtures and chains clear exposed ducts');
+  }
+  assert.ok(lighting.outCount >= 2);
+  assert.equal(lighting.faultyCount, 1);
+  assert.ok(game.scene.getObjectByName('Sparking ceiling light'));
+  let bursts = 0;
+  const previousRandom = Math.random;
+  try {
+    Math.random = () => .5;
+    const light = game.scene.children.find(o => o.isPointLight && o.position.y > 7);
+    for (let i = 0; i < 100; i++) { lighting.update(.1); if (light.intensity > 0) bursts++; }
+    assert.ok(bursts >= 3, 'faulty light repeatedly flashes and sparks');
+  } finally { Math.random = previousRandom; game.dispose(); }
+});
+
+test('forklift knocks a hanging light down once and it ignites only on the floor', () => {
+  const game = createGame(), f = game.forklift, lighting = game.level.lighting;
+  settle(game, .4);
+  assert.ok(lighting.units.every(u => !u.broken && !u.burning));
+  const unit = lighting.units.find(u => u.mesh.position.x > 8 && u.mesh.position.z > 0 && u.mesh.position.z < 8);
+  assert.ok(unit);
+  const point = unit.body.translation();
+  f.height = point.y - .45;
+  f.teleport({ x: point.x, z: point.z - .95 }, 0);
+  settle(game, .1);
+  assert.equal(unit.broken, true, 'real forklift contact releases fixture');
+  assert.equal(unit.chains.visible, false);
+  assert.equal(unit.burning, false, 'fixture does not burn while high above floor');
+  assert.equal(game.entities.filter(e => e.body.handle === unit.body.handle).length, 1);
+  f.height = .1; f.teleport({ x: 5, z: -5 }, 0);
+  settle(game, 3);
+  assert.equal(unit.burning, true);
+  assert.ok(unit.fire);
+  assert.ok(unit.body.translation().y < .4);
+  assert.equal(game.entities.filter(e => e.body.handle === unit.body.handle).length, 1, 'fixture cannot detach twice');
+  game.dispose();
+});
+
+test('single stretching mast stays connected without adding bars across Ralph’s view', () => {
+  const game = createGame(), f = game.forklift;
+  assert.equal(f.innerMast.length, 3, 'only two uprights and one top crossbar');
+  for (const height of [.1, 1, 3.5, 5, 8.8]) {
+    f.height = height; f.teleport({ x: 5, z: -5 }, 0); f.updateVisuals(0);
+    const rails = f.innerMast.filter(p => p.pos[0] !== 0);
+    for (const rail of rails) {
+      const halfY = rail.half[1] * rail.mesh.scale.y;
+      assert.ok(Math.abs(rail.mesh.position.y - halfY - .15) < 1e-6, 'rail base stays fixed');
+      assert.ok(rail.mesh.position.y + halfY > height + .9);
+      assert.ok(Math.abs(rail.collider.halfExtents().y - halfY) < 1e-5, 'collision shape matches stretched visual');
+      assert.ok(Math.abs(rail.collider.translationWrtParent().y - rail.mesh.position.y) < 1e-5);
+    }
+  }
+  game.dispose();
 });

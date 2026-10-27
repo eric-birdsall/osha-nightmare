@@ -16,6 +16,7 @@ import { buildWrapper } from './wrapper.js';
 import { buildPacking, packingRect } from './packing.js';
 import { PalletStorage } from './pallet-storage.js';
 import { buildDecorativeDoors } from './decorative-doors.js';
+import { buildHangingLights } from './hanging-lights.js';
 import { buildConveyors } from './conveyor.js';
 import { buildHazards, hazardZones } from './hazards.js';
 
@@ -146,14 +147,10 @@ function labelRack(group, rack, cx, cz) {
     mesh.rotation.y = ry;
     group.add(mesh);
   };
-  // Tall West-wall rack names live above them on the wall; central rack signs stay on end caps.
+  // West-wall racks keep only white location tags; central racks retain end-cap signs.
   if (rack.palletFromShelf == null) {
     add(endCapSign(name, 1.0, 1.1), x0 - 0.05, 2.3, cz, -Math.PI / 2);
     add(endCapSign(name, 1.0, 1.1), x1 + 0.05, 2.3, cz, Math.PI / 2);
-  }
-  if (rack.palletFromShelf != null) {
-    const z = face === 'south' ? z1 + 0.025 : z0 - 0.025;
-    add(labelPlane('MIXED STORAGE · CHECK SKU', 3.8, 0.36, { bg: '#f5c518', fg: '#111111' }), (x0 + x1) / 2, 4.2, z, face === 'south' ? 0 : Math.PI);
   }
   for (const [z, ry] of faces) {
     for (let b = 0; b < rack.bays; b++) {
@@ -336,7 +333,7 @@ function stockShelves(game, racks, storage) {
           box.home = { rack: name, pos: { x: t.x, y: t.y, z: t.z }, rot: { x: r.x, y: r.y, z: r.z, w: r.w } };
           ent.stock.push(box);
         });
-        const to = reserved ? null : WAREHOUSE.signs[at];
+        const to = reserved || rack.palletFromShelf != null ? null : WAREHOUSE.signs[at];
         if (to) {
           // Hung under this shelf's beam, beside the location tag, so it moves with the rack
           const sign = backstockSign(to);
@@ -440,16 +437,27 @@ function buildCeiling(game) {
 
   // Fluorescent fixtures: two-tube strips hanging 3.5 m below the roof, in rows along the aisles
   const lightY = H - 3.5;
+  const originalRows = [];
+  for (let z = -halfZ + 2; z <= halfZ - 2; z += 4) originalRows.push(z);
+  // Keep whole alternate rows, with clear space for the duct bodies and hanging chains.
+  const rows = originalRows.filter((_, i) => i % 2 === 1).map(z => {
+    while (ducts.some(duct => Math.abs(z - duct.z) < duct.r + .45)) z += .25;
+    return z;
+  });
   const fixtures = [];
-  for (let x = -halfX + 3; x <= halfX - 3; x += 3.5) {
-    for (let z = -halfZ + 2; z <= halfZ - 2; z += 4) if (clearOfFans(x, z)) fixtures.push([x, lightY, z]);
+  for (const z of rows) {
+    for (let x = -halfX + 3; x <= halfX - 3; x += 3.5) {
+      if (clearOfFans(x, z)) fixtures.push([x, lightY, z]);
+    }
   }
-  instancedBoxes(game, [1.25, 0.08, 0.32], flatMat(0xdfe3e8), fixtures);
-  const tubes = fixtures.map(([x, y, z]) => [x, y - 0.045, z]);
-  instancedBoxes(game, [1.18, 0.02, 0.22], new THREE.MeshBasicMaterial({ color: 0xf2f8ff }), tubes);
-  const chains = [];
-  for (const [x, , z] of fixtures) chains.push([x - 0.5, (lightY + H) / 2, z], [x + 0.5, (lightY + H) / 2, z]);
-  instancedBoxes(game, [0.015, H - lightY, 0.015], flatMat(0x8a9099), chains);
+  const faultyIndex = Math.floor(fixtures.length / 2);
+  const outIndices = fixtures.map((_, i) => i).filter(i => i % 7 === 0 && i !== faultyIndex);
+  const hanging = buildHangingLights(game, fixtures, outIndices, faultyIndex, H, floorHeightAt);
+  const lighting = {
+    originalRowCount: originalRows.length, rows, fixtures, fixtureCount: fixtures.length,
+    outCount: outIndices.length, faultyCount: 1,
+    ...hanging,
+  };
 
   // Exposed round ducts the long way, hung under the joists, with drops down to diffusers
   const ductMat = new THREE.MeshLambertMaterial({ color: 0xb4bcc6 });
@@ -503,53 +511,77 @@ function buildCeiling(game) {
     fans.push(rotor);
   }
   // Nothing in the roof space casts or catches shadows
-  return fans;
+  return { fans, lighting };
 }
 
 // ---------------------------------------------------------------- floors
 
-// Ribbed metal wall panels: warm off-white with a seam every 1 m and lighter ribs between.
+// Light-grey cinderblock: staggered 1 × 0.5 m blocks, mortar and fine surface pores.
 let wallCanvas = null;
 function wallMaterial(w, h) {
   if (!wallCanvas) {
     wallCanvas = document.createElement('canvas');
-    wallCanvas.width = 128;
-    wallCanvas.height = 16;
+    wallCanvas.width = wallCanvas.height = 256;
     const g = wallCanvas.getContext('2d');
-    g.fillStyle = '#e6dfcf';
-    g.fillRect(0, 0, 128, 16);
-    g.fillStyle = '#f4efe3';
-    for (const x of [24, 56, 88]) g.fillRect(x, 0, 12, 16);
-    g.fillStyle = '#b9b09c';
-    g.fillRect(0, 0, 4, 16);
+    g.fillStyle = '#7d858b'; g.fillRect(0, 0, 256, 256);
+    let seed = 173;
+    const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    for (let row = 0; row < 4; row++) {
+      for (let col = -1; col < 3; col++) {
+        const shade = 153 + Math.floor(random() * 12);
+        g.fillStyle = `rgb(${shade},${shade + 4},${shade + 7})`;
+        const x = col * 128 + (row % 2) * 64;
+        g.fillRect(x + 2, row * 64 + 2, 124, 60);
+        g.fillStyle = 'rgba(230,234,236,.22)';
+        g.fillRect(x + 3, row * 64 + 3, 122, 1);
+      }
+    }
+    for (let i = 0; i < 4200; i++) {
+      g.fillStyle = i % 3 ? 'rgba(55,64,70,.10)' : 'rgba(230,234,236,.12)';
+      g.fillRect(random() * 256, random() * 256, 1 + random() * 2, 1 + random() * 2);
+    }
   }
   const tex = new THREE.CanvasTexture(wallCanvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(w, 1);
+  tex.repeat.set(w / 2, h / 2);
   tex.anisotropy = 8;
-  return new THREE.MeshLambertMaterial({ map: tex });
+  return new THREE.MeshPhongMaterial({ map: tex, bumpMap: tex, bumpScale: .012, shininess: 5, specular: 0x222222 });
 }
 
-// Concrete with a 1 m grid scored into it, repeated across each slab.
+// Polished concrete: fine aggregate, soft mottling and faint 4 m slab joints.
 let floorCanvas = null;
 function floorMaterial(w, d) {
   if (!floorCanvas) {
     floorCanvas = document.createElement('canvas');
-    floorCanvas.width = floorCanvas.height = 128;
+    floorCanvas.width = floorCanvas.height = 256;
     const g = floorCanvas.getContext('2d');
-    g.fillStyle = '#7d8187';
-    g.fillRect(0, 0, 128, 128);
-    g.fillStyle = '#6c7077';
-    g.fillRect(0, 0, 128, 3);
-    g.fillRect(0, 0, 3, 128);
+    g.fillStyle = '#94999d';
+    g.fillRect(0, 0, 256, 256);
+    let seed = 7341;
+    const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    for (let i = 0; i < 3000; i++) {
+      const shade = 115 + Math.floor(random() * 65);
+      g.fillStyle = `rgba(${shade},${shade + 3},${shade + 5},0.12)`;
+      const size = 1 + random() * 3;
+      g.fillRect(random() * 256, random() * 256, size, size);
+    }
+    for (let i = 0; i < 12; i++) {
+      const x = random() * 256, y = random() * 256;
+      const wash = g.createRadialGradient(x, y, 0, x, y, 45 + random() * 40);
+      wash.addColorStop(0, 'rgba(210,215,218,0.06)');
+      wash.addColorStop(1, 'rgba(210,215,218,0)');
+      g.fillStyle = wash; g.fillRect(0, 0, 256, 256);
+    }
+    g.fillStyle = 'rgba(55,62,68,0.14)';
+    g.fillRect(0, 0, 256, 1); g.fillRect(0, 0, 1, 256);
   }
   const tex = new THREE.CanvasTexture(floorCanvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(w, d);
+  tex.repeat.set(w / 4, d / 4);
   tex.anisotropy = 8;
-  return new THREE.MeshLambertMaterial({ map: tex });
+  return new THREE.MeshPhongMaterial({ map: tex, specular: 0x777e84, shininess: 65 });
 }
 
 // Diagonal black and yellow hazard stripes, about `pitch` metres per stripe pair.
@@ -1131,7 +1163,7 @@ export function buildLevel(game) {
   const grid = buildFloors(game);
 
   // Walls (inside faces at the room bounds), down to the bottom of the lower level
-  const wallC = 0xece6d8; // warm off-white metal panels, against the grey concrete floor
+  const wallC = 0x9da3a8; // light-grey cinderblock above polished concrete
   const t = 0.2;
   const wallHalfY = (wallH - FLOOR_BOTTOM) / 2;
   const wallY = (wallH + FLOOR_BOTTOM) / 2;
@@ -1176,7 +1208,7 @@ export function buildLevel(game) {
   // Roof: solid (a FRAGILE blast can't throw things out of the building), with the lights,
   // ducts and fans hanging under it
   addStatic(game, [halfX + t * 2, t, halfZ + t * 2], [0, wallH + t, 0], 0, { mesh: false });
-  const fans = buildCeiling(game);
+  const { fans, lighting } = buildCeiling(game);
   // Along the foot of every wall: a charcoal kick plate, so the wall clearly meets the floor, and a
   // yellow rub-rail stripe higher up for depth cues. Both step down with the lower level, slope
   // down the ramp and stop at the open dock's doorway.
@@ -1254,15 +1286,6 @@ export function buildLevel(game) {
   // Loading docks: this order's is open with a trailer backed up to it
   const docks = buildDocks(game);
 
-  // Fixed wall signs remain above each tall rack even if its frame is knocked over.
-  for (const rack of RACKS.filter(r => r.palletFromShelf != null)) {
-    const sign = endCapSign(rack.name, 2.0, 1.4);
-    sign.name = `wall-rack-sign-${rack.name}`;
-    sign.position.set((rack.x0 + rackX1(rack)) / 2, rack.uprightH + .9, halfZ - .035);
-    sign.rotation.y = Math.PI;
-    scene.add(sign);
-  }
-
   // The forklift's parking bay and charger
   const parking = buildParking(game);
 
@@ -1316,6 +1339,7 @@ export function buildLevel(game) {
       return Object.fromEntries(this.order.map((o) => [o.line, game.entities.filter((e) => e.kind === 'box' && e.sku === o.sku)]));
     },
     racks,
+    lighting,
     fans, // giant ceiling fans (the game turns them)
     climberSpawn: { pos: climberStart, yaw: LAYOUT.climberSpawn.yaw },
     spawnPoints: LAYOUT.spawnPoints.map((p) => new THREE.Vector3(...p)),

@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { COL } from '../physics.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
-import { sfx } from '../systems/audio.js';
 import { LAYOUT } from './layout.js';
 import { addPuddle } from './puddles.js';
 
@@ -281,11 +280,6 @@ function buildPanel(game, sparks) {
         zapIn = 1.5;
         sparks.burst(top, out, 26);
         flash = 0.25;
-        const v = loud(top);
-        if (v > 0) sfx.zap(v);
-      } else if (!d.zaps) {
-        const v = loud(d.from) * 0.6;
-        if (v > 0.3) sfx.drip(v);
       }
     }
     flash = Math.max(0, flash - dt);

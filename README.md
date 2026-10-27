@@ -189,4 +189,8 @@ One forklift-only test crate (SKU 980, one unit, 350 kg including its pallet) si
 
 Ralph has a carriage-mounted fork camera: above 2.5 m it appears automatically as an inset. Press **C** / **R3** to expand it or return to the seat. The fork-height readout stays visible while looking up, including in split-screen.
 
-West-wall racks run **Z, Y, X from north to south**. Their large rack signs are mounted above the racks on the wall; the central racks retain end-cap signs. Wall compass-letter badges are removed.
+West-wall racks run **Z, Y, X from north to south**. They carry only white Rack–Bay–Shelf location labels; the central racks retain end-cap signs. Wall compass-letter badges are removed.
+
+The long South-wall conveyor has a wall-mounted power switch at the cage-side end. Dave uses E/X to change LOW (1.2 m/s) to HIGH (12 m/s). The switch shorts permanently for the run and occasionally sparks afterward. High power can launch a rider into the East wall, ragdolling Dave and causing an incident. The leaking pipe and panel sit beside the switch at the cage-side end and make no sounds. The switch is labeled LOW on the left and HIGH on the right.
+
+Hanging light fixtures can be knocked down by the raised forklift. Their chains detach, the fixture falls as a physical prop, and it ignites with animated flames and firelight after reaching the floor.

@@ -78,12 +78,11 @@ const PARTS = [
   [[0.05, 1.1, 0.05], [-0.38, 1.2, MAST_Z], 0x30343a],
 ];
 
-// Inner mast (uprights and crossbar): collapsed it tops out level with the outer mast, low enough
-// to drive into a trailer; once the forks rise past their free lift it telescopes up with them.
+// One open mast section stretches upward while its rail bases stay on the truck.
 const INNER_MAST = [
-  [[0.04, 1.1, 0.04], [0.31, 1.25, MAST_Z]],
-  [[0.04, 1.1, 0.04], [-0.31, 1.25, MAST_Z]],
-  [[0.37, 0.05, 0.05], [0, 2.35, MAST_Z]],
+  [[.035, 1.1, .04], [.31, 1.25, MAST_Z]],
+  [[.035, 1.1, .04], [-.31, 1.25, MAST_Z]],
+  [[.345, .04, .04], [0, 2.35, MAST_Z]],
 ];
 
 export class Forklift {
@@ -240,9 +239,28 @@ export class Forklift {
     const c = new THREE.Vector3(0, this.height + 0.02, PLATE_Z).applyQuaternion(quatToThree(q)).add(new THREE.Vector3(pos.x, floor, pos.z));
     this.carriage.setTranslation(c, true);
     this.carriage.setRotation(q, true);
+    this.updateMast(this.height);
     for (const b of [this.body, this.carriage]) {
       b.setLinvel({ x: 0, y: 0, z: 0 }, true);
       b.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+  }
+
+  updateMast(height) {
+    const extension = Math.max(0, height - CONFIG.forklift.freeLift);
+    for (const part of this.innerMast) {
+      const upright = part.pos[0] !== 0;
+      const y = part.pos[1] + extension * (upright ? .5 : 1);
+      const halfY = part.half[1] + (upright ? extension / 2 : 0);
+      if (part.currentHalfY !== halfY) {
+        part.collider.setShape(new RAPIER.Cuboid(part.half[0], halfY, part.half[2]));
+        part.currentHalfY = halfY;
+      }
+      part.collider.setTranslationWrtParent({ x: part.pos[0], y, z: part.pos[2] });
+      if (part.mesh) {
+        part.mesh.position.y = y;
+        part.mesh.scale.y = halfY / part.half[1];
+      }
     }
   }
 
@@ -466,12 +484,7 @@ export class Forklift {
     if (this.height === cfg.liftMin && prevH > cfg.liftMin && impact < -CONFIG.climber.legBreakSpeed) this.slammedAt = this.game.clock;
     this.lastImpact = this.height === cfg.liftMin && prevH > cfg.liftMin ? -impact : this.lastImpact;
     this.liftJoint.configureMotor(this.height, this.liftVel, cfg.liftStiffness, cfg.liftDamping);
-    // Telescoping inner mast: rises with the forks above their free lift
-    const extend = Math.max(0, this.height - cfg.freeLift);
-    for (const part of this.innerMast) {
-      part.collider.setTranslationWrtParent({ x: part.pos[0], y: part.pos[1] + extend, z: part.pos[2] });
-      if (part.mesh) part.mesh.position.y = part.pos[1] + extend;
-    }
+    this.updateMast(this.measuredHeight());
     if (this.height !== prevH) {
       body.wakeUp();
       this.carriage.wakeUp();
@@ -912,7 +925,9 @@ export class Forklift {
     const r = this.body.rotation();
     this.mesh.position.set(t.x, t.y, t.z);
     this.mesh.quaternion.set(r.x, r.y, r.z, r.w);
-    this.carriageMesh.position.y = this.measuredHeight();
+    const height = this.measuredHeight();
+    this.carriageMesh.position.y = height;
+    this.updateMast(height);
     this.wheelSpin += (this.speed * dt) / WHEEL_R;
     for (const w of this.wheelMeshes) {
       w.pivot.rotation.y = w.front ? 0 : this.steer;

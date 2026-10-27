@@ -6,7 +6,6 @@ import { createFreight } from '../entities/freight.js';
 import { createPallet } from '../entities/pallet.js';
 import { createBox } from '../entities/box.js';
 import { buildWrapped } from '../systems/wrapping.js';
-import { labelPlane } from '../util/meshes.js';
 
 // Slots are in the rack body's local frame, so guides and seating checks follow a tipped rack.
 export function palletFitsSlot(pallet, slot) {
@@ -48,10 +47,6 @@ export class PalletStorage {
       line.rotation.x = -Math.PI / 2; line.position.set(sx, .008, sz); guide.add(line);
     }
     guide.position.set(slot.x, slot.y, 0); rack.mesh.add(guide); slot.material = mat;
-    const label = labelPlane(`${location} · SKU ${slot.sku}`, 1.65, .2, { bg: '#f5c518', fg: '#111111' });
-    label.position.set(slot.x, slot.y - .28, -slot.depth / 2 - .015); label.rotation.y = Math.PI; rack.mesh.add(label);
-    const typeLabel = labelPlane(freight ? 'FORKLIFT ONLY · 1 UNIT' : 'CARTON BACKSTOCK', 1.65, .14, { bg: freight ? '#f5c518' : '#d8efff', fg: '#111111' });
-    typeLabel.position.set(slot.x, slot.y - .48, -slot.depth / 2 - .016); typeLabel.rotation.y = Math.PI; rack.mesh.add(typeLabel);
     // Six cartons in a single 2-by-3 layer: inside the pallet edges, with ample lift clearance.
     (empty || freight ? [] : spots).filter(Boolean).forEach(([sku, , type], i) => {
       const box = createBox(this.game, { type, sku, pos: [x + (i % 2 ? .2 : -.2), y + .16, z + (Math.floor(i / 2) - 1) * .4] });

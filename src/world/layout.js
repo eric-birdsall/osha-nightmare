@@ -85,7 +85,7 @@ const PACK_GAP = 1.4; // between benches in a row: room for Dave to stand in
 const PACK_LEN = 3 * 2.4 + 2 * PACK_GAP + (2.4 + PACK_GAP) / 2; // the island's length, stagger included
 const PACKING = { x: PACK_WEST + PACK_DEPTH / 2, z: PACK_LINE_END + 4.2 + PACK_LEN / 2, perRow: 3, yaw: Math.PI / 2, belt: PACK_BELT, gap: PACK_GAP };
 const CONVEYORS = [
-  { name: 'Conveyor', x0: E - 2.0, x1: E - 0.05, z0: NORTH + 2, z1: 0.9, height: 0.8, speed: 1.2, sign: true, backstop: false, powerSwitch: true },
+  { name: 'Conveyor', x0: E - 2.0, x1: E - 0.05, z0: NORTH + 2, z1: 0.9, height: 0.8, speed: 1.2, sign: true, backstop: false, powerSwitch: true, highSpeed: 12 },
   { name: 'Packing line', x0: PACKING.x - PACKING.belt / 2, x1: PACKING.x + PACKING.belt / 2, z0: PACK_LINE_END, z1: PACKING.z + PACK_LEN / 2 + 0.2, height: 0.8, speed: 0.8 },
 ];
 
@@ -131,7 +131,7 @@ export const LAYOUT = {
   // OSHA violations round the building (hazards.js). Things on a wall give the wall and how far
   // along it they are (x for the north and south walls, z for east and west); y is the floor height.
   hazards: {
-    panel: { wall: 'east', at: (CONVEYORS[0].z0 + CONVEYORS[0].z1) / 2 }, // leaking pipework above the long South-wall conveyor
+    panel: { wall: 'east', at: CONVEYORS[0].z1 - .4 }, // leaking pipework at the cage-side end, beside the wall switch
     // Missing railing beside the main-floor ladder stand on the basement's east edge
     railingGap: { along: 'z', line: lower.x1, from: WRAP.z + FRAME + 0.1, to: lower.z1 },
     fireExits: [

@@ -283,6 +283,16 @@ export class Climber {
     const clear = this.clearOfLadder && this.game.clock < this.clearOfLadder.until ? this.clearOfLadder.body : null;
     this.kcc.computeColliderMovement(this.collider, disp, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, COL.climberQuery, clear && ((c) => c.parent()?.handle !== clear.handle));
     const mv = this.kcc.computedMovement();
+    // High-power belt momentum becomes an impact when the capsule is stopped by a wall.
+    if (this.game.clock < (this.conveyorImpactUntil || 0)) {
+      for (let i = 0; i < this.kcc.numComputedCollisions(); i++) {
+        const hit = this.kcc.computedCollision(i);
+        const n = hit.normal1;
+        if (Math.abs(n.y) < .4 && Math.hypot(disp.x - mv.x, disp.z - mv.z) / dt > 4) {
+          return this.goRagdoll('hit', new THREE.Vector3(disp.x / dt, 1.5, disp.z / dt));
+        }
+      }
+    }
     this.pushLoose();
     const wasGrounded = this.grounded;
     this.grounded = this.kcc.computedGrounded() && !this.jumpedThisStep;
@@ -1009,7 +1019,9 @@ export class Climber {
         : this.support.body.velocityAtPoint(this.support.point);
       this.supportVel.set(v.x, v.y, v.z);
     } else if (this.support && this.game.level.conveyors.some((c) => c.owns(this.support.collider))) {
-      this.supportVel.copy(this.game.level.conveyors.find((c) => c.owns(this.support.collider)).velocity); // riding a conveyor belt
+      const belt = this.game.level.conveyors.find((c) => c.owns(this.support.collider));
+      this.supportVel.copy(belt.velocity);
+      if (belt.powerSwitch?.high) this.conveyorImpactUntil = this.game.clock + 1; // riding a conveyor belt
     } else {
       this.supportVel.set(0, 0, 0);
     }

@@ -110,41 +110,46 @@ function buildConveyor(game, c) {
   const velocity = new THREE.Vector3(0, 0, -speed); // north
   let powerSwitch = null;
   if (c.powerSwitch) {
-    const position = new THREE.Vector3(x0 - .12, 1.25, cz);
+    const position = new THREE.Vector3(LAYOUT.room.halfX - .10, 1.25, z1 + 1.1);
     const housing = add(boxMesh(.18, .5, .42, 0x434c57), position.x, position.y, position.z);
     housing.name = 'Conveyor power switch';
     const switchCollider = game.world.createCollider(RAPIER.ColliderDesc.cuboid(.09, .25, .21)
       .setTranslation(position.x, position.y, position.z).setCollisionGroups(COL.static), game.staticBody);
-    const lever = add(boxMesh(.05, .22, .06, YELLOW), x0 - .24, 1.25, cz);
+    const lever = add(boxMesh(.05, .22, .06, YELLOW), position.x - .12, 1.25, position.z);
     lever.rotation.x = -.6;
-    const labels = ['LOW POWER', 'HIGH · SHORTED'].map((text, i) => {
-      const label = labelPlane(text, .95, .2, { bg: i ? '#942626' : '#f5c518', fg: i ? '#ffffff' : '#16171a' });
+    for (const [text, offset] of [['LOW', -.56], ['HIGH', .56]]) {
+      const label = labelPlane(text, .5, .18, { bg: '#f5c518', fg: '#16171a' });
+      label.name = `Conveyor switch ${text}`;
       label.rotation.y = -Math.PI / 2;
-      add(label, x0 - .23, 1.67, cz);
-      label.visible = i === 0;
-      return label;
-    });
+      add(label, position.x - .11, 1.25, position.z + offset);
+    }
     const sparks = new Sparks(scene, 30);
     const source = position.clone().add(new THREE.Vector3(-.15, .05, 0));
     const out = new THREE.Vector3(-1, .4, 0).normalize();
     const flash = new THREE.PointLight(0xffcf62, 0, 3);
     flash.position.copy(source); scene.add(flash);
-    let sparkTime = 0, burstIn = 0;
+    let sparkTime = 0, burstIn = 0, nextShort = 0;
     powerSwitch = {
-      kind: 'conveyorSwitch', collider: switchCollider, position, high: false,
+      kind: 'conveyorSwitch', collider: switchCollider, position, high: false, speedMultiplier: (c.highSpeed || speed * 3) / speed,
       activate() {
         if (this.high) return false;
         this.high = true;
-        velocity.z = -speed * 3;
+        velocity.z = -(c.highSpeed || speed * 3);
         lever.rotation.x = .6;
         lever.material.color.setHex(0x242424);
-        labels[0].visible = false; labels[1].visible = true;
-        sparkTime = 1.2;
+        sparkTime = 1.2; nextShort = 2 + Math.random() * 4;
         sparks.burst(source, out, 26); sfx.zap(.6);
         return true;
       },
       update(dt) {
         sparkTime = Math.max(0, sparkTime - dt); burstIn -= dt;
+        if (this.high) {
+          nextShort -= dt;
+          if (nextShort <= 0) {
+            sparkTime = .3; nextShort = 2 + Math.random() * 4;
+            sparks.burst(source, out, 14);
+          }
+        }
         if (sparkTime > 0 && burstIn <= 0) { sparks.burst(source, out, 8); burstIn = .15; }
         flash.intensity = sparkTime > 0 ? 1 + Math.random() * 3 : 0;
         sparks.update(dt);
