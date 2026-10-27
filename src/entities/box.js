@@ -186,6 +186,7 @@ export function createBox(game, { type = 'medium', sku, item = null, pos, yaw = 
     // Shapes in body space, reused when wrapping into a compound body
     shapes: [{ half: [sx / 2, sy / 2, sz / 2], pos: [0, 0, 0], mass: spec.mass, friction: spec.friction }],
   };
+  game.damage?.identify(ent);
   game.addEntity(ent);
   return ent;
 }

@@ -49,6 +49,7 @@ export function buildHangingLights(game, fixtures, outIndices, faultyIndex, roof
           let hit = false;
           game.world.contactPairsWith(unit.collider, other => { if (game.forklift.ownsCollider(other)) hit = true; });
           if (!hit) continue;
+          game.damage?.charge(`light:${units.indexOf(unit)}`, 200, 'Ceiling light broken');
           unit.broken = true; unit.chains.visible = false;
           unit.material.color.setHex(0x555960);
           unit.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);

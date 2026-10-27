@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DamageLedger } from './damage.js';
 import { forkViewBounds, showForkFeed } from './fork-view.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
@@ -133,6 +134,7 @@ export class Game {
     this.world.integrationParameters.numSolverIterations = CONFIG.physics.solverIterations;
     this.scene = new THREE.Scene();
     this.staticBody = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    this.damage = new DamageLedger(this);
     this.entities = [];
     this.bodyMap = new Map();
 
@@ -165,6 +167,7 @@ export class Game {
     this.onComplete = null;
     this.receivingSystem = this.receiving ? new Receiving(this) : null;
     this.tutorial = this.receivingSystem || (!this.shift && this.orderId === 1 ? new Tutorial(this) : null);
+    this.damage.step(0, true);
   }
 
   // ---------------------------------------------------------------- entities
@@ -273,6 +276,7 @@ export class Game {
     this.level.lighting?.step();
     this.puntedStep(dt);
     this.climber.postStep(dt);
+    this.damage.step(dt);
     this.watchRacks(dt);
     this.level.storage.step(dt);
     this.watchFragile(dt);
@@ -596,6 +600,7 @@ export class Game {
   // A FRAGILE box went off: restock it on its shelf (or it's gone, if it was a loose one), so
   // an order box can't be lost for good, then the blast. It's on Dave either way.
   explode(box) {
+    this.damage.package(box, 'Fragile package broken');
     const p = box.body.translation();
     const at = new THREE.Vector3(p.x, p.y, p.z);
     box.armed = false;
@@ -838,6 +843,7 @@ export class Game {
       if (r.fallen) continue;
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quatToThree(r.body.rotation()));
       if (up.y > Math.cos((40 * Math.PI) / 180)) continue;
+      this.damage.rack(r);
       r.fallen = true;
       const byRalph = this.clock - (r.ralphTouched ?? -Infinity) < 4;
       const run = this.rackRun;

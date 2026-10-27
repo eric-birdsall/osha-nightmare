@@ -1206,3 +1206,9 @@ body[data-input="controller"] #controls td:nth-child(3) { display: none; }
 .fork-feed span { position: absolute; left: -2px; bottom: 100%; background: #12161bed; color: #f5c518; padding: 3px 8px; font: 12px var(--ui); letter-spacing: 1px; }
 .view.split .fork-readout { top: 46px; padding: 4px 8px; }
 .view.split .fork-readout b { font-size: 18px; }
+
+.damage-total { padding: 5px 10px; color: #ffcd62; background: #161b22ed; font: bold 17px var(--ui); font-variant-numeric: tabular-nums; }
+.fork-readout { top: 108px; }
+.view.split .fork-readout { top: 85px; }
+
+.topright .timer-pen { position: absolute; top: 0; right: calc(100% + 10px); white-space: nowrap; }

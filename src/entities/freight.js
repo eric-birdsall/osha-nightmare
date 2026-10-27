@@ -16,6 +16,7 @@ export function createFreight(game, { pos, yaw = 0, sku, mass, height = 1.35 }) 
   freight.shapes.push(shape);
   Object.assign(freight, { kind: 'freight', sku, mass, forkliftOnly: true,
     bounds: { min: new THREE.Vector3(-.5, 0, -.6), max: new THREE.Vector3(.5, crate.bottom + height, .6) } });
+  game.damage?.identify(freight);
   freight.body.enableCcd(true);
   const add = (mesh, x, y, z) => { mesh.position.set(x, y, z); freight.mesh.add(mesh); return mesh; };
   add(boxMesh(crate.width, crate.height, crate.depth, 0xa77d49), 0, shape.pos[1], 0);

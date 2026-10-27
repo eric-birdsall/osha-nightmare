@@ -258,6 +258,7 @@ function showComplete({ time, falls }) {
   $('c-order').textContent = `${game.receiving ? `${order.number} · ${order?.title ?? ''}` : id === 'shift' ? 'Full Shift · all five orders' : `Order ${id} · ${order?.title ?? ''}`} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
   $('c-time').textContent = fmtTime(time);
   $('c-falls').textContent = falls;
+  $('c-damage').textContent = `$${game.damage.total.toLocaleString('en-US')}`;
   $('c-penalty').textContent = falls ? `+${fmtTime(run.total - time)}` : '';
   $('c-total').textContent = fmtTime(run.total);
   $('c-best').textContent = fmtTime(run.best);

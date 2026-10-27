@@ -842,6 +842,7 @@ test('forklift knocks a hanging light down once and it ignites only on the floor
   f.teleport({ x: point.x, z: point.z - .95 }, 0);
   settle(game, .1);
   assert.equal(unit.broken, true, 'real forklift contact releases fixture');
+  assert.ok(game.damage.entries.some(e => e.id.startsWith('light:') && e.amount === 200));
   assert.equal(unit.chains.visible, false);
   assert.equal(unit.burning, false, 'fixture does not burn while high above floor');
   assert.equal(game.entities.filter(e => e.body.handle === unit.body.handle).length, 1);
@@ -911,5 +912,46 @@ test('starts without random floor cartons and basement stacks are stable usable 
     for (let i = 1; i < heights.length; i++) assert.ok(heights[i] - heights[i - 1] > .12, 'pallets stay stacked');
     assert.ok(stack.every(p => Math.abs(p.body.translation().z - pile.z) < .3));
   }
+  game.dispose();
+});
+
+test('damage charges a fallen high-shelf package once and rack collapse adds only the remaining inventory', async () => {
+  const { packageValue } = await import('../src/systems/damage.js');
+  const game = createGame(), ledger = game.damage;
+  settle(game, 1);
+  assert.equal(ledger.total, 0, 'normal starting stock has no damage');
+  const rack = game.level.racks.find(r => r.name === 'A');
+  const box = rack.stock.find(b => b.home.pos.y > 3);
+  const value = packageValue(box.sku);
+  assert.ok(value >= 50 && value <= 250);
+  const expected = ledger.inventory.get(rack.name).reduce((sum, item) => sum + packageValue(item.sku), 0);
+  const pos = box.body.translation();
+  move(box.body, pos.x, pos.y - 1.2, pos.z);
+  ledger.step(0, true);
+  assert.equal(ledger.total, value);
+  box.body.setTranslation(box.home.pos, true);
+  ledger.step(0, true);
+  rack.body.setRotation(new THREE_FOR_VIEW_TEST.Quaternion().setFromAxisAngle(new THREE_FOR_VIEW_TEST.Vector3(0, 0, 1), 1), true);
+  game.watchRacks(1 / 60);
+  assert.equal(ledger.total, expected, 'collapse counts the rack contents without charging the dropped box twice');
+  game.watchRacks(1 / 60);
+  assert.equal(ledger.total, expected);
+  game.dispose();
+});
+
+test('damage identities survive shrinkwrap and unwrapping and repeated light hits charge once', () => {
+  const game = createGame(), ledger = game.damage;
+  const load = game.receivingSystem.pallets[0];
+  const record = load.contents.find(r => r.kind === 'box');
+  const id = record.data.damageId;
+  const value = ledger.package(record.data, 'Test package damage');
+  const restored = cutWrapped(game, load);
+  const box = restored.find(e => e.damageId === id);
+  assert.ok(box);
+  assert.equal(ledger.package(box, 'Same carton after cutting wrap'), 0);
+  assert.equal(ledger.total, value);
+  ledger.charge('light:test', 200, 'Ceiling light broken');
+  ledger.charge('light:test', 200, 'Repeated light contact');
+  assert.equal(ledger.total, value + 200);
   game.dispose();
 });

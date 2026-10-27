@@ -32,6 +32,7 @@ export function basicControls(game, role) {
 const VIEW_HTML = (role) => `
   <div class="topright">
     <div class="timer card">00:00</div>
+    <div class="damage-total card" aria-label="Total property damage">DAMAGE $0</div>
     <div class="timer-pen">+15 s</div>
   </div>
   <div class="roles card">
@@ -75,6 +76,7 @@ export class Hud {
         el,
         tutorial: q('.tutorial'),
         timer: q('.timer'),
+        damage: q('.damage-total'),
         timerPen: q('.timer-pen'),
         roles: q('.roles'),
         prompt: q('.prompt'),
@@ -149,6 +151,7 @@ export class Hud {
       }
       // The pick list isn't on the HUD: it's a clipboard in the forklift cab
       // The time on the clock is the score: the shift so far plus the incident penalties
+      v.damage.textContent = `DAMAGE $${(game.damage?.total || 0).toLocaleString('en-US')}`;
       v.timer.textContent = fmt(game.time + game.falls * CONFIG.score.incidentPenalty);
       v.timer.classList.toggle('hit', flashing);
       v.timerPen.textContent = `+${CONFIG.score.incidentPenalty} s`;
