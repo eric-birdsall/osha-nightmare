@@ -12,7 +12,7 @@ import { LAYOUT } from '/src/world/layout.js';
 import { boxLook } from '/src/entities/box.js';
 import { CONFIG } from '/src/config.js';
 
-export const VERSION = 6;
+export const VERSION = 7;
 const SEED = 20261024;
 
 // What each order asks for: rack, bay (1-6 from the west end), shelf (1 = bottom), quantity, how
@@ -23,21 +23,21 @@ const ORDER_SPECS = [
     id: 1,
     medals: { gold: 60, silver: 90, bronze: 120 }, // placeholder targets (s): set from playtests
     title: 'Tutorial',
-    dock: 'Dock 2',
+    dock: 'Dock 3',
     lines: [{ rack: 'A', bay: 6, shelf: 1, qty: 1, short: 0, fragile: false, decoy: false }],
   },
   {
     id: 2,
     medals: { gold: 120, silver: 180, bronze: 240 }, // placeholder targets (s): set from playtests
     title: 'Reach for it',
-    dock: 'Dock 2',
+    dock: 'Dock 3',
     lines: [{ rack: 'C', bay: 4, shelf: 2, qty: 3, short: 0, fragile: false, decoy: true }],
   },
   {
     id: 3,
     medals: { gold: 300, silver: 360, bronze: 450 }, // placeholder targets (s): set from playtests
     title: 'Top shelf',
-    dock: 'Dock 1',
+    dock: 'Dock 2',
     lines: [
       { rack: 'Z', bay: 1, shelf: 3, qty: 2, short: 0, fragile: false, decoy: true },
       { rack: 'Y', bay: 1, shelf: 5, qty: 1, short: 0, fragile: false, decoy: true },
@@ -48,7 +48,7 @@ const ORDER_SPECS = [
     id: 4,
     medals: { gold: 360, silver: 450, bronze: 540 }, // placeholder targets (s): set from playtests
     title: 'Handle with care',
-    dock: 'Dock 2',
+    dock: 'Dock 3',
     lines: [
       { rack: 'E', bay: 3, shelf: 2, qty: 3, short: 1, fragile: false, decoy: true },
       { rack: 'F', bay: 5, shelf: 1, qty: 2, short: 0, fragile: true, decoy: true },
@@ -59,7 +59,7 @@ const ORDER_SPECS = [
     id: 5,
     medals: { gold: 480, silver: 600, bronze: 720 }, // placeholder targets (s): set from playtests
     title: 'The whole nightmare',
-    dock: 'Dock 1',
+    dock: 'Dock 2',
     lines: [
       { rack: 'G', bay: 1, shelf: 3, qty: 3, short: 1, fragile: false, decoy: true },
       { rack: 'F', bay: 2, shelf: 2, qty: 2, short: 0, fragile: true, decoy: true },

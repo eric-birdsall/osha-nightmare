@@ -9,7 +9,7 @@ function setup() {
     scene: new THREE.Scene(), clock: 0, mode: 'single', active: 'driver', complete: false,
     level: {
       order: [{ line: 'A', sku: 355, qty: 1, location: 'A-6-1' }],
-      dock: { name: 'Dock 2' }, dockZone: { center: { x: 0, z: -20 } },
+      dock: { name: 'Dock 3' }, dockZone: { center: { x: 0, z: -20 } },
       wrapZone: { center: { x: 5, z: 0 }, contains: p => p.x === 5 },
     },
     climber: { feet: new THREE.Vector3(), carriedBoxes: () => carried, camera: new THREE.PerspectiveCamera() },
@@ -36,7 +36,7 @@ test('guides the real pick-load-wrap-deliver flow and recovers after a lost load
   game.wrap.job = {}; assert.match(tutorial.content('driver').detail, /Wrapping in progress/);
   game.wrap.job = null; pallet.count = 0; assert.equal(update(), 1);
   game.entities.push({ kind: 'wrapped', skus: { 355: 1 }, body: pallet.body });
-  assert.equal(update(), 5); assert.match(tutorial.content('driver').detail, /Dock 2/);
+  assert.equal(update(), 5); assert.match(tutorial.content('driver').detail, /Dock 3/);
   game.complete = true; tutorial.update(.2);
   assert.equal(tutorial.content('driver'), null); assert.equal(tutorial.marker.visible, false);
 });

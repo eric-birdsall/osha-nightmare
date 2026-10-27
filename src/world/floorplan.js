@@ -70,7 +70,7 @@ export function drawFloorPlan(svg, { idPrefix = 'fp', showPlayers = true } = {})
     })(),
     ...docks.map((d, i) => {
       const [r] = dockAt(d);
-      return `<rect id="${idPrefix}-dock-${i}" x="${n(r.x0)}" y="${n(r.z0)}" width="${n(r.x1 - r.x0)}" height="${n(r.z1 - r.z0)}" class="fp-dock" />`;
+      return `<rect id="${idPrefix}-dock-${i}" x="${n(r.x0)}" y="${n(r.z0)}" width="${n(r.x1 - r.x0)}" height="${n(r.z1 - r.z0)}" class="fp-dock open" />`;
     }),
     ...docks.map((d, i) => text(...dockAt(d)[1], `D${i + 1}`, 'fp-zone')),
     planLabel(-rcz, ramp.x1 - 0.8, ['RAMP'], 1.05),

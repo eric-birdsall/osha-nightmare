@@ -89,12 +89,13 @@ const CONVEYORS = [
   { name: 'Packing line', x0: PACKING.x - PACKING.belt / 2, x1: PACKING.x + PACKING.belt / 2, z0: PACK_LINE_END, z1: PACKING.z + PACK_LEN / 2 + 0.2, height: 0.8, speed: 0.8 },
 ];
 
-// Both loading docks share the player-facing east wall, Dock 1 north of Dock 2.
+// Dock 1 is on the player-facing North wall near the stairs; Docks 2/3 share the East wall.
 // Internal wall keys retain the original axes: `at` is how far along the wall (z for east/west walls, x for north/south). Each order
 // ships from one, picked at random.
 const docks = [
-  { name: 'Dock 1', wall: 'north', at: W + 3.5 },
-  { name: 'Dock 2', wall: 'north', at: W + 10 },
+  { name: 'Dock 1', wall: 'west', at: lower.z1 - 4.3 },
+  { name: 'Dock 2', wall: 'north', at: W + 3.5 },
+  { name: 'Dock 3', wall: 'north', at: W + 10 },
 ];
 
 export const LAYOUT = {
@@ -162,16 +163,13 @@ export const LAYOUT = {
   ],
   // One forklift-only shipping crate for handling playtests, clear of the central rack ends.
   freight: { pos: [5.8, 0, 0], yaw: 0, sku: 980, mass: 350 },
-  // Loose boxes on the open floor for stacking: [type, x, y, z]
-  looseBoxes: [
-    ['medium', RACKS_E + 7.5, 0, -8.0],
-    ['small', RACKS_E + 7.5, 0.6, -8.0],
-    ['small', RACKS_E + 8.5, 0, -8.4],
-    ['large', RACKS_E + 5.0, 0, -6.5],
-    ['medium', E - 4, 0, 10.0],
-    ['medium', E - 7, 0, 12.0],
-    ['small', E - 6.3, 0, 12.4],
-    ['medium', RACKS_E - 4, lower.y, -11.5],
+  // No random loose cartons at the start; rack stock and incoming loads remain.
+  looseBoxes: [],
+  // Slightly untidy, accessible stacks beside the basement edge, clear of the stair run.
+  palletStacks: [
+    { x: -12.5, z: -10.25, count: 5, yaw: -.035 },
+    { x: -10, z: -10.4, count: 4, yaw: .04 },
+    { x: -7.4, z: -10.3, count: 6, yaw: -.02 },
   ],
   // Empty pallets: [x, y, z, yaw] (fork pockets open toward ±local Z)
   pallets: [
@@ -179,7 +177,6 @@ export const LAYOUT = {
     [RACKS_E + 6.8, 0, 6.0, 0],
     [RACKS_E + 3.5, 0, 9.0, 0],
     [RACKS_E + 3.5, 0, 11.0, 0],
-    [W + 5, lower.y, -11.5, Math.PI / 2],
     // One just off the north end of each conveyor, so what rides off the end drops onto it (fork
     // pockets facing west, for the forklift to come in from the open side)
     ...CONVEYORS.map((c) => [(c.x0 + c.x1) / 2, 0, c.z0 - 0.75, Math.PI / 2]),

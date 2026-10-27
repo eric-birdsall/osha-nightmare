@@ -21,11 +21,11 @@ Open the printed URL in Chrome. Click the canvas to capture the mouse.
 
 | Order | Lines | Dock |
 |---|---|---|
-| 1 · Tutorial | 1 box from shelf 1 at the east end of Rack A | Dock 2 |
-| 2 · Reach for it | 3 boxes from shelf 2 | Dock 2 |
-| 3 · Top shelf | Cartons from high backstock plus 1 strapped crate | Dock 1 |
-| 4 · Handle with care | 3 from shelf 2 (one short: backstock), 2 FRAGILE cartons, plus 1 low-bay crate | Dock 2 |
-| 5 · The whole nightmare | Three carton lines (including backstock/FRAGILE) plus 1 high-bay crate | Dock 1 |
+| 1 · Tutorial | 1 box from shelf 1 at the east end of Rack A | Dock 3 |
+| 2 · Reach for it | 3 boxes from shelf 2 | Dock 3 |
+| 3 · Top shelf | Cartons from high backstock plus 1 strapped crate | Dock 2 |
+| 4 · Handle with care | 3 from shelf 2 (one short: backstock), 2 FRAGILE cartons, plus 1 low-bay crate | Dock 3 |
+| 5 · The whole nightmare | Three carton lines (including backstock/FRAGILE) plus 1 high-bay crate | Dock 2 |
 
 Each line is a SKU and a quantity; the clipboard shows where it lives (worked out from the warehouse file) and its brand, colour and FRAGILE tag. You can tune an order's quantities in `orders.json`, up to what's stocked for it.
 
@@ -45,7 +45,7 @@ Seven central racks A–G have six bays and three shelves (1.5, 3.0 and 4.5 m). 
 
 The West wall holds three evenly spaced five-shelf racks X/Y/Z, with 2.6 m ladder gaps. The former break area is removed. Decorative Office and bathroom doors sit on the East wall south of the ramp. The South-wall cage leaves 10 m clear from Rack X; the conveyor has an open end and a 2 m pallet space before the East wall. The lower-level stairs run from the North wall to the north edge of Rack A.
 
-The basement is 1 m below the main floor, with stairs for Dave and a ramp for the forklift. Both docks are on the player-facing East wall (Dock 1 north of Dock 2); Ralph starts in the southwest of the lower level facing east. Dave starts beside the main-floor ladder at Rack A’s endcap, within pickup reach. The wrapper remains beside the basement edge, with packing benches and two powered conveyor lines across the open floor. Their blueprint arrows show actual belt direction. The West-wall corner fire exit remains caged; the North-wall exit and cage have been removed, and connected pipework surrounds the dripping electrical panel.
+The basement is 1 m below the main floor, with stairs for Dave and a ramp for the forklift. Dock 1 is on the North wall near the stairs, and Docks 2/3 are on the East wall; all three remain open; Ralph starts in the southwest of the lower level facing east. Dave starts beside the main-floor ladder at Rack A’s endcap, within pickup reach. The wrapper remains beside the basement edge, with packing benches and two powered conveyor lines across the open floor. Their blueprint arrows show actual belt direction. The West-wall corner fire exit remains caged; the North-wall exit and cage have been removed, and connected pipework surrounds the dripping electrical panel.
 
 The changed warehouse is version 4, so saved best times start fresh for this layout. Order medal times remain provisional pending playtests.
 
@@ -179,7 +179,7 @@ Receiving finishes once every line is correctly put away. Returning empty pallet
 
 Forklift resets check clearance for the collapsed truck and forks before moving it. If the normal parking spot contains pallets, boxes, debris, or Dave, the truck uses a clear nearby position and explains why. If no nearby position is safe, the reset asks for the area to be cleared instead of embedding the truck in an obstacle.
 
-Both basement loading docks are on the player-facing east wall, with Dock 1 north of Dock 2. Full Shift builds separate usable doorways and trailers for both docks on that wall.
+All three basement loading docks are permanently open with accessible trailers. Dock 1 is on the North wall near the stairs; Docks 2 and 3 are on the East wall. Each order still names its assigned destination on the clipboard.
 
 A compact bottom-right controls reference shows only the current character’s controls, using keyboard keys or controller buttons as appropriate. Each co-op viewport shows its own character’s reference.
 

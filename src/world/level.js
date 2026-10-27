@@ -40,14 +40,12 @@ export const STAIRS = (() => {
   return { ...st, ...rect, dx, dz };
 })();
 
-// Loading docks on the east wall. Each order ships from one, picked at random: its roll-up door
-// is open with a trailer backed up to it, and the order completes when the wrapped load is in
-// the trailer. The others stay shut.
+// All three docks stay open with trailers. Orders still require their assigned destination.
 export const DOCKS = LAYOUT.docks;
 const DOOR_HALF = LAYOUT.door.half; // half the door width
 const DOOR_H = LAYOUT.door.h;
 const TRAILER = LAYOUT.trailer; // inside dimensions
-let openDocks = [DOCKS[1]]; // the docks this run ships from (built with a door that rolls up; set when the level is built)
+let openDocks = DOCKS; // the docks this run ships from (built with a door that rolls up; set when the level is built)
 
 const inRect = (r, x, z) => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1;
 export const inLowerLevel = (x, z) => inRect(LOWER, x, z);
@@ -379,9 +377,9 @@ function roofMaterial(w, d) {
   c.height = 16;
   const g = c.getContext('2d');
   const grad = g.createLinearGradient(0, 0, 64, 0);
-  grad.addColorStop(0, '#4a5058');
-  grad.addColorStop(0.5, '#6b727b');
-  grad.addColorStop(1, '#4a5058');
+  grad.addColorStop(0, '#292e35');
+  grad.addColorStop(0.5, '#3a4149');
+  grad.addColorStop(1, '#292e35');
   g.fillStyle = grad;
   g.fillRect(0, 0, 64, 16);
   const tex = new THREE.CanvasTexture(c);
@@ -389,7 +387,7 @@ function roofMaterial(w, d) {
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(w / 0.6, d / 4);
   // Faint glow: the scene's light comes from above, which would leave the underside black
-  return new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, emissive: 0x2c3138 });
+  return new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, emissive: 0x15191e });
 }
 
 // Many copies of one box shape in a single draw call. items: [[x, y, z, rotY?]]
@@ -1013,7 +1011,7 @@ function buildDocks(game) {
   const docks = {};
   for (const d of DOCKS) {
     const usable = openDocks.includes(d);
-    const open = usable; // built open; setOpen() rolls the door down if it isn't this order's
+    const open = true; // all three docks are permanently open
     const f = dockFrame(d);
     // Built in the dock's frame
     const g = new THREE.Group();
@@ -1120,7 +1118,8 @@ function buildDocks(game) {
     docks[d.name] = {
       dock: d,
       zone,
-      setOpen(on) {
+      setOpen() {
+        const on = true; // All docks remain open, regardless of the current order.
         shut.visible = !on;
         rolled.visible = on;
         doorCollider.setEnabled(!on);
@@ -1168,8 +1167,7 @@ export function buildLevel(game) {
   const wallHalfY = (wallH - FLOOR_BOTTOM) / 2;
   const wallY = (wallH + FLOOR_BOTTOM) / 2;
   // Cut a doorway for every dock used in this run, including multiple docks on one wall.
-  openDocks = DOCKS.filter((d) => run.some((o) => o.dock === d.name));
-  if (!openDocks.length) openDocks = [DOCKS[0]];
+  openDocks = DOCKS;
   const docksOn = (wall) => openDocks.filter((d) => d.wall === wall).sort((a, b) => a.at - b.at);
   // Each wall as boxes along it ([half size, centre]); the north and south walls run past the
   // corners to close them
@@ -1293,27 +1291,22 @@ export function buildLevel(game) {
   const storage = new PalletStorage(game);
   stockShelves(game, racks, storage);
 
-  // Loose boxes on the open floor for stacking
-  LAYOUT.looseBoxes.forEach(([type, x, y, z], i) => {
-    const [sku, yaw] = WAREHOUSE.loose[i];
-    const box = createBox(game, { type, sku, pos: [x, y, z], yaw });
-    // Home is where it started (no rack): a FRAGILE one that goes off turns up here again
-    const t = box.body.translation();
-    const r = box.body.rotation();
-    box.home = { pos: { x: t.x, y: t.y, z: t.z }, rot: { x: r.x, y: r.y, z: r.z, w: r.w } };
-  });
-
-  // A-frame ladders: Rack A endcap and the gap between West-wall storage sections
   for (const st of LAYOUT.ladderStands) createLadderStand(game, { pos: [st.x, st.y, st.z], yaw: st.yaw, count: st.count, showLabel: st.showLabel });
-
   const climberStart = new THREE.Vector3(...LAYOUT.climberSpawn.pos);
-  // OSHA violations: dripping electrical panel, caged fire exits
   const hazards = buildHazards(game);
-
   createFreight(game, LAYOUT.freight);
 
   // Empty pallets (fork pockets open toward ±local Z)
   for (const [x, y, z, yaw] of LAYOUT.pallets) createPallet(game, { pos: [x, y, z], yaw });
+  for (const pile of LAYOUT.palletStacks) {
+    for (let i = 0; i < pile.count; i++) {
+      const pallet = createPallet(game, {
+        pos: [pile.x + (i % 3 - 1) * .035, LOWER.y + i * .154 + .005, pile.z + (i % 2 ? .035 : -.025)],
+        yaw: pile.yaw + (i % 3 - 1) * .025,
+      });
+      pallet.basementStack = true;
+    }
+  }
 
   const level = {
     storage,
@@ -1325,12 +1318,12 @@ export function buildLevel(game) {
     dock: null, // this order's dock ({ name, wall, at }) and the zone inside its trailer: set by setOrder
     dockZone: null,
     order: null, // this order's pick list: [{ line, sku, qty, location, backstock }]
-    // Switch to an order (orders.json entry): its pick list, and its dock's door up (the rest down)
+    // Switch the pick list and delivery zone; keep every dock open.
     setOrder(spec) {
       this.spec = spec;
       this.order = orderLines(spec);
       const name = this.docks[spec.dock] ? spec.dock : Object.keys(this.docks)[0];
-      for (const [n, d] of Object.entries(this.docks)) d.setOpen(n === name);
+      for (const d of Object.values(this.docks)) d.setOpen();
       this.dock = this.docks[name].dock;
       this.dockZone = this.docks[name].zone;
     },

@@ -407,7 +407,7 @@ export class Forklift {
     frame(0.9, 0.045, 0, 0.36, 0x444a52); // upper fork bar
     frame(0.9, 0.05, 0, 0.97); // backrest top rail
     for (const x of [-0.43, 0.43]) frame(0.05, 1.0, x, 0.5); // side frames
-    for (let i = -3; i <= 3; i++) frame(0.025, 0.5, i * 0.12, 0.71); // backrest bars
+    for (let i = -3; i <= 3; i++) frame(0.025, 0.94, i * 0.12, 0.5); // continuous backrest bars: lower fork rail to top rail
     // Forged steel forks: an L-shaped blade (vertical shank up the carriage plate + flat blade)
     // with a bevelled tip and a small yellow mark so the tips read against the floor.
     const steel = new THREE.MeshLambertMaterial({ color: 0xc3c9d0 });

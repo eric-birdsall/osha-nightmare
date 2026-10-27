@@ -47,7 +47,7 @@ function move(body, x, y, z) {
 test('receiving builds real inbound pallets and reserved empty shelf destinations in both modes', () => {
   for (const mode of ['single', 'coop']) {
     const game = createGame(mode), receiving = game.receivingSystem;
-    assert.equal(game.receiving, true); assert.equal(game.level.dock.name, 'Dock 2');
+    assert.equal(game.receiving, true); assert.equal(game.level.dock.name, 'Dock 3');
     assert.equal(receiving.pallets.length, 2);
     assert.ok(receiving.pallets.every(p => ['wrapped', 'freight'].includes(p.kind)));
     assert.equal(receiving.pallets.flatMap(loadCartons).length, 4);
@@ -179,10 +179,10 @@ test('parking reset does not embed the forklift in a pallet left in its bay', ()
 test('both east-wall docks have usable doorways during Full Shift', () => {
   const game = new Game({ mode: 'single', order: 'shift' });
   const docks = game.level.docks;
-  assert.equal(docks['Dock 1'].dock.wall, 'north');
   assert.equal(docks['Dock 2'].dock.wall, 'north');
-  assert.ok(docks['Dock 1'].dock.at < docks['Dock 2'].dock.at);
-  for (const name of ['Dock 1', 'Dock 2']) {
+  assert.equal(docks['Dock 3'].dock.wall, 'north');
+  assert.ok(docks['Dock 2'].dock.at < docks['Dock 3'].dock.at);
+  for (const name of ['Dock 2', 'Dock 3']) {
     for (const [dockName, dock] of Object.entries(docks)) dock.setOpen(dockName === name);
     game.world.step();
     const dock = docks[name].dock;
@@ -867,6 +867,49 @@ test('single stretching mast stays connected without adding bars across Ralph’
       assert.ok(Math.abs(rail.collider.halfExtents().y - halfY) < 1e-5, 'collision shape matches stretched visual');
       assert.ok(Math.abs(rail.collider.translationWrtParent().y - rail.mesh.position.y) < 1e-5);
     }
+  }
+  game.dispose();
+});
+
+test('new North-wall Dock 1 clears the stairs; all three docks stay open across order changes', () => {
+  const game = createGame(), specs = LAYOUT_FOR_TEST.docks;
+  assert.deepEqual(specs.map(d => d.name), ['Dock 1', 'Dock 2', 'Dock 3']);
+  const first = specs[0]; assert.equal(first.wall, 'west');
+  assert.ok(first.at + LAYOUT_FOR_TEST.door.half < LAYOUT_FOR_TEST.lower.z1 - LAYOUT_FOR_TEST.stairs.steps * LAYOUT_FOR_TEST.stairs.tread, 'doorway clears stair run');
+  const marks = specs.map(d => d.wall === 'west'
+    ? { x: -LAYOUT_FOR_TEST.room.halfX + 2.8, z: d.at, hx: .45, hz: 1.6 }
+    : { x: d.at, z: -LAYOUT_FOR_TEST.room.halfZ + 2.8, hx: 1.6, hz: .45 });
+  for (let i = 1; i < marks.length; i++) assert.ok(Math.abs(marks[0].x - marks[i].x) > marks[0].hx + marks[i].hx || Math.abs(marks[0].z - marks[i].z) > marks[0].hz + marks[i].hz, 'new floor label does not overlap existing labels');
+  for (const target of specs) {
+    game.level.setOrder({ ...game.level.spec, dock: target.name });
+    for (const dock of Object.values(game.level.docks)) dock.setOpen(false);
+    game.world.step();
+    for (const dock of specs) {
+      const west = dock.wall === 'west';
+      const origin = west ? { x: -LAYOUT_FOR_TEST.room.halfX + .5, y: -.1, z: dock.at } : { x: dock.at, y: -.1, z: -LAYOUT_FOR_TEST.room.halfZ + .5 };
+      const direction = west ? { x: -1, y: 0, z: 0 } : { x: 0, y: 0, z: -1 };
+      const hit = game.world.castRay(new RAPIER.Ray(origin, direction), 2, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS);
+      assert.equal(hit, null, `${dock.name} stays physically open when ${target.name} is assigned`);
+    }
+  }
+  game.dispose();
+});
+
+test('starts without random floor cartons and basement stacks are stable usable pallets', () => {
+  const game = new Game({ mode: 'single', order: 1 });
+  game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  assert.equal(LAYOUT_FOR_TEST.looseBoxes.length, 0);
+  assert.ok(game.entities.filter(e => e.kind === 'box').every(e => e.home?.rack), 'all starting cartons belong to racks');
+  const pallets = game.entities.filter(e => e.basementStack);
+  assert.equal(pallets.length, 15);
+  assert.ok(pallets.every(e => e.kind === 'pallet' && e.body.isDynamic()));
+  settle(game, 3);
+  for (const pile of LAYOUT_FOR_TEST.palletStacks) {
+    const stack = pallets.filter(p => Math.abs(p.body.translation().x - pile.x) < .7);
+    assert.equal(stack.length, pile.count);
+    const heights = stack.map(p => p.body.translation().y).sort((a, b) => a - b);
+    for (let i = 1; i < heights.length; i++) assert.ok(heights[i] - heights[i - 1] > .12, 'pallets stay stacked');
+    assert.ok(stack.every(p => Math.abs(p.body.translation().z - pile.z) < .3));
   }
   game.dispose();
 });

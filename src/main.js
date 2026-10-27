@@ -219,7 +219,7 @@ function pause() {
   state = 'paused';
   pausedAt = performance.now();
   // Light up this order's dock on the floor plan
-  game.level.dock && document.querySelectorAll('#pause .fp-dock').forEach((r, i) => r.classList.toggle('open', DOCKS[i]?.name === game.level.dock.name));
+  game.level.dock && document.querySelectorAll('#pause .fp-dock').forEach((r, i) => r.classList.add('open'));
   // Mark Dave and Ralph on the pause screen's floor plan (SVG x/y = world x/z)
   for (const [id, body] of [['fp-dave', game.climber.body], ['fp-ralph', game.forklift.body]]) {
     const t = body.translation();
