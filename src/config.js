@@ -119,9 +119,9 @@ export const CONFIG = {
   objects: {
     fragileChance: 0.15, // share of SKUs printed FRAGILE (they explode if dropped or thrown)
     pallet: { size: [1.0, 0.15, 1.2], mass: 25, friction: 0.7, color: 0xb08850 },
-    small: { size: [0.4, 0.4, 0.4], mass: 5, friction: 0.6, color: 0xc9a66b },
-    medium: { size: [0.6, 0.6, 0.6], mass: 12, friction: 0.6, color: 0xb8925a },
-    large: { size: [0.6, 0.9, 0.6], mass: 20, friction: 0.6, color: 0xa47e4a },
+    small: { size: [.28, .25, .28], mass: 5, friction: 0.6, color: 0xc9a66b },
+    medium: { size: [.38, .40, .48], mass: 12, friction: 0.6, color: 0xb8925a },
+    large: { size: [.45, .65, .55], mass: 20, friction: 0.6, color: 0xa47e4a },
   },
 
   racks: {

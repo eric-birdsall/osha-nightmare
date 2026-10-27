@@ -142,18 +142,26 @@ function labelRack(group, rack, cx, cz) {
   const add = (mesh, x, y, z, ry) => {
     mesh.position.set(x - cx, y, z - cz);
     mesh.rotation.y = ry;
+    mesh.userData.navigationLabel = true;
     group.add(mesh);
   };
   // West-wall racks keep only white location tags; central racks retain end-cap signs.
   if (rack.palletFromShelf == null) {
-    add(endCapSign(name, 1.0, 1.1), x0 - 0.05, 2.3, cz, -Math.PI / 2);
-    add(endCapSign(name, 1.0, 1.1), x1 + 0.05, 2.3, cz, Math.PI / 2);
+    add(endCapSign(name, 1.15, 1.35), x0 - 0.05, 2.3, cz, -Math.PI / 2);
+    add(endCapSign(name, 1.15, 1.35), x1 + 0.05, 2.3, cz, Math.PI / 2);
+  }
+  // Central-rack entrances explain the bay direction without adding signs to X/Y/Z.
+  if (rack.palletFromShelf == null) {
+    const first = tagPlane(`${name} · BAY 1`, 1.0, .22);
+    const last = tagPlane(`${name} · BAY ${rack.bays}`, 1.0, .22);
+    add(first, x0 - .065, 1.48, cz, -Math.PI / 2);
+    add(last, x1 + .065, 1.48, cz, Math.PI / 2);
   }
   for (const [z, ry] of faces) {
     for (let b = 0; b < rack.bays; b++) {
       rack.shelves.forEach((y, sh) => {
         // Tag stuck on the beam face, a few mm proud of it
-        add(tagPlane(locationCode(name, b, sh), 0.42, BEAM_H - 0.03), bayX(rack, b), y - BEAM_H / 2, z + (ry ? 0.008 : -0.008), ry);
+        add(tagPlane(locationCode(name, b, sh), .72, .22), bayX(rack, b), y - BEAM_H / 2, z + (ry ? 0.008 : -0.008), ry);
       });
     }
   }
@@ -318,12 +326,26 @@ function stockShelves(game, racks, storage) {
           storage.stock(ent, rack, b, shelf, WAREHOUSE.faces[at] || [], at, { empty: reserved, freight, reservedSku: (game.receivingSpec || game.campaign?.receiving)?.lines.find(line => line.location === at)?.sku });
           continue;
         }
-        (reserved ? [] : WAREHOUSE.faces[at] || []).forEach((sp, i) => {
+        const faceStock = reserved ? [] : WAREHOUSE.faces[at] || [];
+        const rows = rack.stockRows || 1;
+        const type = faceStock.find(Boolean)?.[2];
+        // Rack A fills fixed-capacity cells: partial stock leaves real gaps and every
+        // upper carton has a lower carton under it, rather than compressing fractional rows.
+        const perRow = rack.stockRows ? ({ small: 5, medium: 4, large: 3 }[type] || 1) : faceStock.length;
+        const perLayer = perRow * rows;
+        const pitch = perRow > 3 ? (2.3 - Math.max(...faceStock.filter(Boolean).map(sp => CONFIG.objects[sp[2]].size[0]))) / (perRow - 1) : .58;
+        faceStock.forEach((sp, i) => {
           if (!sp) return;
           const [sku, , type, jitter] = sp;
           const half = CONFIG.objects[type].size[2] / 2;
-          const z = face === 'south' ? z1 - BEAM_D - 0.03 - half : z0 + BEAM_D + 0.03 + half;
-          const box = createBox(game, { type, sku, pos: [bayX(rack, b) + (i - 1) * 0.85 + jitter, base + rack.shelves[shelf] + 0.005, z] });
+          const layer = Math.floor(i / perLayer);
+          const row = Math.floor((i % perLayer) / perRow), column = i % perRow;
+          // Two large cartons need 1.12 m including their gap. The beams support their edges,
+          // so use the full shelf depth while retaining clearance from both outer faces.
+          const inset = rows > 1 ? .03 : BEAM_D + .03;
+          const offset = inset + half + row * (half * 2 + .02);
+          const z = face === 'south' ? z1 - offset : z0 + offset;
+          const box = createBox(game, { type, sku, pos: [bayX(rack, b) + (column - (perRow - 1) / 2) * pitch + jitter, base + rack.shelves[shelf] + 0.005 + layer * (CONFIG.objects[type].size[1] + .005), z] });
           // Where it was stocked, so resetting the racking can put it back
           const t = box.body.translation();
           const r = box.body.rotation();
@@ -1202,6 +1224,15 @@ export function buildLevel(game) {
     wall.castShadow = false;
     wall.material = wallMaterial(Math.max(half[0], half[2]) * 2, half[1] * 2);
   }
+  // Fixed West-wall identifiers sit above the tall racks, clear of their top shelf stock.
+  for (const rack of RACKS.filter(r => r.palletFromShelf != null)) {
+    const sign = endCapSign(rack.name, 2.0, 1.8);
+    sign.name = `West wall rack ${rack.name} sign`;
+    sign.position.set((rack.x0 + rackX1(rack)) / 2, 10.8, halfZ - .035);
+    sign.rotation.y = Math.PI;
+    scene.add(sign);
+  }
+
   // Roof: solid (a FRAGILE blast can't throw things out of the building), with the lights,
   // ducts and fans hanging under it
   addStatic(game, [halfX + t * 2, t, halfZ + t * 2], [0, wallH + t, 0], 0, { mesh: false });

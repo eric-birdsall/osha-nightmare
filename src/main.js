@@ -1,3 +1,4 @@
+import { orderDestinations, markDestination } from './world/navigation.js';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from './config.js';
@@ -160,6 +161,14 @@ document.addEventListener('click', (e) => {
   } else if (act === 'invert') {
     input.setInvertY(!input.invertY);
     refreshInvert();
+  } else if (act === 'mapdestination') {
+    mapDestinationEnabled = !mapDestinationEnabled;
+    try { localStorage.setItem('osha.mapDestination', String(mapDestinationEnabled)); } catch {}
+    refreshMapDestination();
+  } else if (act === 'mapnext') {
+    const targets = orderDestinations(game);
+    mapDestinationId = targets[(targets.findIndex(t => t.id === mapDestinationId) + 1) % targets.length]?.id;
+    refreshMapDestination();
   } else if (act === 'resume') resume();
   else if (act === 'restart') startGame(game.mode, game.levelId);
   else if (act === 'swaproles') {
@@ -221,10 +230,29 @@ function startGame(mode, order = 1) {
   if (wantsPointer()) input.lockPointer();
 }
 
+let mapDestinationEnabled = false;
+try { mapDestinationEnabled = localStorage.getItem('osha.mapDestination') === 'true'; } catch {}
+let mapDestinationId = null;
+function refreshMapDestination() {
+  if (!game) return;
+  const targets = orderDestinations(game);
+  const target = targets.find(t => t.id === mapDestinationId) || targets.find(t => !t.complete) || targets[0];
+  mapDestinationId = target?.id;
+  markDestination(document.querySelector('#pause .map svg'), mapDestinationEnabled ? target : null);
+  const toggle = document.querySelector('[data-act="mapdestination"]');
+  toggle.textContent = `MARKER: ${mapDestinationEnabled ? 'ON' : 'OFF'}`;
+  toggle.setAttribute('aria-pressed', String(mapDestinationEnabled));
+  document.querySelector('[data-act="mapnext"]').disabled = !mapDestinationEnabled || targets.length < 2;
+  document.getElementById('map-destination-detail').textContent = mapDestinationEnabled && target
+    ? `${target.label}${target.complete ? ' · Complete' : ''} — ${target.detail}` : 'Locations read Rack – Bay – Shelf. Shelves count from the bottom.';
+}
+
 function pause() {
   if (state !== 'playing') return;
   state = 'paused';
   pausedAt = performance.now();
+  mapDestinationId = null;
+  refreshMapDestination();
   // Light up this order's dock on the floor plan
   game.level.dock && document.querySelectorAll('#pause .fp-dock').forEach((r, i) => r.classList.add('open'));
   // Mark Dave and Ralph on the pause screen's floor plan (SVG x/y = world x/z)

@@ -1,3 +1,5 @@
+import { emptyPalletSlots } from '../src/world/stock-profile.js';
+import { CONFIG } from '../src/config.js';
 import test from 'node:test';
 import * as THREE_FOR_VIEW_TEST from 'three';
 import assert from 'node:assert/strict';
@@ -279,7 +281,11 @@ test('five-shelf West-wall racks stock real loaded pallets and preserve backstoc
   assert.equal(game.level.storage.slots.filter(s => s.kind === 'freight').length, 10);
   assert.equal(game.level.storage.slots.filter(s => s.kind === 'wrapped').length, 28);
   settle(game, 4);
+  let openSlots = 0;
   for (const slot of game.level.storage.slots) {
+    if (emptyPalletSlots.includes(slot.location)) {
+      assert.equal(slot.pallet, null); assert.equal(slot.seated, false); openSlots++; continue;
+    }
     assert.ok(slot.seated, `${slot.location} must rest squarely on its deck`);
     assert.equal(slot.pallet.kind, slot.kind);
     if (slot.kind === 'freight') {
@@ -292,6 +298,7 @@ test('five-shelf West-wall racks stock real loaded pallets and preserve backstoc
     assert.ok(boxes.every(b => b.sku === slot.sku), 'One SKU per storage pallet');
     assert.ok(!game.rackDisturbed(slot.rack), 'Stable wrapped stock does not need a rack reset');
   }
+  assert.equal(openSlots, 5);
   assert.equal(orderLines(ORDERS.find(o => o.id === 4))[0].location, 'E-3-2');
   assert.match(orderLines(ORDERS.find(o => o.id === 4))[0].backstock, /^[XYZ]-[1-4]-[3-5]$/);
   game.dispose();
@@ -1037,8 +1044,17 @@ test('every combined shift completes shipping and receiving through the physical
         const load = receiving.pallets.find(p => slot.line.freight ? p.kind === 'freight' && p.receivingLine === slot.line.line : p.kind === 'wrapped' && loadCartons(p).every(r => r.data.receivingLine === slot.line.line));
         move(load.body, (slot.x0 + slot.x1) / 2, slot.y + .005, (slot.z0 + slot.z1) / 2);
       } else receiving.boxes.filter(b => b.receivingLine === slot.line.line).forEach((box, i) => {
-        const x = definition.id === 'campaign-1' ? (slot.x0 + slot.x1) / 2 + (i ? .23 : -.23) : slot.x0 + .5 + i * .85;
-        move(box.body, x, slot.y + .205, (slot.z0 + slot.z1) / 2);
+        // A dense retained pick face needs incoming cartons placed on existing stock,
+        // rather than teleporting into the newly filled rear row.
+        const supports = slot.rack.stock.filter(b => !b.removed && !b.carried && !b.incomingId &&
+          b.body.translation().x > slot.x0 && b.body.translation().x < slot.x1 &&
+          b.body.translation().y - b.size[1] / 2 >= slot.y - .05 &&
+          b.body.translation().y + b.size[1] / 2 < slot.ceiling - .3).sort((a, b) => b.body.translation().y - a.body.translation().y);
+        const support = supports[i];
+        if (support) {
+          const p = support.body.translation();
+          move(box.body, p.x, p.y + support.size[1] / 2 + box.size[1] / 2 + .005, p.z);
+        } else move(box.body, slot.x0 + .5 + i * .85, slot.y + box.size[1] / 2 + .005, (slot.z0 + slot.z1) / 2);
       });
     }
     settle(game, 2.5);
@@ -1232,8 +1248,122 @@ test('automatic tilt leaves shelf-supported stock level and Dave follows the til
   settle(game, 1);
   assert.ok(dave.holdingOn, 'Dave can still hold on to the tilted forks');
   const local = dave.carriageLocal(dave.feet);
-  assert.ok(Math.abs(local.x) < .15 && Math.abs(local.z - .58) < .15 && local.y > .4, 'Dave rides the load in the actual tilted assembly');
+  assert.ok(Math.abs(local.x) < .15 && Math.abs(local.z - .58) < .15 && local.y > CONFIG.objects.small.size[1], 'Dave rides the load in the actual tilted assembly');
   f.teleport({ x: 5, z: -5 }, 0);
   assert.equal(f.tilt, 0, 'reset/teleport levels the assembly');
+  game.dispose();
+});
+
+test('pause-map destinations match physical shipping, backstock and receiving bays', async () => {
+  const { orderDestinations } = await import('../src/world/navigation.js');
+  for (const order of [3, 'receiving-4']) {
+    const game = new Game({ mode: 'single', order });
+    const targets = orderDestinations(game);
+    assert.ok(targets.some(t => t.id === 'dock' && t.label.includes(game.level.dock.name)));
+    for (const line of game.level.order) {
+      const target = targets.find(t => t.id === `${line.line}:${line.location}`);
+      assert.ok(target, `destination exists for ${line.location}`);
+      const [name, bay, shelf] = line.location.split('-');
+      const rack = LAYOUT_FOR_TEST.racks.find(r => r.name === name);
+      assert.ok(Math.abs(target.x - (rack.x0 + (Number(bay) - .5) * LAYOUT_FOR_TEST.racking.bayW)) < 1e-8);
+      assert.ok(target.z < rack.z0 || target.z > rack.z1, 'marker sits in the accessible aisle beside the destination');
+      assert.match(target.detail, new RegExp(`Rack ${name} · Bay ${bay} · Shelf ${shelf}`));
+      game.itemStatus[line.line] = line.qty;
+      assert.ok(orderDestinations(game).find(t => t.id === target.id).complete);
+      if (!game.receiving && line.backstock) assert.ok(targets.some(t => t.label.startsWith('Backstock') && t.id.endsWith(line.backstock)));
+    }
+    if (game.receiving) assert.ok(targets.every(t => !t.label.startsWith('Backstock')));
+    game.dispose();
+  }
+});
+
+
+test('resized cartons fit twelve small or four medium/large per pallet layer without overlap', async () => {
+  const { packPallet } = await import('../src/world/pallet-packing.js');
+  for (const [type, count] of [['small', 12], ['medium', 4], ['large', 4]]) {
+    const types = Array(count).fill(type), offsets = packPallet(types);
+    const [sx, sy, sz] = CONFIG.objects[type].size;
+    const game = new Game({ mode: 'single', order: 1 });
+    const pallet = createPalletForTest(game, { pos: [7, .005, -3] });
+    const cartons = offsets.map(([x, y, z]) => createBoxForTest(game, { type, sku: 355, pos: [7 + x, .005 + y, -3 + z] }));
+    for (const [x, y, z] of offsets) {
+      assert.ok(Math.abs(x) + sx / 2 <= .5 && Math.abs(z) + sz / 2 <= .6, 'carton stays within the pallet');
+      assert.equal(y, offsets[0][1], 'all cartons occupy one layer');
+    }
+    settle(game, 2);
+    const stack = collectStack(game, pallet);
+    assert.equal(cartons.filter(b => stack.has(b)).length, count, `${count} ${type} cartons rest on the pallet`);
+    assert.ok(cartons.every(b => Math.abs(b.body.translation().y - (.005 + .15 + sy / 2)) < .03), 'cartons remain in one stable layer');
+    const wrapped = buildWrapped(game, pallet, stack);
+    assert.equal(loadCartons(wrapped).length, count);
+    game.dispose();
+  }
+});
+
+test('Rack A mixes empty and partially stocked locations with supported stacks and clear shelf bounds', () => {
+  const game = new Game({ mode: 'single', order: 1 });
+  const rack = game.level.racks.find(r => r.name === 'A');
+  const spec = LAYOUT_FOR_TEST.racks.find(r => r.name === 'A');
+  let empty = 0, partial = 0, nearFull = 0;
+  for (let bay = 1; bay <= spec.bays; bay++) for (let shelf = 1; shelf <= spec.shelves.length; shelf++) {
+    const x0 = spec.x0 + (bay - 1) * LAYOUT_FOR_TEST.racking.bayW, x1 = x0 + LAYOUT_FOR_TEST.racking.bayW;
+    const boxes = rack.stock.filter(b => b.home.pos.x > x0 && b.home.pos.x < x1 && b.home.pos.y - b.size[1] / 2 >= spec.base + spec.shelves[shelf - 1] && b.home.pos.y + b.size[1] / 2 < (spec.base + (spec.shelves[shelf] ?? spec.shelves[shelf - 1] + 1.5)));
+    if (!boxes.length) { empty++; continue; }
+    assert.equal(new Set(boxes.map(b => b.sku)).size, 1);
+    assert.equal(new Set(boxes.map(b => b.type)).size, 1);
+    const layers = boxes[0].type === 'large' ? 1 : 2;
+    const capacity = layers * 2 * { small: 5, medium: 4, large: 3 }[boxes[0].type];
+    assert.ok(boxes.length <= capacity);
+    if (boxes.length / capacity >= .8) nearFull++; else partial++;
+    for (const box of boxes) if (box.home.pos.y - box.size[1] / 2 > spec.shelves[shelf - 1] + .05) {
+      assert.ok(boxes.some(lower => lower !== box && Math.abs(lower.home.pos.x - box.home.pos.x) < .01 && Math.abs(lower.home.pos.z - box.home.pos.z) < .01 && Math.abs(lower.home.pos.y + lower.size[1] / 2 - (box.home.pos.y - box.size[1] / 2)) < .01), 'upper cartons have physical support');
+    }
+    for (let i = 0; i < boxes.length; i++) {
+      const box = boxes[i];
+      assert.ok(box.home.pos.x - box.size[0] / 2 > x0 + .05 && box.home.pos.x + box.size[0] / 2 < x1 - .05);
+      assert.ok(box.home.pos.z - box.size[2] / 2 > spec.z0 && box.home.pos.z + box.size[2] / 2 < spec.z1);
+      for (const other of boxes.slice(i + 1)) assert.ok(
+        Math.abs(box.home.pos.x - other.home.pos.x) > (box.size[0] + other.size[0]) / 2 ||
+        Math.abs(box.home.pos.z - other.home.pos.z) > (box.size[2] + other.size[2]) / 2 ||
+        Math.abs(box.home.pos.y - other.home.pos.y) > (box.size[1] + other.size[1]) / 2, 'stacked cartons never overlap');
+    }
+  }
+  assert.equal(empty, 4); assert.equal(partial, 11); assert.equal(nearFull, 3);
+  assert.equal(rack.stock.length, 125);
+  settle(game, 2);
+  assert.ok(rack.stock.every(b => Math.abs(b.body.translation().y - b.home.pos.y) < .03), 'preview stock rests stably on its shelf');
+  game.dispose();
+});
+
+
+test('warehouse-wide loose stock uses one SKU per location with empty bays and supported stacks', () => {
+  const game = new Game({ mode: 'single', order: 1 });
+  let empty = 0, populated = 0, upperCartons = 0;
+  for (const spec of LAYOUT_FOR_TEST.racks) {
+    const rack = game.level.racks.find(r => r.name === spec.name);
+    for (let bay = 0; bay < spec.bays; bay++) for (let shelf = 0; shelf < spec.shelves.length; shelf++) {
+      const location = `${spec.name}-${bay + 1}-${shelf + 1}`;
+      if (FREIGHT_STOCK[location] || (spec.palletFromShelf != null && shelf >= spec.palletFromShelf)) continue;
+      const x0 = spec.x0 + bay * LAYOUT_FOR_TEST.racking.bayW, x1 = x0 + LAYOUT_FOR_TEST.racking.bayW;
+      const floor = spec.base + spec.shelves[shelf], ceiling = spec.base + (spec.shelves[shelf + 1] ?? spec.shelves[shelf] + 1.5);
+      const boxes = rack.stock.filter(b => b.home.pos.x > x0 && b.home.pos.x < x1 && b.home.pos.y > floor && b.home.pos.y < ceiling);
+      if (!boxes.length) { empty++; continue; } populated++;
+      assert.equal(new Set(boxes.map(b => b.sku)).size, 1, location);
+      assert.equal(new Set(boxes.map(b => b.type)).size, 1, location);
+      for (const box of boxes) {
+        const p = box.home.pos;
+        assert.ok(p.x - box.size[0] / 2 > x0 + .04 && p.x + box.size[0] / 2 < x1 - .04, location);
+        assert.ok(p.z - box.size[2] / 2 > spec.z0 && p.z + box.size[2] / 2 < spec.z1, location);
+        assert.ok(p.y + box.size[1] / 2 < ceiling - .1, location);
+        if (p.y - box.size[1] / 2 > floor + .05) {
+          upperCartons++;
+          assert.ok(boxes.some(lower => lower !== box && Math.abs(lower.home.pos.x - p.x) < .01 && Math.abs(lower.home.pos.z - p.z) < .01 && Math.abs(lower.home.pos.y + lower.size[1] / 2 - (p.y - box.size[1] / 2)) < .01), location);
+        }
+      }
+    }
+  }
+  assert.ok(empty >= 25 && populated >= 100 && upperCartons > 0);
+  settle(game, 2);
+  assert.ok(game.level.racks.every(r => r.stock.filter(b => !b.storagePallet).every(b => Math.abs(b.body.translation().y - b.home.pos.y) < .04)), 'all loose stock remains on its intended shelf');
   game.dispose();
 });

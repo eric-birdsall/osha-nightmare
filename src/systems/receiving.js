@@ -1,3 +1,4 @@
+import { packPallet } from '../world/pallet-packing.js';
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { LAYOUT } from '../world/layout.js';
@@ -47,12 +48,13 @@ export class Receiving {
       pallet.incomingPalletIds = [`${this.spec.id}:pallet-${index}`];
       pallet.home = { pos: { ...pallet.body.translation() }, rot: { ...pallet.body.rotation() } };
       const load = new Set([pallet]);
+      const packing = packPallet(manifest.flatMap(([letter, quantity]) => Array(quantity).fill(game.level.order.find(l => l.line === letter).type)));
       let spot = 0;
       for (const [letter, quantity] of manifest) {
         const line = game.level.order.find(l => l.line === letter);
         for (let i = 0; i < quantity; i++, spot++) {
           const box = createBox(game, { type: line.type, sku: line.sku,
-            pos: [pos[0] + (spot % 2 ? .2 : -.2), pos[1] + CONFIG.objects.pallet.size[1] + .01 + Math.floor(spot / 6) * .4, pos[2] + (Math.floor(spot / 2) % 3 - 1) * .4] });
+            pos: packing[spot].map((offset, axis) => pos[axis] + offset) });
           box.receivingLine = line.line;
           box.incomingId = `${this.spec.id}:${line.line}:${serials[line.line] = (serials[line.line] || 0) + 1}`;
           box.home = { pos: { ...box.body.translation() }, rot: { ...box.body.rotation() } };

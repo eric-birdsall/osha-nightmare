@@ -55,7 +55,9 @@
             <div class="map">
               <div class="map-head">FLOOR PLAN · BUILDING 1</div>
               <svg aria-label="Warehouse floor plan"><!-- drawn from the layout by src/world/floorplan.js --></svg>
-              <div class="map-key"><span class="k-dave"></span>Dave <span class="k-ralph"></span>Ralph</div>
+              <div class="map-key"><span class="k-dave"></span>Dave <span class="k-ralph"></span>Ralph <span class="k-destination"></span>Destination</div>
+              <div class="map-navigation"><button class="btn" data-act="mapdestination" aria-pressed="false">MARKER: OFF</button><button class="btn" data-act="mapnext" disabled>NEXT TARGET</button></div>
+              <p id="map-destination-detail" aria-live="polite">Locations read Rack – Bay – Shelf. Shelves count from the bottom.</p>
             </div>
           </div>
         </div>

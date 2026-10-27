@@ -36,6 +36,7 @@ const racking = {
 const rack = (name, x0, z0, face, base = 0, size = {}) => ({
   name, x0, z0, z1: z0 + racking.depth, face, base, bays: racking.bays,
   shelves: size.shelves || racking.shelves, uprightH: size.uprightH || racking.uprightH,
+  stockRows: 2, stockLayers: { small: 2, medium: 2, large: 1 },
 });
 // Two racks back to back, the north one open to the north
 const pair = (north, south, x0, z0, base = 0, size = {}) => [rack(north, x0, z0, 'north', base, size), rack(south, x0, z0 + racking.depth + racking.flue, 'south', base, size)];
@@ -58,7 +59,7 @@ const AISLE = 4.4;
 const A = lower.z1 + 0.15; // Rack A's back, just clear of the railing
 const PAIR = racking.depth * 2 + racking.flue;
 const racks = [
-  rack('A', WEST, A, 'south'),
+  { ...rack('A', WEST, A, 'south'), stockRows: 2, stockLayers: { small: 2, medium: 2, large: 1 } },
   ...pair('B', 'C', WEST, A + racking.depth + AISLE),
   ...pair('D', 'E', WEST, A + racking.depth + AISLE + PAIR + AISLE),
   ...pair('F', 'G', WEST, A + racking.depth + 2 * (AISLE + PAIR) + AISLE),

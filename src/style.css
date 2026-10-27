@@ -1223,3 +1223,16 @@ body[data-input="controller"] #controls td:nth-child(3) { display: none; }
 #levels .lv-progress { margin-top: 0; font-size: 11px; white-space: normal; max-width: 160px; }
 .btn.level.focus .lv-progress, .btn.level:hover .lv-progress { color: #352a0a; }
 .stamp.combined { font-size: 22px; letter-spacing: 3px; }
+
+/* Pause-only navigation aid: no extra labels crowded onto the blueprint. */
+.fp-destination { pointer-events: none; }
+.fp-destination rect { fill: #55e8ff; fill-opacity: .45; stroke: #55e8ff; stroke-width: .18; }
+.fp-destination circle { fill: #173a63; stroke: #55e8ff; stroke-width: .25; }
+.fp-destination path { fill: none; stroke: #55e8ff; stroke-width: .18; }
+.map-key .k-destination { background: #55e8ff; }
+.map-navigation { display: flex; gap: 8px; margin-top: 8px; }
+.map-navigation .btn { flex: 1; padding: 8px 25px 8px 20px; margin: 0; font: 700 12px system-ui, sans-serif; min-height: 36px; }
+.map-navigation .btn:disabled { opacity: .4; cursor: default; }
+#map-destination-detail { font: 14px/1.35 system-ui, sans-serif; min-height: 2.7em; margin: 8px 0 0; }
+
+.map-navigation .btn.focus::after { right: 7px; font-size: 12px; }

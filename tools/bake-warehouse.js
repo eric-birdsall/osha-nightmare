@@ -1,3 +1,4 @@
+import { applyStockProfile } from '/src/world/stock-profile.js';
 // Bakes the fixed warehouse stock (src/world/warehouse-v1.json) and the five orders
 // (src/world/orders.json). Run it once, in the browser on the dev server, and save what it returns:
 //
@@ -12,7 +13,7 @@ import { LAYOUT } from '/src/world/layout.js';
 import { boxLook } from '/src/entities/box.js';
 import { CONFIG } from '/src/config.js';
 
-export const VERSION = 7;
+export const VERSION = 15;
 const SEED = 20261024;
 
 // What each order asks for: rack, bay (1-6 from the west end), shelf (1 = bottom), quantity, how
@@ -199,6 +200,8 @@ export async function bake() {
       }
     }
   }
+
+  applyStockProfile(faces, signs, racks, orders, FREIGHT_STOCK);
 
   // 4. Loose boxes on the open floor (in LAYOUT.looseBoxes order)
   const loose = LAYOUT.looseBoxes.map(() => [newSku(), Math.round((rand() - 0.5) * 0.3 * 1000) / 1000]);

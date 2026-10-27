@@ -1,3 +1,4 @@
+import { packPallet } from './pallet-packing.js';
 import * as THREE from 'three';
 import { LAYOUT } from './layout.js';
 import { CONFIG } from '../config.js';
@@ -52,9 +53,11 @@ export class PalletStorage {
       line.rotation.x = -Math.PI / 2; line.position.set(sx, .008, sz); guide.add(line);
     }
     guide.position.set(slot.x, slot.y, 0); rack.mesh.add(guide); slot.material = mat;
-    // Six cartons in a single 2-by-3 layer: inside the pallet edges, with ample lift clearance.
-    (empty || freight ? [] : spots).filter(Boolean).forEach(([sku, , type], i) => {
-      const box = createBox(this.game, { type, sku, pos: [x + (i % 2 ? .2 : -.2), y + .16, z + (Math.floor(i / 2) - 1) * .4] });
+    const cartons = (empty || freight ? [] : spots).filter(Boolean);
+    const offsets = packPallet(cartons.map(([, , type]) => type));
+    cartons.forEach(([sku, , type], i) => {
+      const [dx, dy, dz] = offsets[i];
+      const box = createBox(this.game, { type, sku, pos: [x + dx, y + dy, z + dz] });
       box.storagePallet = pallet;
       box.storageOffset = new THREE.Vector3().copy(box.body.translation()).sub(pallet.body.translation());
       box.home = { rack: spec.name, pos: { ...box.body.translation() }, rot: { ...box.body.rotation() } };
