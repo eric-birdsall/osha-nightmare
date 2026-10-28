@@ -5,7 +5,7 @@ import { createFreight } from '../entities/freight.js';
 import { buildWrapped } from './wrapping.js';
 import { CONFIG } from '../config.js';
 
-const fields = ['sku', 'type', 'damageId', 'home', 'handled', 'armed', 'fallen', 'incomingId', 'incomingPalletIds', 'receivingLine', 'storageLocation', 'storageOffset', 'basementStack'];
+const fields = ['sku', 'type', 'damageId', 'home', 'handled', 'armed', 'fallen', 'incomingId', 'incomingPalletIds', 'receivingLine', 'storageLocation', 'storageOffset', 'basementStack', 'campaignWorkPallet'];
 const pose = body => ({ p: { ...body.translation() }, q: { ...body.rotation() }, v: { ...body.linvel() }, w: { ...body.angvel() } });
 function apply(body, record) {
   body.setTranslation(record.p, true); body.setRotation(record.q, true);

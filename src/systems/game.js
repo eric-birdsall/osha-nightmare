@@ -1,3 +1,4 @@
+import { CampaignWork } from './campaign-work.js';
 import * as THREE from 'three';
 import { campaignLevel, campaignProgress, saveCampaignProgress, reservedCampaignLocations } from '../world/campaign.js';
 import { captureCheckpoint, restoreCheckpoint } from './checkpoint.js';
@@ -173,6 +174,8 @@ export class Game {
     this.onComplete = null;
     this.receivingSystem = this.receiving ? new Receiving(this) : null;
     this.tutorial = this.receivingSystem || (!this.shift && this.orderId === 1 ? new Tutorial(this) : null);
+    this.workGuide = this.campaign ? new CampaignWork(this) : null;
+    this.workGuide?.update(0);
     this.damage.step(0, true);
     const checkpoint = this.campaign && campaignProgress(this.mode, this.levelId)?.checkpoint;
     if (checkpoint) {
@@ -935,6 +938,7 @@ export class Game {
     this.climber.updateCamera(dt);
     this.forklift.updateCamera();
     this.tutorial?.update(dt);
+    this.workGuide?.update(dt);
     this.recorder.capture(this.clock);
     if (this.pendingReplay && this.clock >= this.pendingReplay.at) {
       this.replay = new ReplayDirector(this, this.pendingReplay);

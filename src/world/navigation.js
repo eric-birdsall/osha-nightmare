@@ -18,6 +18,10 @@ export function orderDestinations(game) {
         detail: `Rack ${name} · Bay ${bay} · Shelf ${shelf} (${(rack.base + rack.shelves[shelf - 1]).toFixed(1)} m)` });
     }
   }
+  if (!game.receiving && game.campaign?.workPallet) {
+    const [x, , z] = game.campaign.workPallet.pos;
+    destinations.push({ id: 'prep', x, z, label: 'Outbound prep pallet', detail: 'Dave loads cartons while Ralph handles retrieval and crates', complete: false });
+  }
   const dock = game.level.dock;
   if (dock) {
     const { halfX, halfZ } = LAYOUT.room;

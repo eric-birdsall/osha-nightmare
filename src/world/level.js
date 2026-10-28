@@ -1156,7 +1156,7 @@ function buildDocks(game) {
 
 export function buildLevel(game) {
   // The orders this run ships (orders.json): one level's, or all five in a Full Shift
-  const run = game.receiving ? [game.receivingSpec] : game.shift ? ORDERS : [ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0]];
+  const run = game.receiving ? [game.receivingSpec] : game.campaign ? [game.campaign.shipping] : game.shift ? ORDERS : [ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0]];
   const { scene } = game;
   const { halfX, halfZ, wallH } = ROOM;
 
@@ -1327,6 +1327,12 @@ export function buildLevel(game) {
 
   // Empty pallets (fork pockets open toward ±local Z)
   for (const [x, y, z, yaw] of LAYOUT.pallets) createPallet(game, { pos: [x, y, z], yaw });
+  if (game.campaign?.workPallet) {
+    const pallet = createPallet(game, game.campaign.workPallet);
+    pallet.campaignWorkPallet = true;
+    floorText(game, 'OUTBOUND PREP', 2.6, -4.35, 2.0, .3);
+    floorText(game, 'STOCK DROP', 4.8, -4.35, 1.8, .3);
+  }
   for (const pile of LAYOUT.palletStacks) {
     for (let i = 0; i < pile.count; i++) {
       const pallet = createPallet(game, {

@@ -148,7 +148,7 @@ export class Hud {
         v.controlsKey = controlsKey;
         v.controls.innerHTML = basicControls(game, role);
       }
-      const guide = game.tutorial?.content(role);
+      const guide = game.tutorial?.content(role) || game.workGuide?.content(role);
       v.tutorial.style.display = guide ? '' : 'none';
       if (guide) {
         v.tutorial.querySelector('strong').textContent = guide.title;

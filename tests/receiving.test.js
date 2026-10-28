@@ -1014,11 +1014,11 @@ test('five combined levels preserve shipping stock, prepare receiving bays, and 
   const practice = createGame(); assert.equal(practice.campaign, undefined); assert.equal(practice.receiving, true); practice.dispose();
 });
 
-test('every combined shift completes shipping and receiving through the physical completion rules', async () => {
+test('every combined shift completes shipping and receiving through the physical completion rules in single player and co-op', async () => {
   const { CAMPAIGN_LEVELS, saveCampaignProgress } = await import('../src/world/campaign.js');
-  for (const definition of CAMPAIGN_LEVELS) {
-    saveCampaignProgress('single', definition.id, {});
-    const game = new Game({ mode: 'single', order: definition.id });
+  for (const mode of ['single', 'coop']) for (const definition of CAMPAIGN_LEVELS) {
+    saveCampaignProgress(mode, definition.id, {});
+    const game = new Game({ mode, order: definition.id });
     game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
     const lines = [...game.level.order];
     for (const load of [...game.entities]) if (load.kind === 'wrapped' && lines.some(l => !l.freight && load.skus[l.sku])) cutWrapped(game, load);
@@ -1098,7 +1098,8 @@ test('combined shift best times use both tasks and remain separate from Practice
   assert.equal(definition.title, 'Tutorial');
   assert.equal(definition.medals.gold, definition.shipping.medals.gold + definition.receiving.medals.gold);
   assert.equal(CAMPAIGN_LEVELS[0].receiving.pallets.length, 1);
-  assert.equal(CAMPAIGN_LEVELS[1].receiving.lines.reduce((sum, l) => sum + l.qty, 0), 4);
+  assert.equal(CAMPAIGN_LEVELS[1].receiving.lines.filter(l => !l.pallet).reduce((sum, l) => sum + l.qty, 0), 2);
+  assert.equal(CAMPAIGN_LEVELS[1].receiving.lines.filter(l => l.pallet).length, 1);
   submit('single', 'campaign-1', { time: 75, incidents: 1 });
   assert.equal(best('single', 'campaign-1').total, 90);
   assert.deepEqual(best('single', 1), practiceBefore);
@@ -1365,5 +1366,79 @@ test('warehouse-wide loose stock uses one SKU per location with empty bays and s
   assert.ok(empty >= 25 && populated >= 100 && upperCartons > 0);
   settle(game, 2);
   assert.ok(game.level.racks.every(r => r.stock.filter(b => !b.storagePallet).every(b => Math.abs(b.body.translation().y - b.home.pos.y) < .04)), 'all loose stock remains on its intended shelf');
+  game.dispose();
+});
+
+
+test('campaign themes create parallel carton/forklift jobs without changing Practice orders', async () => {
+  const { CAMPAIGN_LEVELS, saveCampaignProgress } = await import('../src/world/campaign.js');
+  const themes = ['Basics', 'Vertical access', 'Sorting', 'Fragile handling', 'Everything together'];
+  assert.deepEqual(CAMPAIGN_LEVELS.map(l => l.theme), themes);
+  for (const level of CAMPAIGN_LEVELS.slice(1)) {
+    saveCampaignProgress('coop', level.id, {});
+    const game = new Game({ mode: 'coop', order: level.id });
+    game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+    const prep = game.entities.find(e => e.campaignWorkPallet);
+    assert.ok(prep && prep.kind === 'pallet');
+    const line = game.level.order.find(l => !l.freight);
+    assert.ok(line && game.entities.some(e => e.kind === 'box' && e.sku === line.sku), 'Dave has immediately available carton work');
+    assert.ok(game.level.order.some(l => l.freight || /^[XYZ]-/.test(l.location)), 'Ralph has an independent crate or high-pallet job');
+    assert.notEqual(game.workGuide.content('driver').detail, game.workGuide.content('climber').detail);
+    if (level.theme === 'Fragile handling') {
+      assert.ok(game.level.order.some(l => !l.freight && l.qty >= 2 && game.entities.some(e => e.kind === 'box' && e.sku === l.sku && e.fragile)));
+    }
+    const world = game.world;
+    game.finishOrder(null);
+    assert.equal(game.world, world);
+    game.workGuide.update(1);
+    assert.notEqual(game.workGuide.content('driver').detail, game.workGuide.content('climber').detail);
+    assert.ok(game.receivingSystem.pallets.length >= 2, 'Ralph can unload another unit while Dave processes the first');
+    game.dispose(); saveCampaignProgress('coop', level.id, {});
+  }
+  const practice = new Game({ mode: 'single', order: 3 });
+  assert.equal(practice.campaign, undefined);
+  assert.equal(practice.workGuide, null);
+  assert.equal(practice.level.order[0].sku, 929);
+  assert.ok(!practice.entities.some(e => e.campaignWorkPallet));
+  practice.dispose();
+});
+
+test('team task cards advance when cartons are packed and when a receiving load is staged', async () => {
+  const { saveCampaignProgress } = await import('../src/world/campaign.js');
+  saveCampaignProgress('coop', 'campaign-3', {});
+  const game = new Game({ mode: 'coop', order: 'campaign-3' });
+  game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  assert.match(game.workGuide.content('driver').detail, /strapped/);
+  const prep = game.entities.find(e => e.campaignWorkPallet), p = prep.body.translation();
+  let index = 0;
+  for (const line of game.level.order.filter(l => !l.freight)) for (const box of game.entities.filter(e => e.kind === 'box' && e.sku === line.sku).slice(0, line.qty)) {
+    box.handled = true;
+    move(box.body, p.x + (index % 2 ? .21 : -.21), p.y + .155 + box.size[1] / 2, p.z + (index < 2 ? -.26 : .26)); index++;
+  }
+  settle(game, 1);
+  game.workGuide.update(1);
+  assert.match(game.workGuide.content('climber').detail, /Cartons are loaded/);
+  game.finishOrder(null);
+  const first = game.receivingSystem.pallets[0];
+  move(first.body, 4.8, .005, -5.3);
+  game.workGuide.update(1);
+  assert.match(game.workGuide.content('climber').detail, /Cut the staged/);
+  assert.match(game.workGuide.content('driver').detail, /next load/);
+  cutWrapped(game, first); game.workGuide.update(1);
+  assert.match(game.workGuide.content('climber').detail, /Put away/);
+  assert.match(game.workGuide.content('driver').detail, /next load/);
+  game.dispose(); saveCampaignProgress('coop', 'campaign-3', {});
+});
+
+test('Ralph can fetch the next reserve while Dave opens the first staged pallet', async () => {
+  const { saveCampaignProgress } = await import('../src/world/campaign.js');
+  saveCampaignProgress('coop', 'campaign-5', {});
+  const game = new Game({ mode: 'coop', order: 'campaign-5' });
+  const first = game.entities.find(e => e.kind === 'wrapped' && e.skus?.[907]);
+  assert.ok(first);
+  move(first.body, 4.8, .005, -5.3);
+  game.workGuide.update(1);
+  assert.match(game.workGuide.content('climber').detail, /907/);
+  assert.match(game.workGuide.content('driver').detail, /437/);
   game.dispose();
 });

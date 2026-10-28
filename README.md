@@ -157,7 +157,7 @@ Blueprints use a compass rose in the bottom-right instead of wall-edge direction
 
 ## Receiving / Putaway
 
-Choose Single Player or Couch Co-op, then **Receiving**. Five fixed purchase orders have separate best times and medals in each mode:
+Choose Single Player or Couch Co-op, then **Practice → Receiving**. Five fixed purchase orders have separate best times and medals in each mode:
 
 | PO | Challenge | Delivery |
 |---|---|---|
@@ -199,7 +199,7 @@ A shared DAMAGE counter tracks the dollar cost of the run and appears on the com
 
 ## Combined shifts and Practice
 
-Single Player and Couch Co-op now lead to five main levels: Tutorial, then Levels 1–4. Each pairs the corresponding shipping and receiving task, shipping first, in the same live warehouse. Time, incidents, damaged stock, toppled racks, scattered pallets, broken lights and conveyor state carry into receiving. The tutorial receives one pallet of two cartons; Level 1 receives four cartons across two pallets to keep early shifts shorter. Higher levels retain mixed/high freight challenges. Medal targets combine the two tasks and remain provisional pending playtesting.
+Single Player and Couch Co-op now lead to five main levels: Tutorial, then Levels 1–4. Each pairs a themed shipping and receiving task, shipping first, in the same live warehouse. Time, incidents, damaged stock, toppled racks, scattered pallets, broken lights and conveyor state carry into receiving. The tutorial receives one pallet of two cartons; Level 1 receives two hand-putaway cartons and one secured high-storage pallet. Higher levels retain mixed/high freight challenges. Medal targets combine the two tasks and remain provisional pending playtesting.
 
 The shipping-to-receiving handoff saves a browser checkpoint. Restarting or selecting an unfinished level resumes the start of its receiving phase, including warehouse state and accumulated scores. Progress and checkpoints are separate for single player and co-op; completed shifts clear their checkpoint. Best times for combined shifts are separate from Practice records. Browsers that block localStorage retain checkpoints in memory for the current session.
 
@@ -222,3 +222,12 @@ Rack A partial-stock preview: four locations empty, four lightly stocked, seven 
 Developer performance comparison: with the Vite server running, open `/tools/warehouse-performance.html` and click Run comparison. It compares full-capacity Rack A (saved benchmark fixture) with current partial stock, in single/split-screen normal views and a three-rack collapse. Results include frame-interval median/P95, CPU work P95, draw calls and actual sample counts. Render resolution is fixed at 1280 × 720, DPR 1, shadows enabled. It uses production Game.step/frame/render, includes 1 s warmup + 5 s measurement per case and does not save gameplay progress or change stored preferences. These short device/browser-specific tests are preliminary; CPU render submission time is not GPU execution time.
 
 Warehouse-wide stocking: A–G and the lower loose-carton faces of X/Y/Z now use one SKU per location, fixed two-deep stocking cells, up to two-high small/medium stacks and varied quantities. Across 148 loose-carton locations: 30 empty, 44 light, 51 normal and 23 near full; 862 loose cartons total in ordinary shipping. X/Y/Z keep secured six-carton backstock loads and every strapped crate; five unused upper pallet bays are empty. Required shipping SKUs and meaningful backstock pointers are protected. `stock-profile.js` applies the policy to future warehouse bakes as well. The preceding Rack-A-only layout had 503 loose cartons, so rollout increases physical inventory despite leaving shelves empty. Short browser measurements are recorded in `docs/performance-rollout-2026-10-27.md`. Open `/tools/warehouse-performance.html?rollout=1` on Vite to reproduce the before/after comparison.
+
+
+## Campaign teamwork and level themes
+
+The combined campaign now has its own manifests; Practice orders and POs retain their original contents. The five themes are Basics, Vertical access, Sorting, Fragile handling, and Everything together. Tutorial still teaches the original one-carton shipment and two-carton receipt. Level 1 pairs Dave's two shelf-2 cartons with Ralph retrieving a high backstock pallet, then receives a two-carton hand-putaway load and a secured high pallet. Level 2 pairs a mixed carton shipment with an independent strapped crate; its two mixed incoming pallets feed three destinations. Level 3 pairs two genuinely FRAGILE SKU 874 cartons and one normal carton with a high crate, then receives low cartons plus a high crate. Level 4 combines short pick faces/backstock, multi-SKU packing, high crates, mixed receiving and secured-pallet putaway. Fragile handling uses existing drop/punt rules; it adds no mandatory packing minigame.
+
+Levels 1–4 start with one purposeful empty pallet at OUTBOUND PREP beside Rack A's end, plus a nearby STOCK DROP label. Dave can prepare cartons immediately while Ralph handles independent retrieval/crate deliveries. Non-tutorial combined shifts show different live work cards for the focused role (both roles in split-screen), refreshed four times per second. Cards track packing, staged reserves, remaining trailer loads and putaway. They suggest work without locking controls or changing completion rules; cleanup and parking remain optional. Single player follows the same jobs by swapping characters. Existing tutorial instructions and Practice UI remain separate.
+
+Campaign checkpoint schema is `combined-v2`; old campaign checkpoints/progress are ignored after this manifest change. Medal targets are provisional and now match the revised manifests. All five combined shifts are exercised through real physical completion checks in both single player and co-op.
