@@ -140,15 +140,16 @@ export class Hud {
       v.el.classList.toggle('top', !single && role === 'climber');
       v.el.classList.toggle('bottom', !single && role === 'driver');
       if (!visible) continue;
-      v.el.classList.toggle('campaign', !!game.campaign);
-      v.phase.style.display = game.campaign ? '' : 'none';
-      if (game.campaign) v.phase.textContent = `${game.campaign.title} · ${game.receiving ? '2/2 RECEIVING' : '1/2 SHIPPING'} · ${game.level.dock.name}`;
+      v.el.classList.add('campaign');
+      v.phase.style.display = '';
+      const tracked = game.trackedJobs[role], task = game.taskView(tracked);
+      v.phase.textContent = game.timed ? `TIMED · ${task.receiving ? 'RECEIVING' : 'SHIPPING'} · S${game.timed.counts.shipping} R${game.timed.counts.receiving} · NET ${game.timed.net < 0 ? '−' : ''}$${Math.abs(game.timed.net).toLocaleString('en-US')}` : `${tracked.toUpperCase()} ${game.jobDone[tracked] ? '✓' : ''} · ${task.level.dock.name} · ${Number(game.jobDone.shipping) + Number(game.jobDone.receiving)}/2 jobs`;
       const controlsKey = `${role}:${game.usesKeyboard(role)}`;
       if (v.controlsKey !== controlsKey) {
         v.controlsKey = controlsKey;
         v.controls.innerHTML = basicControls(game, role);
       }
-      const guide = game.tutorial?.content(role) || game.workGuide?.content(role);
+      const guide = game.guideFor(role);
       v.tutorial.style.display = guide ? '' : 'none';
       if (guide) {
         v.tutorial.querySelector('strong').textContent = guide.title;
@@ -157,7 +158,7 @@ export class Hud {
       // The pick list isn't on the HUD: it's a clipboard in the forklift cab
       // The time on the clock is the score: the shift so far plus the incident penalties
       v.damage.textContent = `DAMAGE $${(game.damage?.total || 0).toLocaleString('en-US')}`;
-      v.timer.textContent = fmt(game.time + game.falls * CONFIG.score.incidentPenalty);
+      v.timer.textContent = fmt(game.timed ? game.timed.remaining : game.time + game.falls * CONFIG.score.incidentPenalty);
       v.timer.classList.toggle('hit', flashing);
       v.timerPen.textContent = `+${CONFIG.score.incidentPenalty} s`;
       v.timerPen.classList.toggle('on', flashing);

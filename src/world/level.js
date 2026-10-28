@@ -373,6 +373,7 @@ export function orderLines(spec) {
   if (spec.activity === 'receiving') return spec.lines.map((line, i) => ({ ...line, line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], backstock: null }));
   const pickRacks = new Set(RACKS.filter((r) => r.palletFromShelf == null).map((r) => r.name));
   return spec.lines.map((l, i) => {
+    if (l.location) return { ...l, line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], backstock: l.backstock || null };
     if (l.freight) {
       const [location, item] = freightHome(l.sku);
       return { ...l, line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], location, mass: item.mass, backstock: null };
@@ -1156,7 +1157,7 @@ function buildDocks(game) {
 
 export function buildLevel(game) {
   // The orders this run ships (orders.json): one level's, or all five in a Full Shift
-  const run = game.receiving ? [game.receivingSpec] : game.campaign ? [game.campaign.shipping] : game.shift ? ORDERS : [ORDERS.find((o) => o.id === game.orderId) ?? ORDERS[0]];
+  const run = [game.jobSpecs?.shipping || ORDERS.find(o => o.id === game.orderId) || ORDERS[0]];
   const { scene } = game;
   const { halfX, halfZ, wallH } = ROOM;
 

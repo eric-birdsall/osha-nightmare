@@ -49,7 +49,7 @@ export const CAMPAIGN_LEVELS = presets.map((level, i) => ({
   medals: Object.fromEntries(['gold', 'silver', 'bronze'].map(k => [k, level.shipping.medals[k] + level.receiving.medals[k]])),
 }));
 export const campaignLevel = id => CAMPAIGN_LEVELS.find(l => l.id === id);
-export const campaignVersion = `${warehouse.version}:combined-v2`;
+export const campaignVersion = `${warehouse.version}:parallel-v3`;
 export function reservedCampaignLocations(level) {
   const needed = new Set(level.shipping.lines.map(l => l.sku));
   return new Set(level.receiving.lines.filter(l => !(warehouse.faces[l.location] || []).some(b => b && needed.has(b[0])) && !needed.has(FREIGHT_STOCK[l.location]?.sku)).map(l => l.location));

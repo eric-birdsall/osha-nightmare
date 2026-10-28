@@ -1,13 +1,15 @@
+import { TimedShift } from './timed-shift.js';
+import { jobPair } from '../world/job-pair.js';
 import { CampaignWork } from './campaign-work.js';
 import * as THREE from 'three';
-import { campaignLevel, campaignProgress, saveCampaignProgress, reservedCampaignLocations } from '../world/campaign.js';
+import { campaignLevel, campaignProgress, saveCampaignProgress } from '../world/campaign.js';
 import { captureCheckpoint, restoreCheckpoint } from './checkpoint.js';
 import { DamageLedger } from './damage.js';
 import { forkViewBounds, showForkFeed } from './fork-view.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
 import { syncMesh } from '../physics.js';
-import { buildLevel, ORDERS } from '../world/level.js';
+import { buildLevel } from '../world/level.js';
 import { Forklift } from '../entities/forklift.js';
 import { Climber } from '../entities/climber.js';
 import { WrapSystem, collectStack } from './wrapping.js';
@@ -15,7 +17,6 @@ import { Recorder, ReplayDirector, buildCctvFixtures } from './replay.js';
 import { settings } from './settings.js';
 import { Tutorial } from './tutorial.js';
 import { Receiving } from './receiving.js';
-import { receivingOrder } from '../world/receiving-orders.js';
 import { describeLocation } from '../world/level.js';
 import { quatToThree } from '../physics.js';
 import { disposeTree } from '../util/meshes.js';
@@ -122,17 +123,23 @@ function rackDownLine(rows, byRalph, again) {
 
 // Owns one playthrough: physics world, scene, entities, order state, swap logic.
 export class Game {
-  // order: one of the fixed orders (its id in orders.json), or 'shift' for a Full Shift (all five
-  // back to back in the same warehouse, one clock)
-  constructor({ mode, hud, order = 1 }) {
-    this.campaign = campaignLevel(order);
-    this.phase = 'shipping';
-    this.reservedLocations = this.campaign ? reservedCampaignLocations(this.campaign) : new Set();
-    this.receivingSpec = receivingOrder(order);
-    this.receiving = !!this.receivingSpec;
-    this.levelId = order; // what was picked on the level screen: an order id or 'shift'
-    this.shift = order === 'shift';
-    this.orderId = this.receiving ? Number(order.split('-')[1]) : this.shift ? ORDERS[0].id : this.campaign ? this.campaign.shipping.id : order; // the order being picked now
+  // Every selected level defines one shared shipping/receiving pair.
+  constructor({ mode, hud, order = 1, timed = null }) {
+    this.timed = null;
+    this.campaign = timed ? undefined : campaignLevel(order);
+    this.phase = 'parallel';
+    this.jobSpecs = jobPair(order);
+    this.jobDone = { shipping: false, receiving: false };
+    this.trackedJobs = { driver: 'shipping', climber: 'shipping' };
+    this.receivingStatus = {};
+    this.receivedIds = new Set();
+    this.reservedLocations = this.jobSpecs.reserved;
+    this.receivingSpec = this.jobSpecs.receiving;
+    if (timed) this.receivingSpec.tutorial = false;
+    this.receiving = false; // the physical level's default order is always shipping
+    this.levelId = order;
+    this.shift = false;
+    this.orderId = this.jobSpecs.shipping.id;
     this.mode = mode; // 'single' | 'coop'
     this.hud = hud;
     this.world = new RAPIER.World({ x: 0, y: CONFIG.physics.gravity, z: 0 });
@@ -172,16 +179,20 @@ export class Game {
     this.hintCooldown = 0;
     this.complete = false;
     this.onComplete = null;
-    this.receivingSystem = this.receiving ? new Receiving(this) : null;
-    this.tutorial = this.receivingSystem || (!this.shift && this.orderId === 1 ? new Tutorial(this) : null);
+    this.receivingSystem = new Receiving(this);
+    this.tutorial = !timed && this.orderId === 1 ? new Tutorial(this) : null;
     this.workGuide = this.campaign ? new CampaignWork(this) : null;
     this.workGuide?.update(0);
     this.damage.step(0, true);
+    if (timed) {
+      this.timed = new TimedShift(this, timed);
+      this.timed.replace('shipping'); this.timed.replace('receiving');
+    }
     const checkpoint = this.campaign && campaignProgress(this.mode, this.levelId)?.checkpoint;
     if (checkpoint) {
-      this.beginReceiving(false);
       restoreCheckpoint(this, checkpoint);
-      this.toast('Receiving checkpoint restored · shipping complete', 3);
+      this.advanceCompletedJobs();
+      this.toast('Two-job shift checkpoint restored', 3);
     }
   }
 
@@ -245,6 +256,7 @@ export class Game {
   readClipboard() {
     this.forklift.drawClipboard();
     if (this.tutorial) this.tutorial.read = true;
+    if (this.receivingSystem) this.receivingSystem.read = true;
   }
 
   swapCharacter() {
@@ -255,11 +267,16 @@ export class Game {
 
   swapRoles() {
     this.rolesSwapped = !this.rolesSwapped;
+    [this.trackedJobs.driver, this.trackedJobs.climber] = [this.trackedJobs.climber, this.trackedJobs.driver];
   }
 
   // ---------------------------------------------------------------- simulation
 
   step(dt, actions) {
+    if (this.complete) return;
+    if (this.timed && this.started && this.timed.remaining <= dt) {
+      this.time += this.timed.remaining; this.timed.end(); return;
+    }
     this.clock += dt;
     const singleActive = (role) => this.mode !== 'single' || this.active === role;
     const driverOn = singleActive('driver') && this.devices.driver.length > 0;
@@ -302,9 +319,10 @@ export class Game {
     this.level.storage.step(dt);
     this.watchFragile(dt);
     this.wrap.step(dt);
-    if (this.receiving) this.receivingSystem.step(dt);
-    else this.orderStep(dt);
+    if (!this.jobDone.receiving) this.receivingSystem.step(dt);
+    if (!this.jobDone.shipping) this.orderStep(dt);
     if (this.started && !this.complete) this.time += dt;
+    if (this.timed && this.started && this.timed.remaining <= 0) this.timed.end();
     this.dayTimer += dt;
     if (this.dayTimer >= CONFIG.hud.secondsPerDay) {
       this.dayTimer = 0;
@@ -341,9 +359,12 @@ export class Game {
 
   // Secured cartons count only inside shrinkwrap; a strapped crate is one whole unit.
   securedCounts(ent) {
+    const eligible = record => !record.incomingId || this.receivedIds.has(record.incomingId);
+    const records = ent.kind === 'wrapped' ? ent.contents.filter(r => r.kind === 'box').map(r => r.data) : [ent];
+    if (!records.every(eligible)) return Object.fromEntries(this.level.order.map(l => [l.line, 0]));
     return Object.fromEntries(this.level.order.map(line => [line.line,
-      line.freight ? Number(ent.kind === 'freight' && ent.sku === line.sku)
-        : ent.kind === 'wrapped' ? ent.skus[line.sku] || 0 : 0]));
+      line.freight ? Number(ent.kind === 'freight' && ent.sku === line.sku && eligible(ent))
+        : ent.kind === 'wrapped' ? ent.contents.filter(r => r.kind === 'box' && r.data.sku === line.sku && eligible(r.data)).length : 0]));
   }
 
   orderStep(dt) {
@@ -358,8 +379,8 @@ export class Game {
       this.dockRest.set(ent, time);
       if (time < CONFIG.dock.restTime) continue;
       if (ent.kind === 'pallet') { looseAtDock ||= collectStack(this, ent).size > 1; continue; }
-      loads.push(ent);
       const secured = this.securedCounts(ent);
+      if (Object.values(secured).some(Boolean)) loads.push(ent);
       for (const line of this.level.order) counts[line.line] += secured[line.line];
       looseAtDock ||= [...collectStack(this, ent)].some(e => e.kind === 'box');
     }
@@ -385,7 +406,7 @@ export class Game {
   lineCounts(ent) {
     const n = this.securedCounts(ent);
     for (const e of collectStack(this, ent)) {
-      if (e.kind !== 'box') continue;
+      if (e.kind !== 'box' || (e.incomingId && !this.receivedIds.has(e.incomingId))) continue;
       const line = this.level.order.find(l => !l.freight && l.sku === e.sku);
       if (line) n[line.line]++;
     }
@@ -403,52 +424,77 @@ export class Game {
     this.hud?.toast(text, secs);
   }
 
-  // Delivered loads together fill the order. In a Full Shift, all of them leave and the next
-  // order's pick list comes in (same warehouse, mess and all; the clock keeps running); otherwise,
-  // or after the last order, the level's done.
+  // Outbound completion preserves the other job and the shared physical world.
   finishOrder(load) {
-    sfx.complete();
-    if (this.campaign && !this.receiving) {
-      for (const ent of Array.isArray(load) ? load : load ? [load] : []) if (!ent.removed) this.shipLoad(ent);
-      this.beginReceiving();
-      return;
-    }
-    if (this.campaign) saveCampaignProgress(this.mode, this.levelId, { complete: true, shipping: true });
-    const next = this.shift && ORDERS[ORDERS.findIndex((o) => o.id === this.orderId) + 1];
-    if (!next) {
-      this.complete = true;
-      this.onComplete?.({ time: this.time, falls: this.falls });
-      return;
-    }
+    if (this.jobDone.shipping) return;
     for (const ent of Array.isArray(load) ? load : load ? [load] : []) if (!ent.removed) this.shipLoad(ent);
-    this.orderId = next.id;
-    this.level.setOrder(next);
-    this.itemStatus = Object.fromEntries(this.level.order.map((o) => [o.line, 0]));
-    this.dockRest = new Map();
-    this.deliveredLoads = new Set();
-    this.hud?.banner(
-      `<span class="osha-text osha-text--yellow" data-text="ORDER ${next.id}">ORDER ${next.id}</span><small>Shipped! Next up: ${next.title} · ${next.dock}</small>`,
-      3.5,
-    );
+    this.finishJob('shipping');
   }
 
-  beginReceiving(save = true) {
-    this.phase = 'receiving';
-    this.receiving = true;
-    this.receivingSpec = this.campaign.receiving;
-    this.climber.dropAll({ x: 0, y: 0, z: 0 });
-    this.climber.dropLadder();
-    if (this.tutorial?.marker) this.tutorial.marker.visible = false;
-    this.level.setOrder(this.receivingSpec);
-    this.itemStatus = Object.fromEntries(this.level.order.map(line => [line.line, 0]));
-    this.statusTimer = 0; this.dockRest = new Map(); this.deliveredLoads = new Set();
-    this.receivingSystem = new Receiving(this);
-    this.receivingSystem.read = true; // movement and clipboard controls were taught during shipping
-    this.receivingSystem.stage = 1;
-    this.tutorial = this.receivingSystem;
-    this.forklift.clipboard.key = null;
-    if (save) saveCampaignProgress(this.mode, this.levelId, { shipping: true, checkpoint: captureCheckpoint(this) });
-    this.hud?.banner(save ? `Shipping complete<small>Delivery arriving at ${this.receivingSpec.dock} · Receiving checkpoint saved</small>` : `Receiving checkpoint<small>Shipping complete · Continue at ${this.receivingSpec.dock}</small>`, 4);
+  finishJob(job) {
+    if (this.timed) { this.timed.finish(job); return; }
+    if (this.jobDone[job]) return;
+    this.jobDone[job] = true;
+    this.advanceCompletedJobs();
+    sfx.complete();
+    if (job === 'receiving' && this.receivingSystem.marker) this.receivingSystem.marker.visible = false;
+    if (job === 'shipping' && this.tutorial?.marker) this.tutorial.marker.visible = false;
+    this.complete = this.jobDone.shipping && this.jobDone.receiving;
+    if (this.campaign) {
+      saveCampaignProgress(this.mode, this.levelId, { ...this.jobDone, complete: this.complete,
+        ...(!this.complete ? { checkpoint: captureCheckpoint(this) } : {}) });
+    }
+    if (this.complete) this.onComplete?.({ time: this.time, falls: this.falls });
+    else this.toast(`${job === 'shipping' ? 'Shipping' : 'Receiving'} complete · the other clipboard is still active`, 4);
+  }
+
+  // Open jobs lead the clipboard stack; completed pages remain available behind them.
+  clipboardJobs() {
+    if (this.timed) return ['shipping', 'receiving', ...this.timed.history.map(page => page.key)];
+    return ['shipping', 'receiving'].sort((a, b) => Number(this.jobDone[a]) - Number(this.jobDone[b]));
+  }
+
+  advanceCompletedJobs() {
+    const next = this.clipboardJobs().find(job => !this.jobDone[job]);
+    if (!next) return; // The last job opens the results screen, not another clipboard.
+    for (const role of ['driver', 'climber']) {
+      if (this.jobDone[this.trackedJobs[role]]) this.trackedJobs[role] = next;
+    }
+    if (this.workGuide) { this.workGuide.timer = 0; this.workGuide.update(0); }
+  }
+
+  // Display contexts share the physical world, but never change its active order.
+  taskView(job) {
+    const view = Object.create(this);
+    const archived = this.timed?.history.find(page => page.key === job);
+    view.receiving = (archived?.job || job) === 'receiving';
+    if (archived) {
+      view.level = { ...this.level, order: archived.order, dock: archived.dock };
+      view.itemStatus = archived.status; view.orderId = archived.orderId; view.receivingSpec = archived.receivingSpec;
+      return view;
+    }
+    view.level = { ...this.level, order: view.receiving ? this.receivingSystem.order : this.level.order,
+      dock: view.receiving ? this.receivingSystem.dock : this.level.dock,
+      dockZone: view.receiving ? this.receivingSystem.dockZone : this.level.dockZone };
+    view.itemStatus = view.receiving ? this.receivingStatus : this.itemStatus;
+    return view;
+  }
+
+  trackJob(role, job) {
+    if (!['driver', 'climber'].includes(role) || !this.clipboardJobs().includes(job)) return;
+    this.trackedJobs[role] = job;
+    if (this.mode === 'single') this.trackedJobs = { driver: job, climber: job };
+  }
+
+  guideFor(role) {
+    const job = this.trackedJobs[role];
+    if (this.jobDone[job]) return { title: `${this.taskView(job).receiving ? 'RECEIVING' : 'SHIPPING'} · COMPLETE`, detail: 'This job is finished. Open Pause and use left/right to track the other clipboard.' };
+    const guide = (job === 'receiving' ? this.receivingSystem : this.tutorial)?.content(role) || this.workGuide?.content(role);
+    if (guide) return guide;
+    const view = this.taskView(job);
+    return { title: `${job.toUpperCase()} · ${view.level.dock.name}`, detail: view.level.order.map(l =>
+      `${view.itemStatus[l.line] || 0}/${l.qty} × SKU ${l.sku} ${l.floorStock ? 'on the floor near' : job === 'receiving' ? '→' : 'from'} ${l.location}${l.clearFirst ? ' (clear space in this bay first)' : ''}${l.resetRack ? ' (reset this rack first)' : ''}`).join(' · ') +
+      (job === 'receiving' ? '. Unload, cut carton pallets, and put stock away. Keep whole pallets/crates secured.' : '. Pack cartons, shrinkwrap, and deliver. Strapped crates ship as whole units.') };
   }
 
   // The truck pulls away with a delivered load: it's gone from the warehouse
@@ -943,6 +989,7 @@ export class Game {
     this.climber.updateCamera(dt);
     this.forklift.updateCamera();
     this.tutorial?.update(dt);
+    this.receivingSystem.update(dt);
     this.workGuide?.update(dt);
     this.recorder.capture(this.clock);
     if (this.pendingReplay && this.clock >= this.pendingReplay.at) {

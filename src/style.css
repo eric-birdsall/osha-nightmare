@@ -1255,3 +1255,20 @@ body[data-input="controller"] #controls td:nth-child(3) { display: none; }
   #pause .cols .menu { min-width: 0; }
   #pause .map { min-width: 0; }
 }
+
+#clipboard-navigation:not([hidden]) { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0; font-size:13px; }
+#clipboard-navigation button { background:#f5c518; color:#111; border:0; padding:6px 14px; cursor:pointer; }
+
+.timed-presets { display:flex; gap:10px; }
+.timed-presets .btn { flex:1; min-width:0; font-size:18px; padding:12px; }
+.timed-duration { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:16px 0; }
+#timed-minutes { width:90px; padding:10px; background:#171b20; color:#fff; border:2px solid #f5c518; font:inherit; }
+#timed .panel { max-height:94vh; overflow:auto; }
+.timed-replace { font-size:12px; padding:8px; margin:8px 0; }
+#timed-results b { font-size:24px; }
+.timed-replace.hidden, #timed-results.hidden, #standard-results.hidden { display:none !important; }
+#timed-results { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+#timed-results div { min-width:0; padding:6px 10px; }
+#timed-results span { font-size:11px; letter-spacing:1px; }
+.timed-presets .btn { padding:12px 18px 12px 34px; }
+.timed-presets .btn[aria-pressed="true"] { outline:2px solid var(--hazard-y); outline-offset:-2px; }

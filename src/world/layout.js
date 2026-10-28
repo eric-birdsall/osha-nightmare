@@ -146,7 +146,7 @@ export const LAYOUT = {
     { x: -6.7, z: SOUTH - 0.3, y: 0, yaw: Math.PI, count: 1 },
     { x: 6.7, z: SOUTH - 0.3, y: 0, yaw: Math.PI, count: 1 }, // between the West-wall rack sections
   ],
-  climberSpawn: { pos: [RACKS_E + 1.3, 0, A + racking.depth / 2], yaw: Math.PI }, // beside the main-floor ladder, facing the south wall
+  climberSpawn: { pos: [RACKS_E + 6.2, 0, A + .35], yaw: 2.44 }, // open floor beside Rack A: look across all rack labels, with the ladder a short walk away
   // Where Dave can come back after a respawn
   spawnPoints: [
     [RACKS_E + 1.5, 0, -5.45],

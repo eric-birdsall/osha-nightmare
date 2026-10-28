@@ -744,8 +744,7 @@ export class Forklift {
     this.drawDashboard();
   }
 
-  // The pick list lives on a clipboard hung on the front-left guard post, angled at the driver:
-  // Ralph reads it from the seat; Dave has to come and look (or ask).
+  // Shared artwork for the pause-menu task clipboards. The old cab board stays hidden.
   buildClipboard(root) {
     const canvas = document.createElement('canvas');
     canvas.width = 540;
@@ -772,12 +771,12 @@ export class Forklift {
     this.clipboard = { canvas, tex, group, key: null };
   }
 
-  drawClipboard() {
-    const game = this.game;
+  drawClipboard(view = this.game) {
+    const game = view;
     const order = game.level?.order;
     if (!order || !this.clipboard) return;
     const status = game.itemStatus || {};
-    const key = `${game.orderId}#` + order.map((o) => `${o.sku}:${o.qty}:${status[o.line] || 0}`).join('|');
+    const key = `${game.receiving}:${game.orderId}:${game.receivingSpec?.number}:${game.level.dock?.name}#` + order.map((o) => `${o.sku}:${o.qty}:${o.location}:${status[o.line] || 0}`).join('|');
     if (key === this.clipboard.key) return;
     this.clipboard.key = key;
     const { canvas, tex } = this.clipboard;

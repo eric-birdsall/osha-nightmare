@@ -12,7 +12,7 @@ function apply(body, record) {
   body.setLinvel(record.v || { x: 0, y: 0, z: 0 }, true); body.setAngvel(record.w || { x: 0, y: 0, z: 0 }, true);
 }
 export function captureCheckpoint(game) {
-  // A checkpoint starts receiving with free hands; loose stock stays where it was set down.
+  // A checkpoint preserves both jobs with free hands; loose stock stays where it was set down.
   const data = {
     entities: game.entities.map(e => ({ id: e.runId, kind: e.kind, ...pose(e.body),
       data: Object.fromEntries(fields.filter(k => e[k] !== undefined).map(k => [k, e[k]])),
@@ -25,6 +25,9 @@ export function captureCheckpoint(game) {
     forklift: { chassis: pose(game.forklift.body), carriage: pose(game.forklift.carriage), height: game.forklift.height, tilt: game.forklift.tilt, tiltTarget: game.forklift.tiltTarget, tiltLowered: game.forklift.tiltLowered, lookPitch: game.forklift.lookPitch },
     climber: { feet: game.climber.feet.toArray(), yaw: game.climber.yaw, pitch: game.climber.pitch },
     active: game.active, rolesSwapped: game.rolesSwapped,
+    jobs: { done: game.jobDone, shipping: game.itemStatus, receiving: game.receivingStatus,
+      receivedIds: [...game.receivedIds], tracked: game.trackedJobs,
+      shippingRead: game.tutorial?.read, receivingRead: game.receivingSystem.read },
     time: game.time, clock: game.clock, falls: game.falls,
     damage: { total: game.damage.total, nextId: game.damage.nextId, charged: [...game.damage.charged], entries: game.damage.entries },
   };
@@ -88,6 +91,15 @@ export function restoreCheckpoint(game, snapshot) {
   game.active = snapshot.active || 'driver'; game.rolesSwapped = !!snapshot.rolesSwapped;
   game.time = snapshot.time; game.clock = snapshot.clock; game.falls = snapshot.falls; game.started = true;
   Object.assign(game.damage, snapshot.damage, { charged: new Set(snapshot.damage.charged), tracking: new Map(), inventory: new Map() });
+  if (snapshot.jobs) {
+    Object.assign(game.jobDone, snapshot.jobs.done);
+    Object.assign(game.itemStatus, snapshot.jobs.shipping);
+    Object.assign(game.receivingStatus, snapshot.jobs.receiving);
+    game.receivedIds = new Set(snapshot.jobs.receivedIds);
+    Object.assign(game.trackedJobs, snapshot.jobs.tracked);
+    if (game.tutorial) game.tutorial.read = snapshot.jobs.shippingRead;
+    game.receivingSystem.read = snapshot.jobs.receivingRead;
+  }
   game.nextEntityId = Math.max(...snapshot.entities.map(e => e.id)) + 1;
   game.damage.step(0, true);
 }

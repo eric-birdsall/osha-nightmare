@@ -39,6 +39,20 @@
         </div>
       </div>
 
+      <div id="timed" class="screen hidden">
+        <div class="panel">
+          <h1 class="selection-title">TIMED SHIFT</h1>
+          <p class="fine">Ship and receive as many orders as you can. Highest net earnings wins.</p>
+          <div class="timed-presets"><button class="btn" data-act="timedlength" data-minutes="10">10 MIN</button><button class="btn" data-act="timedlength" data-minutes="20">20 MIN</button><button class="btn" data-act="timedlength" data-minutes="30">30 MIN</button></div>
+          <label class="timed-duration">Duration in minutes <input id="timed-minutes" type="number" min="1" max="120" value="10" aria-label="Shift duration in minutes"></label>
+          <div class="timed-presets"><button class="btn" data-act="timedless">− 1 MIN</button><button class="btn" data-act="timedmore">+ 1 MIN</button></div>
+          <button class="btn" data-act="timeddifficulty" id="timed-difficulty">STARTING DIFFICULTY: STANDARD</button>
+          <p class="fine">Difficulty grows every four completed jobs. Clock starts on movement; Pause stops it. Incidents cost 15 seconds. Unfinished orders earn nothing.</p>
+          <button class="btn" data-act="timedstart">START SHIFT</button>
+          <button class="btn" data-act="back">BACK</button>
+        </div>
+      </div>
+
       <div id="pause" class="screen hidden">
         <div class="panel wide">
           <div class="cols">
@@ -53,7 +67,9 @@
               <button class="btn" data-act="quit"><span class="osha-text osha-text--ivory" data-text="QUIT TO TITLE">QUIT TO TITLE</span></button>
             </div>
             <figure class="pause-clipboard" aria-label="Current task clipboard">
-              <figcaption>CURRENT TASK</figcaption>
+              <figcaption id="pause-clipboard-title" aria-live="polite">CURRENT TASK</figcaption>
+              <div id="clipboard-navigation" hidden><button id="clipboard-prev" aria-label="Previous clipboard">◀</button><span>← / → · D-pad / stick</span><button id="clipboard-next" aria-label="Next clipboard">▶</button></div>
+              <button class="btn timed-replace hidden" data-act="timedreplace">ABANDON &amp; REPLACE · $100 / 15s</button>
               <div class="pause-clipboard-board"><canvas id="pause-clipboard" width="540" height="720" role="img" aria-label="Current task clipboard"></canvas></div>
             </figure>
             <div class="map">
@@ -72,7 +88,8 @@
           <div class="screen-title osha-text osha-text--yellow" data-text="ORDER COMPLETE">ORDER COMPLETE</div>
           <div class="stamp">SHIPPED</div>
           <p class="fine" id="c-order">Order 1 · Tutorial</p>
-          <div class="stats">
+          <div id="timed-results" class="stats hidden"></div>
+          <div class="stats" id="standard-results">
             <div><span>Time</span><b id="c-time">0:00.0</b></div>
             <div><span>Incidents</span><b id="c-falls">0</b><small id="c-penalty"></small></div>
             <div><span>Damage</span><b id="c-damage">$0</b></div>
@@ -84,16 +101,6 @@
           <button class="btn" data-act="restart"><span class="osha-text osha-text--ivory" data-text="RETRY">RETRY</span></button>
           <button class="btn" data-act="next"><span class="osha-text osha-text--ivory" data-text="NEXT ORDER">NEXT ORDER</span></button>
           <button class="btn" data-act="levels"><span class="osha-text osha-text--ivory" data-text="LEVEL SELECT">LEVEL SELECT</span></button>
-        </div>
-      </div>
-
-      <div id="jobs" class="screen hidden">
-        <div class="panel">
-          <h1 class="selection-title">PRACTICE</h1>
-          <p class="fine">Replay an individual shipping or receiving task</p>
-          <button class="btn" data-act="picking"><span class="osha-text osha-text--ivory" data-text="PICKING">PICKING</span></button>
-          <button class="btn" data-act="receiving"><span class="osha-text osha-text--ivory" data-text="RECEIVING">RECEIVING</span></button>
-          <button class="btn" data-act="back"><span class="osha-text osha-text--ivory" data-text="BACK">BACK</span></button>
         </div>
       </div>
 
@@ -123,11 +130,11 @@
           <div class="howto">
             <section>
               <h3>Receiving / putaway</h3>
-              <p>Choose <b>Practice → Receiving</b> for individual purchase orders: the tutorial, higher shelves, mixed pallets, high storage, and a combined delivery. Ralph unloads shrinkwrapped pallets from the dock listed on the pause-menu clipboard. Dave holds <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></kbd></span> for one second to cut wrap—even while a pallet is on the forks—then places individual cartons in their listed low-shelf locations. Lines marked <b>WRAPPED PALLET</b> must stay wrapped and be seated in the correct high bay. <b>FORKLIFT ONLY</b> lines are single strapped crates: Ralph puts the whole unit in its assigned bay. The stretch wrapper accepts partially full stock pallets too. Only the tutorial has yellow PUTAWAY signs and destination arrows; the other combined levels show separate Ralph/Dave work cards. All POs keep clipboard progress. Wrong locations remain unfinished. Receiving finishes when all required stock is correctly put away; cleanup and parking are optional.</p>
+              <p>Every shift includes a receiving clipboard: the tutorial, higher shelves, mixed pallets, high storage, and a combined delivery. Ralph unloads shrinkwrapped pallets from the dock listed on the pause-menu clipboard. Dave holds <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></kbd></span> for one second to cut wrap—even while a pallet is on the forks—then places individual cartons in their listed low-shelf locations. Lines marked <b>WRAPPED PALLET</b> must stay wrapped and be seated in the correct high bay. <b>FORKLIFT ONLY</b> lines are single strapped crates: Ralph puts the whole unit in its assigned bay. The stretch wrapper accepts partially full stock pallets too. Only the tutorial has yellow PUTAWAY signs and destination arrows; the other combined levels show separate Ralph/Dave work cards. All POs keep clipboard progress. Wrong locations remain unfinished. Receiving finishes when all required stock is correctly put away; cleanup and parking are optional.</p>
               <h3>Wrapped reserve stock</h3>
               <p>The West-wall racks mix wrapped carton backstock and strapped heavy crates. Carton backstock starts wrapped in picking too. Ralph brings one down, Dave cuts the wrap and picks the required cartons. Rewrap any leftovers for secure transport using the existing stretch wrapper. Returning reserve stock and cleaning up are optional.</p>
               <h3>The picking job</h3>
-              <p>Play <b>Tutorial</b> then <b>Levels 1–4</b>: ship an order, then receive a delivery in the same warehouse. Receiving has a saved checkpoint; the clock, damage and warehouse mess carry over. Use <b>Practice</b> for individual tasks or a shipping-only <b>Full Shift</b>: all five back to back, mess and all, on one clock. Every incident adds 15 seconds to your time. Beat your best, and go for gold, silver or bronze.</p>
+              <p>Play <b>Tutorial</b> then <b>Levels 1–4</b>. Shipping and receiving start together at separate docks. Either character can work on either job; finish both in any order to complete the shift. In Pause, use left/right arrows, D-pad or left stick to select the clipboard you track. Co-op players select independently with their own controls. Received stock can be shipped immediately. <b>Practice</b> also uses paired jobs. Completing either job saves a campaign checkpoint; the other remains active. Cleanup and parking are optional. Every incident adds 15 seconds; try for gold, silver or bronze.</p>
               <h3>Who's who</h3>
               <p><b>Ralph</b> drives the forklift. He has a cast on his leg and his crutches in the cab, so he never gets off the truck. The current pick list is always available on the pause menu.</p>
               <p><b>Dave</b> is on foot. He walks, climbs, picks boxes off shelves, carries them, and punts them.</p>

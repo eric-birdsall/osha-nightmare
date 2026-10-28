@@ -22,17 +22,17 @@ export class Tutorial {
   update(dt) {
     const g = this.game;
     this.marker.visible = false;
-    if (g.complete) return;
+    if (g.complete || g.jobDone?.shipping) return;
     this.scanIn -= dt;
     if (this.scanIn <= 0) {
       this.scanIn = 0.15;
       const order = g.level.order;
       const completeLoad = (load, wrapped = false) => order.every((line) =>
-        (wrapped ? load.skus?.[line.sku] || 0 : g.lineCounts(load)[line.line] || 0) >= line.qty);
+        (wrapped ? (g.securedCounts ? g.securedCounts(load)[line.line] : load.skus?.[line.sku]) || 0 : g.lineCounts(load)[line.line] || 0) >= line.qty);
       const loads = g.entities.filter((e) => !e.removed && (e.kind === 'pallet' || e.kind === 'wrapped'));
       const wrapped = loads.find((load) => load.kind === 'wrapped' && completeLoad(load, true));
       const loaded = loads.find((load) => completeLoad(load));
-      const carrying = g.climber.carriedBoxes().some((box) => order.some((line) => line.sku === box.sku));
+      const carrying = g.climber.carriedBoxes().some((box) => (!box.incomingId || g.receivedIds?.has(box.incomingId)) && order.some((line) => line.sku === box.sku));
       if (wrapped || loaded || carrying) this.read = true; // working ahead never blocks progress
       this.load = wrapped || loaded || null;
       if (wrapped) this.stage = 5;
@@ -44,7 +44,7 @@ export class Tutorial {
     if (target) {
       this.marker.position.copy(target);
       this.marker.position.y += 0.65 + Math.sin(g.clock * 4) * 0.08;
-      this.marker.visible = true;
+      this.marker.visible = !g.trackedJobs || Object.values(g.trackedJobs).includes('shipping');
     }
   }
 

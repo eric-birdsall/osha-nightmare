@@ -49,11 +49,11 @@ function move(body, x, y, z) {
 test('receiving builds real inbound pallets and reserved empty shelf destinations in both modes', () => {
   for (const mode of ['single', 'coop']) {
     const game = createGame(mode), receiving = game.receivingSystem;
-    assert.equal(game.receiving, true); assert.equal(game.level.dock.name, 'Dock 3');
+    assert.equal(game.receiving, false); assert.notEqual(receiving.dock.name, game.level.dock.name);
     assert.equal(receiving.pallets.length, 2);
     assert.ok(receiving.pallets.every(p => ['wrapped', 'freight'].includes(p.kind)));
     assert.equal(receiving.pallets.flatMap(loadCartons).length, 4);
-    assert.ok(receiving.pallets.every(p => game.level.dockZone.contains(p.body.translation())));
+    assert.ok(receiving.pallets.every(p => receiving.dockZone.contains(p.body.translation())));
     for (const slot of receiving.slots) {
       assert.equal(slot.rack.stock.filter(b => {
         const p = b.home.pos;
@@ -66,7 +66,7 @@ test('receiving builds real inbound pallets and reserved empty shelf destination
   }
 });
 
-test('correct putaway completes without cleanup or parking, and unfinished progress is revoked when moved', () => {
+test('correct putaway is credited permanently, without cleanup or parking', () => {
   const game = createGame(), receiving = game.receivingSystem;
   openIncoming(game); settle(game, 1);
   for (const slot of receiving.slots) {
@@ -76,16 +76,16 @@ test('correct putaway completes without cleanup or parking, and unfinished progr
     });
   }
   settle(game, 2);
-  assert.deepEqual(game.itemStatus, { A: 2, B: 1 }); assert.equal(game.complete, false);
+  assert.deepEqual(game.receivingStatus, { A: 2, B: 1 }); assert.equal(game.complete, false);
   const box = receiving.boxes[0], slot = receiving.slots[0];
-  move(box.body, 5, .21, -5); settle(game, .4); assert.equal(game.itemStatus.A, 1);
+  move(box.body, 5, .21, -5); settle(game, .4); assert.equal(game.receivingStatus.A, 2);
   move(box.body, slot.x0 + .65, slot.y + .205, (slot.z0 + slot.z1) / 2);
   const other = receiving.slots[1], missing = receiving.boxes.filter(b => b.receivingLine === 'B')[1];
   move(missing.body, other.x0 + 1.5, other.y + .205, (other.z0 + other.z1) / 2);
   game.forklift.height = 2; game.forklift.teleport({ x: 5, z: -5 }, 0);
   settle(game, 2);
   assert.equal(receiving.palletsReturned(), false); assert.equal(receiving.parked(), false);
-  assert.equal(game.complete, true); assert.equal(game.falls, 0);
+  assert.equal(game.jobDone.receiving, true); assert.equal(game.falls, 0);
   game.dispose();
 });
 
@@ -106,12 +106,12 @@ test('receiving records are separate from picking and persist in both player mod
   assert.equal(best('coop', 'receiving-1'), null); assert.equal(best('single', 1), null);
 });
 
-test('picking still builds its original stock and tutorial without incoming pallets', () => {
+test('paired Practice preserves shipping stock and builds incoming pallets immediately', () => {
   const game = new Game({ mode: 'single', order: 1 });
-  assert.equal(game.receiving, false); assert.equal(game.receivingSystem, null);
+  assert.equal(game.receiving, false); assert.ok(game.receivingSystem);
   assert.ok(game.tutorial); assert.equal(game.level.order[0].sku, 355);
   assert.ok(game.entities.some(box => box.kind === 'box' && box.sku === 355 && box.home?.rack === 'A'));
-  assert.equal(game.entities.filter(box => box.receivingLine).length, 0);
+  assert.ok(game.receivingSystem.pallets.length > 0);
   game.dispose();
 });
 
@@ -123,7 +123,7 @@ test('two boxes on the correct shelf count when one rests along the front beam',
   boxes.forEach((box, i) => move(box.body, slot.x0 + .65 + i * .85,
     slot.y + .205, i === 0 ? (slot.z0 + slot.z1) / 2 : slot.z1 - .08));
   settle(game, 2);
-  assert.equal(game.itemStatus.A, 2, 'Stable front-beam placement must count alongside the other box');
+  assert.equal(game.receivingStatus.A, 2, 'Stable front-beam placement must count alongside the other box');
   game.dispose();
 });
 
@@ -242,7 +242,7 @@ test('only Ralph can recover a tipped forklift by holding his reset control', ()
   game.dispose();
 });
 
-test('Dave starts beside the main-floor ladder and can pick it up without moving', async () => {
+test('Dave starts with a rack overview and can quickly walk to the main-floor ladder', async () => {
   const { LAYOUT } = await import('../src/world/layout.js');
   for (const mode of ['single', 'coop']) for (const order of [1, RECEIVING_ORDER.id]) {
     const game = new Game({ mode, order }), dave = game.climber;
@@ -250,6 +250,13 @@ test('Dave starts beside the main-floor ladder and can pick it up without moving
     assert.equal(dave.holdingOn, false); assert.equal(dave.onBlades, false);
     assert.ok(Math.hypot(dave.feet.x - LAYOUT.climberSpawn.pos[0], dave.feet.z - LAYOUT.climberSpawn.pos[2]) < .01);
     assert.equal(dave.yaw, LAYOUT.climberSpawn.yaw);
+    const stand = LAYOUT.ladderStands[0];
+    assert.ok(Math.hypot(dave.feet.x - stand.x, dave.feet.z - stand.z) < 7, 'ladder stays a short walk away');
+    const facing = new THREE_FOR_VIEW_TEST.Vector3(0, 0, -1).applyAxisAngle(new THREE_FOR_VIEW_TEST.Vector3(0, 1, 0), dave.yaw);
+    assert.ok(facing.x < -.5 && facing.z > .7, 'spawn faces across the aisle entrances');
+    move(dave.body, stand.x + 1, dave.centerOff, stand.z);
+    dave.body.setNextKinematicTranslation(dave.body.translation());
+    dave.yaw = Math.PI / 2;
     settle(game, .2);
     dave.updateTarget();
     assert.equal(dave.target?.kind, 'ladder');
@@ -357,11 +364,12 @@ test('all five POs build wrapped manifests, empty destinations and tutorial-only
     const game = new Game({ mode, order: spec.id });
     game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
     const receiving = game.receivingSystem;
-    assert.equal(levelDef(spec.id), spec);
-    assert.equal(game.level.dock.name, spec.dock);
+    assert.equal(levelDef(spec.id).receiving.id, spec.id);
+    assert.equal(receiving.dock.name, game.receivingSpec.dock);
+    assert.notEqual(receiving.dock.name, game.level.dock.name);
     assert.equal(receiving.pallets.length, spec.pallets.length);
     const records = [...receiving.pallets.flatMap(loadCartons), ...receiving.pallets.filter(p => p.kind === 'freight').map(p => ({ data: p }))];
-    for (const line of game.level.order) {
+    for (const line of receiving.order) {
       assert.equal(records.filter(r => r.data.receivingLine === line.line).length, line.qty);
       const slot = receiving.slots.find(s => s.line === line);
       assert.equal(collectStack(game, slot.rack).size, 1); // no physics contacts before first step
@@ -385,7 +393,7 @@ test('every receiving level completes on correct putaway without parking or retu
     game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
     const receiving = game.receivingSystem;
     for (const load of [...receiving.pallets]) {
-      if (load.kind === 'wrapped' && load.contents.some(r => r.data.receivingLine && !game.level.order.find(l => l.line === r.data.receivingLine).pallet)) cutWrapped(game, load);
+      if (load.kind === 'wrapped' && load.contents.some(r => r.data.receivingLine && !receiving.order.find(l => l.line === r.data.receivingLine).pallet)) cutWrapped(game, load);
     }
     for (const slot of receiving.slots) {
       if (slot.line.pallet) {
@@ -399,10 +407,10 @@ test('every receiving level completes on correct putaway without parking or retu
     }
     game.forklift.height = 2; game.forklift.teleport({ x: 5, z: -5 }, .8);
     settle(game, 2.5);
-    for (const line of game.level.order) assert.equal(game.itemStatus[line.line], line.qty, `${spec.number} ${line.location}`);
+    for (const line of receiving.order) assert.equal(game.receivingStatus[line.line], line.qty, `${spec.number} ${line.location}`);
     assert.equal(receiving.parked(), false);
     assert.equal(receiving.palletsReturned(), false);
-    assert.equal(game.complete, true, `${spec.number} completes with correct stock only`);
+    assert.equal(game.jobDone.receiving, true, `${spec.number} completes with correct stock only`);
     game.dispose();
   }
 });
@@ -414,16 +422,16 @@ test('high putaway rejects a wrong bay and unwrapped stock, then accepts the sam
   let load = receiving.pallets.find(p => loadCartons(p)[0].data.receivingLine === 'A');
   const wrong = receiving.slots[1];
   move(load.body, (wrong.x0 + wrong.x1) / 2, wrong.y + .005, (wrong.z0 + wrong.z1) / 2);
-  settle(game, 1.5); assert.equal(game.itemStatus.A, 0); assert.equal(game.falls, 0);
+  settle(game, 1.5); assert.equal(game.receivingStatus.A, 0); assert.equal(game.falls, 0);
   const restored = cutWrapped(game, load), pallet = restored.find(e => e.kind === 'pallet');
   const oldPos = pallet.body.translation(), target = { x: (slot.x0 + slot.x1) / 2, y: slot.y + .005, z: (slot.z0 + slot.z1) / 2 };
   for (const ent of restored) {
     const p = ent.body.translation(); move(ent.body, target.x + p.x - oldPos.x, target.y + p.y - oldPos.y, target.z + p.z - oldPos.z);
   }
-  settle(game, 1.5); assert.equal(game.itemStatus.A, 0, 'Loose stock in the correct high bay is incomplete');
+  settle(game, 1.5); assert.equal(game.receivingStatus.A, 0, 'Loose stock in the correct high bay is incomplete');
   load = buildWrapped(game, pallet, collectStack(game, pallet));
-  settle(game, 1.5); assert.equal(game.itemStatus.A, 6, 'The same incoming IDs count after rewrapping');
-  move(load.body, 5, .01, -5); settle(game, .4); assert.equal(game.itemStatus.A, 0, 'Moving a completed line revokes progress before completion');
+  settle(game, 1.5); assert.equal(game.receivingStatus.A, 6, 'The same incoming IDs count after rewrapping');
+  move(load.body, 5, .01, -5); settle(game, .4); assert.equal(game.receivingStatus.A, 6, 'Accepted receiving credit survives later use of the stock');
   assert.equal(game.complete, false); game.dispose();
 });
 
@@ -560,25 +568,23 @@ test('mixed picking orders count separate delivered loads, reject loose cartons,
   deliver(game, crate, 0);
   const finalLoad = shippingLoad(game, [b]); deliver(game, finalLoad, 2);
   settle(game, 1);
-  assert.equal(game.complete, true); assert.deepEqual(game.itemStatus, { A: 2, B: 1, C: 1 });
+  assert.equal(game.jobDone.shipping, true); assert.equal(game.complete, false); assert.deepEqual(game.itemStatus, { A: 2, B: 1, C: 1 });
   assert.equal(game.falls, 0); assert.equal(cartonLoad.kind, 'wrapped'); game.dispose();
 });
 
-test('Full Shift ships every delivered load and clears delivery progress before the next order', async () => {
-  const { ORDERS } = await import('../src/world/level.js');
-  const game = new Game({ mode: 'single', order: 'shift' });
+test('completed shipping leaves its clipboard and counts intact while receiving remains active', () => {
+  const game = new Game({ mode: 'single', order: 3 });
   game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
-  game.orderId = 3; game.level.setOrder(ORDERS.find(o => o.id === 3));
-  game.itemStatus = Object.fromEntries(game.level.order.map(line => [line.line, 0]));
-  const crate = game.entities.find(e => e.kind === 'freight' && e.sku === 1001);
   const cartons = shippingLoad(game, game.level.order.filter(line => !line.freight));
-  const crateHandle = crate.body.handle, cartonHandle = cartons.body.handle;
-  deliver(game, crate, -1); deliver(game, cartons, 1); settle(game, 1);
-  assert.equal(game.orderId, 4); assert.equal(game.complete, false);
-  assert.equal(crate.removed, true); assert.equal(cartons.removed, true);
-  assert.equal(game.bodyMap.has(crateHandle), false); assert.equal(game.bodyMap.has(cartonHandle), false);
-  assert.deepEqual(game.itemStatus, { A: 0, B: 0, C: 0 });
-  assert.equal(game.deliveredLoads.size, 0); game.dispose();
+  deliver(game, cartons, -1.5);
+  for (const line of game.level.order.filter(l => l.freight)) deliver(game, game.entities.find(e => e.kind === 'freight' && e.sku === line.sku), 1.5);
+  settle(game, 1);
+  assert.equal(game.jobDone.shipping, true); assert.equal(game.complete, false);
+  const before = { ...game.itemStatus };
+  settle(game, 1); assert.deepEqual(game.itemStatus, before);
+  assert.equal(game.orderId, 3); assert.equal(cartons.removed, true);
+  assert.ok(game.receivingSystem.pallets.length > 0);
+  game.dispose();
 });
 
 test('Ralph can retrieve strapped crates from both low and high West-wall bays without snagging the rack', () => {
@@ -619,14 +625,14 @@ test('heavy receiving counts only the incoming single unit in its assigned bay',
   const receiving = game.receivingSystem, slot = receiving.slots.find(s => s.line.freight);
   const pos = [(slot.x0 + slot.x1) / 2, slot.y + .005, (slot.z0 + slot.z1) / 2];
   const substitute = createFreightForTest(game, { ...slot.line, pos });
-  settle(game, 1.5); assert.equal(game.itemStatus[slot.line.line], 0, 'Existing warehouse stock with the same SKU cannot replace the shipment');
+  settle(game, 1.5); assert.equal(game.receivingStatus[slot.line.line], 0, 'Existing warehouse stock with the same SKU cannot replace the shipment');
   game.world.removeRigidBody(substitute.body); game.scene.remove(substitute.mesh); game.removeEntity(substitute);
   const incoming = receiving.pallets.find(p => p.kind === 'freight');
   const wrong = receiving.slots.find(s => !s.line.freight);
   move(incoming.body, (wrong.x0 + wrong.x1) / 2, wrong.y + .005, (wrong.z0 + wrong.z1) / 2);
-  settle(game, 1.5); assert.equal(game.itemStatus[slot.line.line], 0);
+  settle(game, 1.5); assert.equal(game.receivingStatus[slot.line.line], 0);
   move(incoming.body, ...pos);
-  settle(game, 1.5); assert.equal(game.itemStatus[slot.line.line], 1);
+  settle(game, 1.5); assert.equal(game.receivingStatus[slot.line.line], 1);
   assert.equal(incoming.kind, 'freight'); assert.equal(game.falls, 0); game.dispose();
 });
 
@@ -643,7 +649,8 @@ test('all five picking orders finish with their required secured cartons and who
       deliver(game, crate, 1.5);
     }
     settle(game, 1);
-    assert.equal(game.complete, true, `Order ${order.id} finishes`);
+    assert.equal(game.jobDone.shipping, true, `Order ${order.id} finishes shipping`);
+    assert.equal(game.complete, false);
     for (const line of game.level.order) assert.equal(game.itemStatus[line.line], line.qty);
     game.dispose();
   }
@@ -980,22 +987,22 @@ test('combined tutorial hands off shipping to receiving in the same world and re
   const removedId = removed.damageId;
   game.shipLoad(removed);
   game.finishOrder(null);
-  assert.equal(game.world, world); assert.equal(game.receiving, true);
-  assert.equal(game.phase, 'receiving'); assert.equal(game.receivingSystem.read, true);
+  assert.equal(game.world, world); assert.equal(game.jobDone.shipping, true);
+  assert.equal(game.phase, 'parallel'); assert.equal(game.jobDone.receiving, false);
   assert.equal(game.time, 45); assert.equal(game.damage.total, 200);
   assert.ok(campaignProgress('single', 'campaign-1').checkpoint);
   const incoming = game.receivingSystem.pallets.length;
   const count = game.entities.length;
   game.dispose();
   const resumed = new Game({ mode: 'single', order: 'campaign-1' });
-  assert.equal(resumed.receiving, true);
+  assert.equal(resumed.jobDone.shipping, true);
   assert.equal(resumed.time, 45); assert.equal(resumed.falls, 2); assert.equal(resumed.damage.total, 200);
   assert.equal(resumed.receivingSystem.pallets.length, incoming);
   assert.equal(resumed.entities.length, count, 'restore recreates exactly the saved physical stock');
   assert.ok(!resumed.entities.some(e => e.damageId === removedId), 'shipped stock stays gone');
   assert.ok(resumed.entities.some(e => e.basementStack && Math.abs(e.body.translation().z + 14) < .01), 'warehouse mess survives');
   let complete = false; resumed.onComplete = () => { complete = true; };
-  resumed.finishOrder(null);
+  resumed.finishJob('receiving');
   assert.equal(complete, true); assert.equal(campaignProgress('single', 'campaign-1').complete, true);
   assert.equal(campaignProgress('single', 'campaign-1').checkpoint, undefined);
   resumed.dispose();
@@ -1011,10 +1018,10 @@ test('five combined levels preserve shipping stock, prepare receiving bays, and 
     for (const line of game.level.order) assert.ok(game.entities.some(e => e.sku === line.sku || e.skus?.[line.sku]), 'outgoing stock remains available');
     game.finishOrder(null);
     assert.equal(game.receivingSystem.spec.id, definition.receiving.id);
-    assert.equal(game.level.order.length, definition.receiving.lines.length);
+    assert.equal(game.receivingSystem.order.length, definition.receiving.lines.length);
     game.dispose();
   }
-  const practice = createGame(); assert.equal(practice.campaign, undefined); assert.equal(practice.receiving, true); practice.dispose();
+  const practice = createGame(); assert.equal(practice.campaign, undefined); assert.equal(practice.receiving, false); assert.ok(practice.receivingSystem); practice.dispose();
 });
 
 test('every combined shift completes shipping and receiving through the physical completion rules in single player and co-op', async () => {
@@ -1038,10 +1045,10 @@ test('every combined shift completes shipping and receiving through the physical
     deliver(game, buildWrapped(game, pallet, set), -1.5);
     for (const line of lines.filter(l => l.freight)) deliver(game, game.entities.find(e => e.kind === 'freight' && e.sku === line.sku), 1.5);
     settle(game, 1.2);
-    assert.equal(game.receiving, true, `${definition.title} reaches receiving`);
+    assert.equal(game.jobDone.shipping, true, `${definition.title} finishes shipping`);
     assert.equal(game.complete, false);
     const receiving = game.receivingSystem;
-    for (const load of [...receiving.pallets]) if (load.kind === 'wrapped' && load.contents.some(r => r.data.receivingLine && !game.level.order.find(l => l.line === r.data.receivingLine).pallet)) cutWrapped(game, load);
+    for (const load of [...receiving.pallets]) if (load.kind === 'wrapped' && load.contents.some(r => r.data.receivingLine && !receiving.order.find(l => l.line === r.data.receivingLine).pallet)) cutWrapped(game, load);
     for (const slot of receiving.slots) {
       if (slot.line.pallet) {
         const load = receiving.pallets.find(p => slot.line.freight ? p.kind === 'freight' && p.receivingLine === slot.line.line : p.kind === 'wrapped' && loadCartons(p).every(r => r.data.receivingLine === slot.line.line));
@@ -1136,7 +1143,7 @@ test('putaway feedback explains wrap, destination, release, and confirmed quanti
   box.carried = true;
   assert.match(receiving.placementHint('climber'), /Put the carton down/);
   box.carried = false;
-  game.itemStatus[slot.line.line] = slot.line.qty;
+  game.receivingStatus[slot.line.line] = slot.line.qty;
   assert.match(receiving.placementHint('climber'), /2\/2 put away/);
   move(game.climber.body, -18, 1, 18);
   assert.equal(receiving.placementHint('climber'), '', 'no distant stock prompts');
@@ -1394,6 +1401,7 @@ test('campaign themes create parallel carton/forklift jobs without changing Prac
     game.finishOrder(null);
     assert.equal(game.world, world);
     game.workGuide.update(1);
+    game.trackJob('driver', 'receiving'); game.trackJob('climber', 'receiving'); game.workGuide.update(1);
     assert.notEqual(game.workGuide.content('driver').detail, game.workGuide.content('climber').detail);
     assert.ok(game.receivingSystem.pallets.length >= 2, 'Ralph can unload another unit while Dave processes the first');
     game.dispose(); saveCampaignProgress('coop', level.id, {});
@@ -1422,6 +1430,7 @@ test('team task cards advance when cartons are packed and when a receiving load 
   game.workGuide.update(1);
   assert.match(game.workGuide.content('climber').detail, /Cartons are loaded/);
   game.finishOrder(null);
+  game.trackJob('driver', 'receiving'); game.trackJob('climber', 'receiving');
   const first = game.receivingSystem.pallets[0];
   move(first.body, 4.8, .005, -5.3);
   game.workGuide.update(1);
@@ -1458,4 +1467,307 @@ test('shipping tutorial reads its pause clipboard without starting time or showi
   assert.equal(game.tutorial.read, true); assert.equal(game.started, false); assert.equal(game.time, 0);
   game.frame(.2); assert.equal(game.tutorial.stage, 1);
   game.dispose();
+});
+
+test('previewing the receiving clipboard preserves the active shipping task', async () => {
+  const { orderLines } = await import('../src/world/level.js');
+  const { saveCampaignProgress } = await import('../src/world/campaign.js');
+  saveCampaignProgress('single', 'campaign-1', {});
+  const game = new Game({ mode: 'single', order: 'campaign-1' });
+  const order = game.level.order, status = game.itemStatus;
+  const spec = game.campaign.receiving;
+  game.forklift.drawClipboard({ receiving: true, receivingSpec: spec, orderId: spec.id,
+    level: { order: orderLines(spec), dock: { name: spec.dock } }, itemStatus: {}, skus: game.skus });
+  assert.equal(game.receiving, false);
+  assert.equal(game.level.order, order);
+  assert.equal(game.itemStatus, status);
+  assert.equal(game.time, 0);
+  const previewKey = game.forklift.clipboard.key;
+  game.forklift.drawClipboard();
+  assert.notEqual(game.forklift.clipboard.key, previewKey);
+  game.dispose();
+});
+
+// Exercise the actual settling/contact checks, rather than setting completion flags.
+function putAwayAll(game) {
+  const receiving = game.receivingSystem;
+  for (const load of [...receiving.pallets]) if (load.kind === 'wrapped' && load.contents.some(r => r.data.receivingLine && !receiving.order.find(l => l.line === r.data.receivingLine).pallet)) cutWrapped(game, load);
+  for (const slot of receiving.slots) {
+    if (slot.line.pallet) {
+      const load = receiving.pallets.find(p => slot.line.freight ? p.kind === 'freight' && p.receivingLine === slot.line.line : p.kind === 'wrapped' && loadCartons(p).every(r => r.data.receivingLine === slot.line.line));
+      move(load.body, (slot.x0 + slot.x1) / 2, slot.y + .005, (slot.z0 + slot.z1) / 2);
+    } else receiving.boxes.filter(b => b.receivingLine === slot.line.line).forEach((box, i) => {
+      move(box.body, slot.x0 + .5 + i % 3 * .8, slot.y + box.size[1] / 2 + .005, (slot.z0 + slot.z1) / 2);
+    });
+  }
+  settle(game, 2.5);
+}
+function shipExistingStock(game) {
+  const lines = game.level.order;
+  for (const load of [...game.entities]) if (load.kind === 'wrapped' && !load.incomingPalletIds?.length && lines.some(l => !l.freight && load.skus[l.sku])) cutWrapped(game, load);
+  const pallet = createPalletForTest(game, { pos: [8, .005, -3] }), set = new Set([pallet]);
+  let index = 0;
+  for (const line of lines.filter(l => !l.freight)) {
+    const boxes = game.entities.filter(e => e.kind === 'box' && !e.incomingId && e.sku === line.sku).slice(0, line.qty);
+    assert.equal(boxes.length, line.qty, `independent stock for SKU ${line.sku}`);
+    for (const box of boxes) {
+      move(box.body, 8 + (index % 2 ? .3 : -.3), .16 + Math.floor(index / 4) * .95 + box.size[1] / 2, -3 + (Math.floor(index / 2) % 2 ? .3 : -.3));
+      set.add(box); index++;
+    }
+  }
+  deliver(game, buildWrapped(game, pallet, set), -1.5);
+  for (const line of lines.filter(l => l.freight)) deliver(game, game.entities.find(e => e.kind === 'freight' && !e.incomingId && e.sku === line.sku), 1.5);
+  settle(game, 1.2);
+}
+
+test('all campaign and Practice pairs complete receiving first in both player modes', async () => {
+  const { CAMPAIGN_LEVELS, saveCampaignProgress } = await import('../src/world/campaign.js');
+  for (const mode of ['single', 'coop']) for (const id of [...CAMPAIGN_LEVELS.map(l => l.id), 1, 2, 3, 4, 5]) {
+    if (typeof id === 'string') saveCampaignProgress(mode, id, {});
+    const game = new Game({ mode, order: id });
+    try {
+      game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+      assert.notEqual(game.level.dock.name, game.receivingSystem.dock.name);
+      assert.ok(game.receivingSystem.pallets.every(p => game.receivingSystem.dockZone.contains(p.body.translation())));
+      let finished = 0; game.onComplete = () => finished++;
+      putAwayAll(game);
+      assert.equal(game.jobDone.receiving, true, `${mode} ${id} receives`);
+      assert.equal(game.jobDone.shipping, false); assert.equal(game.complete, false); assert.equal(finished, 0);
+      const inboundCounts = { ...game.receivingStatus };
+      shipExistingStock(game);
+      assert.equal(game.jobDone.shipping, true, `${mode} ${id} ships`);
+      assert.equal(game.complete, true); assert.equal(finished, 1);
+      assert.deepEqual(game.receivingStatus, inboundCounts);
+      game.finishJob('shipping'); game.finishJob('receiving'); assert.equal(finished, 1);
+    } finally {
+      game.dispose(); if (typeof id === 'string') saveCampaignProgress(mode, id, {});
+    }
+  }
+});
+
+test('receiving-first checkpoint restores both jobs and independent tracking without duplicating loads', async () => {
+  const { saveCampaignProgress } = await import('../src/world/campaign.js');
+  saveCampaignProgress('coop', 'campaign-1', {});
+  const game = new Game({ mode: 'coop', order: 'campaign-1' });
+  game.assignDevices({ padCount: () => 2, lastDevice: 'pad0' });
+  game.trackJob('driver', 'receiving'); game.trackJob('climber', 'shipping');
+  game.readClipboard(); game.frame(.2);
+  assert.equal(game.tutorial.stage, 1, 'incoming SKU 355 does not impersonate an outgoing packed pallet');
+  assert.match(game.guideFor('driver').title, /PO-001/);
+  assert.match(game.guideFor('climber').title, /ORDER 1/);
+  putAwayAll(game);
+  const count = game.entities.length, ids = [...game.receivedIds]; game.dispose();
+  const resumed = new Game({ mode: 'coop', order: 'campaign-1' });
+  try {
+    assert.deepEqual(resumed.jobDone, { shipping: false, receiving: true });
+    assert.deepEqual(resumed.trackedJobs, { driver: 'shipping', climber: 'shipping' });
+    assert.deepEqual([...resumed.receivedIds], ids); assert.equal(resumed.entities.length, count);
+    assert.doesNotMatch(resumed.guideFor('driver').title, /COMPLETE/);
+    shipExistingStock(resumed); assert.equal(resumed.complete, true);
+  } finally { resumed.dispose(); saveCampaignProgress('coop', 'campaign-1', {}); }
+});
+
+test('incoming stock cannot ship before receipt but can ship after putaway without losing receiving credit', () => {
+  const game = new Game({ mode: 'single', order: 1 });
+  try {
+    game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+    const receiving = game.receivingSystem, load = receiving.pallets[0];
+    assert.equal(game.securedCounts(load).A, 0);
+    putAwayAll(game); assert.equal(game.jobDone.receiving, true);
+    const pallet = createPalletForTest(game, { pos: [8, .005, -3] });
+    const box = receiving.boxes.find(b => b.sku === game.level.order[0].sku);
+    move(box.body, 8, .16 + box.size[1] / 2, -3);
+    const shipment = buildWrapped(game, pallet, new Set([pallet, box]));
+    assert.equal(game.securedCounts(shipment).A, 1);
+    deliver(game, shipment, 0); settle(game, 1.2);
+    assert.equal(game.complete, true); assert.equal(game.receivingStatus.A, 2);
+  } finally { game.dispose(); }
+});
+
+test('pause-menu direction events retain the originating device for independent co-op tracking', () => {
+  const input = Object.create(Input.prototype);
+  input.pressed = new Set(['ArrowRight']); input.pads = [{ index: 2 }, { index: 7 }];
+  input.padEdges = new Map([[2, new Set(['stickLeft'])], [7, new Set([15])]]);
+  assert.deepEqual(input.menu().clipboards, [
+    { device: 'kbm', direction: 1 }, { device: 'pad0', direction: -1 }, { device: 'pad1', direction: 1 },
+  ]);
+});
+
+test('clipboard tracking follows the player when changing characters or swapping co-op roles', () => {
+  const solo = new Game({ mode: 'single', order: 2 });
+  solo.trackJob('driver', 'receiving'); solo.swapCharacter();
+  assert.equal(solo.trackedJobs[solo.active], 'receiving'); solo.dispose();
+  const coop = new Game({ mode: 'coop', order: 2 });
+  coop.trackJob('driver', 'receiving');
+  assert.deepEqual(coop.trackedJobs, { driver: 'receiving', climber: 'shipping' });
+  coop.swapRoles();
+  assert.deepEqual(coop.trackedJobs, { driver: 'shipping', climber: 'receiving' });
+  coop.dispose();
+});
+
+test('finishing the other job never interrupts Dave carrying shipping stock', async () => {
+  const { saveCampaignProgress } = await import('../src/world/campaign.js');
+  saveCampaignProgress('coop', 'campaign-1', {});
+  const game = new Game({ mode: 'coop', order: 'campaign-1' });
+  try {
+    const box = game.entities.find(e => e.kind === 'box' && e.sku === 355 && !e.incomingId);
+    game.climber.pickUp(box);
+    assert.ok(game.climber.carriedBoxes().includes(box));
+    game.finishJob('receiving');
+    assert.ok(game.climber.carriedBoxes().includes(box));
+    assert.equal(box.carried, true);
+    assert.equal(game.complete, false);
+  } finally { game.dispose(); saveCampaignProgress('coop', 'campaign-1', {}); }
+});
+
+
+test('completed clipboards move behind open jobs and each affected player advances automatically', async () => {
+  const { saveCampaignProgress } = await import('../src/world/campaign.js');
+  for (const mode of ['single', 'coop']) for (const first of ['shipping', 'receiving']) {
+    saveCampaignProgress(mode, 'campaign-1', {});
+    const game = new Game({ mode, order: 'campaign-1' });
+    try {
+      const next = first === 'shipping' ? 'receiving' : 'shipping';
+      game.trackedJobs = { driver: first, climber: mode === 'coop' ? next : first };
+      assert.deepEqual(game.clipboardJobs(), ['shipping', 'receiving']);
+      game.finishJob(first);
+      assert.deepEqual(game.clipboardJobs(), [next, first]);
+      assert.deepEqual(game.trackedJobs, { driver: next, climber: next });
+      assert.equal(game.complete, false);
+      assert.doesNotMatch(game.guideFor('driver').title, /COMPLETE/);
+      // Completed pages can still be reviewed without changing their final state.
+      game.trackJob('driver', first);
+      assert.match(game.guideFor('driver').title, /COMPLETE/);
+      game.trackJob('driver', next);
+      let finished = 0; game.onComplete = () => finished++;
+      game.finishJob(next);
+      assert.equal(game.complete, true); assert.equal(finished, 1);
+      assert.equal(game.trackedJobs.driver, next, 'no jump to a completed job when none remain open');
+      assert.equal(game.clipboardJobs().length, 2);
+    } finally { game.dispose(); saveCampaignProgress(mode, 'campaign-1', {}); }
+  }
+});
+
+function timedGame(mode = 'single', options = {}) {
+  const game = new Game({ mode, order: 'timed', timed: { minutes: 10, difficulty: 'standard', ...options } });
+  game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  return game;
+}
+
+test('Timed Shift starts two live independent jobs, validates options, and preserves idle preparation time', async () => {
+  const { timedOptions } = await import('../src/systems/timed-shift.js');
+  assert.deepEqual(timedOptions({ minutes: -5, difficulty: 'oops' }), { minutes: 1, difficulty: 'standard' });
+  assert.equal(timedOptions({ minutes: 999 }).minutes, 120);
+  for (const mode of ['single', 'coop']) {
+    const game = timedGame(mode);
+    try {
+      assert.equal(game.campaign, undefined); assert.equal(game.tutorial, null);
+      assert.equal(game.timed.remaining, 600); assert.equal(game.receivingSystem.putawaySigns.length, 0);
+      assert.notEqual(game.level.dock.name, game.receivingSystem.dock.name);
+      assert.ok(game.receivingSystem.pallets.every(p => game.receivingSystem.dockZone.contains(p.body.translation())));
+      settle(game, .3); assert.equal(game.time, 0); assert.equal(game.timed.remaining, 600);
+      game.started = true; settle(game, .5); assert.ok(Math.abs(game.timed.remaining - 599.5) < .02);
+      const remaining = game.timed.remaining; game.frame(.5); assert.equal(game.timed.remaining, remaining, 'drawing and Pause do not consume clock time');
+    } finally { game.dispose(); }
+  }
+});
+
+test('Timed Shift physically completes both jobs in either order and replaces each independently', () => {
+  for (const mode of ['single', 'coop']) for (const first of ['shipping', 'receiving']) {
+    const game = timedGame(mode, { difficulty: 'easy' });
+    try {
+      const world = game.world, receipt = game.receivingSystem.spec.id, shipping = game.orderId;
+      game.damage.charge('test:damage', 200, 'Test damage');
+      game.level.conveyors[0].powerSwitch.activate();
+      if (first === 'shipping') shipExistingStock(game); else putAwayAll(game);
+      assert.equal(game.timed.counts[first], 1, `${mode} ${first} completes through physical rules`);
+      assert.equal(game.complete, false); assert.equal(game.world, world);
+      assert.equal(game.damage.total, 200); assert.ok(game.level.conveyors[0].powerSwitch.high);
+      if (first === 'shipping') { assert.equal(game.receivingSystem.spec.id, receipt); assert.notEqual(game.orderId, shipping); putAwayAll(game); }
+      else { assert.equal(game.orderId, shipping); assert.notEqual(game.receivingSystem.spec.id, receipt); shipExistingStock(game); }
+      assert.deepEqual(game.timed.counts, { shipping: 1, receiving: 1 });
+      assert.equal(game.complete, false); assert.ok(game.timed.earnings > 0);
+      assert.equal(game.timed.net, game.timed.earnings - 200);
+      assert.equal(game.clipboardJobs().length, 4);
+      const archived = game.clipboardJobs()[2]; assert.equal(game.jobDone[archived], true);
+      const view = game.taskView(archived); assert.ok(view.level.order.every(l => view.itemStatus[l.line] === l.qty));
+      assert.deepEqual(game.jobDone.shipping, false); assert.deepEqual(game.jobDone.receiving, false);
+    } finally { game.dispose(); }
+  }
+});
+
+test('Timed Shift ends exactly once at the deadline, awards no unfinished credit, and applies incident time', () => {
+  const game = timedGame('single', { minutes: 1 });
+  try {
+    let calls = 0; game.onComplete = () => calls++; game.started = true; game.time = 44.99; game.falls = 1;
+    assert.ok(game.timed.remaining < .02);
+    settle(game, .1);
+    assert.equal(game.complete, true); assert.equal(game.timed.remaining, 0); assert.equal(calls, 1);
+    assert.deepEqual(game.timed.counts, { shipping: 0, receiving: 0 }); assert.equal(game.timed.earnings, 0);
+    game.finishJob('shipping'); game.finishJob('receiving'); assert.equal(calls, 1); assert.equal(game.timed.earnings, 0);
+    const time = game.time; settle(game, .1); assert.equal(game.time, time);
+  } finally { game.dispose(); }
+});
+
+test('Timed Shift recovery charges fees without completion credit, bounds history, and increases difficulty', () => {
+  const game = timedGame('coop', { difficulty: 'easy' });
+  try {
+    const before = game.orderId; game.timed.abandon('shipping');
+    assert.notEqual(game.orderId, before); assert.equal(game.timed.fees, 100); assert.equal(game.timed.remaining, 585);
+    assert.equal(game.timed.counts.shipping, 0); assert.equal(game.timed.net, -100);
+    const receipt = game.receivingSystem.spec.id; game.timed.abandon('receiving');
+    assert.notEqual(game.receivingSystem.spec.id, receipt); assert.equal(game.timed.fees, 200);
+    assert.equal(game.timed.counts.receiving, 0);
+    assert.equal(game.timed.tier, 0);
+    // Finish callbacks are tested physically above; exercise the archive limit and generator here.
+    for (let i = 0; i < 12; i++) {
+      game.itemStatus = Object.fromEntries(game.level.order.map(l => [l.line, l.qty]));
+      game.finishJob('shipping');
+    }
+    assert.equal(game.timed.tier, 3); assert.equal(game.timed.history.length, 10);
+    assert.equal(game.clipboardJobs().length, 12);
+    assert.ok(game.level.order.every(l => l.qty > 0 && l.location));
+  } finally { game.dispose(); }
+});
+
+test('hard Timed Shift receives secured high pallets and crates into physically empty bays', () => {
+  const game = timedGame('single', { difficulty: 'hard' });
+  try {
+    for (let i = 0; i < 4; i++) {
+      const receiving = game.receivingSystem, line = receiving.order[0];
+      if (i === 1) { assert.equal(line.pallet, true); assert.equal(line.freight, false); assert.ok(Number(line.location.split('-')[2]) >= 3); }
+      if (i === 3) assert.equal(line.freight, true, JSON.stringify({ line, slots: game.timed.slots().filter(s => s.pallet && s.y >= 4.8 && !s.items.length).map(s => s.location) }));
+      putAwayAll(game);
+      assert.equal(game.timed.counts.receiving, i + 1);
+      assert.equal(game.complete, false);
+      assert.ok(game.entities.some(e => e.incomingId?.startsWith(receiving.spec.id) || e.contents?.some(r => r.data.incomingId?.startsWith(receiving.spec.id))), 'accepted stock persists');
+    }
+  } finally { game.dispose(); }
+});
+
+test('Timed Shift has recovery when all stock is lost or all racks are displaced', () => {
+  const game = timedGame();
+  try {
+    for (const e of [...game.entities]) if (!e.removed && ['box', 'wrapped', 'freight'].includes(e.kind)) game.shipLoad(e);
+    game.timed.replace('shipping');
+    assert.equal(game.level.order[0].floorStock, true); assert.equal(game.timed.fees, 75);
+    assert.ok(game.entities.some(e => e.kind === 'box' && e.sku === game.level.order[0].sku));
+    for (const rack of game.level.racks) rack.body.setRotation(new THREE_FOR_VIEW_TEST.Quaternion().setFromAxisAngle(new THREE_FOR_VIEW_TEST.Vector3(0, 0, 1), 1), true);
+    const receipt = game.timed.receiving(); assert.equal(receipt.lines[0].resetRack, true);
+    assert.ok(receipt.lines[0].qty > 0);
+  } finally { game.dispose(); }
+});
+
+test('successive timed clipboards redraw their new PO number and destination even with identical SKU quantities', () => {
+  const game = timedGame(), calls = [], previous = context.fillText;
+  try {
+    context.fillText = text => calls.push(text);
+    const view = game.taskView('receiving');
+    game.forklift.drawClipboard(view); const key = game.forklift.clipboard.key;
+    const next = { ...view, receivingSpec: { ...view.receivingSpec, number: 'PO-T999' },
+      level: { ...view.level, order: view.level.order.map(l => ({ ...l, location: 'B-1-1' })) } };
+    calls.length = 0; game.forklift.drawClipboard(next);
+    assert.notEqual(game.forklift.clipboard.key, key);
+    assert.ok(calls.includes('PO-T999')); assert.ok(calls.includes('B-1-1'));
+  } finally { context.fillText = previous; game.dispose(); }
 });

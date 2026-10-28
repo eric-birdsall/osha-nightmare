@@ -13,8 +13,8 @@ test('basement railing opening clears the forklift and the ladder stays at Rack 
   assert.equal(stand.count, 1); assert.equal(stand.showLabel, false);
   assert.ok(stand.z > gap.to + .55, 'Stand is outside the opening');
   assert.ok(stand.z >= rack.z0 && stand.z <= rack.z1);
-  assert.ok(Math.hypot(climberSpawn.pos[0] - stand.x, climberSpawn.pos[2] - stand.z) < 1.5);
-  assert.equal(climberSpawn.yaw, Math.PI);
+  assert.ok(Math.hypot(climberSpawn.pos[0] - stand.x, climberSpawn.pos[2] - stand.z) < 7, 'Ladder is a short walk from the rack-overview spawn');
+  assert.ok(Math.sin(climberSpawn.yaw) > .5 && Math.cos(climberSpawn.yaw) < -.7, 'Dave faces across the rack entrances');
 });
 
 test('parking occupies the southwest of the basement and points east on the landscape plan', () => {

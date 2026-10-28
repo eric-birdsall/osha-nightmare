@@ -1,3 +1,4 @@
+import { timedOptions } from './systems/timed-shift.js';
 import { orderDestinations, markDestination } from './world/navigation.js';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -8,10 +9,9 @@ import { Game } from './systems/game.js';
 import { unlockAudio, sfx } from './systems/audio.js';
 import { DOCKS, ORDERS } from './world/level.js';
 import { drawFloorPlan } from './world/floorplan.js';
-import { best, submit, medalFor, nextMedal, fmtTime, FULL_SHIFT, levelDef } from './systems/records.js';
+import { best, submit, medalFor, nextMedal, fmtTime, levelDef } from './systems/records.js';
 import { settings } from './systems/settings.js';
 import { CAMPAIGN_LEVELS, campaignLevel, campaignProgress } from './world/campaign.js';
-import { RECEIVING_ORDERS } from './world/receiving-orders.js';
 
 await RAPIER.init();
 
@@ -46,9 +46,10 @@ const screens = {
   controls: document.getElementById('controls'),
   howto: document.getElementById('howto'),
   levels: document.getElementById('levels'),
-  jobs: document.getElementById('jobs'),
+  timed: document.getElementById('timed'),
 };
-let pickJob = 'picking';
+let pickJob = 'campaign';
+let timedSettings = timedOptions({ minutes: 10, difficulty: 'standard' });
 let pickMode = 'single'; // the mode chosen on the title screen, while picking a level
 let focusIdx = 0;
 
@@ -86,6 +87,13 @@ function menuNav() {
   const vis = visibleScreen();
   if (!vis) return;
   const m = input.menu();
+  if (document.activeElement?.id === 'timed-minutes') { if (m.back) closeOverlay(); return; }
+  if (state === 'paused' && !overlay && (m.left || m.right)) {
+    for (const request of m.clipboards) {
+      const role = game.mode === 'single' ? game.active : ['driver', 'climber'].find(r => game.devices[r].includes(request.device)) || pauseRole;
+      changeClipboard(request.direction, role);
+    }
+  }
   // How to Play is one long page with a single button: up and down scroll it instead
   if (overlay === 'howto' && (m.up || m.down)) {
     vis.querySelector('.panel').scrollBy({ top: m.up ? -160 : 160, behavior: 'smooth' });
@@ -123,8 +131,8 @@ function refreshCctv() {
 refreshCctv();
 
 function closeOverlay() {
-  if (overlay === 'jobs') { pickJob = 'campaign'; showLevels(); return; }
-  if (overlay === 'levels' && pickJob !== 'campaign') { overlay = 'jobs'; refreshScreens(); return; }
+  if (overlay === 'levels' && pickJob !== 'campaign') { pickJob = 'campaign'; showLevels(); return; }
+  if (overlay === 'timed') { showLevels(); return; }
   overlay = null;
   refreshScreens();
 }
@@ -138,16 +146,28 @@ document.addEventListener('click', (e) => {
     pickMode = act;
     pickJob = 'campaign';
     showLevels();
+  } else if (act === 'timed') {
+    overlay = 'timed'; refreshTimedSettings(); refreshScreens();
+  } else if (act === 'timedlength' || act === 'timedless' || act === 'timedmore') {
+    timedSettings.minutes = act === 'timedlength' ? Number(b.dataset.minutes) : timedSettings.minutes + (act === 'timedless' ? -1 : 1);
+    refreshTimedSettings();
+  } else if (act === 'timeddifficulty') {
+    const choices = ['easy', 'standard', 'hard']; timedSettings.difficulty = choices[(choices.indexOf(timedSettings.difficulty) + 1) % choices.length]; refreshTimedSettings();
+  } else if (act === 'timedstart') {
+    startGame(pickMode, 'timed', timedSettings);
+  } else if (act === 'timedreplace') {
+    if (game.timed && !game.jobDone[pauseClipboardJob]) {
+      game.timed.abandon(pauseClipboardJob);
+      if (!game.complete) { renderPauseClipboard(); mapDestinationId = null; refreshMapDestination(); }
+    }
   } else if (act === 'practice') {
-    overlay = 'jobs'; refreshScreens();
-  } else if (act === 'picking' || act === 'receiving') {
-    pickJob = act;
-    showLevels();
+    pickJob = 'practice'; showLevels();
+
   } else if (act === 'level') startGame(pickMode, b.dataset.level === 'shift' || b.dataset.level.startsWith('receiving-') || b.dataset.level.startsWith('campaign-') ? b.dataset.level : Number(b.dataset.level));
-  else if (act === 'next') startGame(game.mode, game.campaign ? CAMPAIGN_LEVELS[CAMPAIGN_LEVELS.findIndex(l => l.id === game.levelId) + 1].id : game.receiving ? RECEIVING_ORDERS[RECEIVING_ORDERS.findIndex(o => o.id === game.levelId) + 1].id : game.orderId + 1);
+  else if (act === 'next') startGame(game.mode, game.campaign ? CAMPAIGN_LEVELS[CAMPAIGN_LEVELS.findIndex(l => l.id === game.levelId) + 1].id : game.orderId + 1);
   else if (act === 'levels') {
     pickMode = game.mode;
-    pickJob = game.campaign ? 'campaign' : game.receiving ? 'receiving' : 'picking';
+    pickJob = game.campaign || game.timed ? 'campaign' : 'practice';
     quitToTitle();
     showLevels();
   } else if (act === 'controls' || act === 'howto') {
@@ -166,11 +186,11 @@ document.addEventListener('click', (e) => {
     try { localStorage.setItem('osha.mapDestination', String(mapDestinationEnabled)); } catch {}
     refreshMapDestination();
   } else if (act === 'mapnext') {
-    const targets = orderDestinations(game);
+    const targets = orderDestinations(game.taskView(pauseClipboardJob));
     mapDestinationId = targets[(targets.findIndex(t => t.id === mapDestinationId) + 1) % targets.length]?.id;
     refreshMapDestination();
   } else if (act === 'resume') resume();
-  else if (act === 'restart') startGame(game.mode, game.levelId);
+  else if (act === 'restart') startGame(game.mode, game.levelId, game.timed?.options);
   else if (act === 'swaproles') {
     game.swapRoles();
     resume();
@@ -187,19 +207,18 @@ function quitToTitle() {
 
 // The level list for the chosen mode: Order 1-5 with this mode's best time and medal, then Full Shift
 function showLevels() {
-  document.querySelector('#levels .selection-title').textContent = pickJob === 'campaign' ? 'SELECT LEVEL' : pickJob === 'receiving' ? 'RECEIVING PRACTICE' : 'SHIPPING PRACTICE';
+  document.querySelector('#levels .selection-title').textContent = pickJob === 'campaign' ? 'SELECT LEVEL' : 'PAIRED PRACTICE';
   document.getElementById('lv-mode').textContent = pickMode === 'coop' ? 'Couch co-op · split screen' : 'Single player · swap with Tab / View';
   const tag = (m) => (m ? `<i class="medal ${m}">${m}</i>` : '');
   const row = (id, label, name) => {
     const b = best(pickMode, id);
     const progress = campaignLevel(id) ? campaignProgress(pickMode, id) : null;
-    const status = campaignLevel(id) ? (progress?.complete ? 'Shipping ✓ · Receiving ✓' : progress?.shipping ? 'Shipping ✓ · Resume receiving' : 'Ship → Receive') : '';
+    const status = campaignLevel(id) ? (progress?.complete ? 'Shipping ✓ · Receiving ✓' : progress?.checkpoint ? 'Resume unfinished pair' : 'Ship + Receive') : '';
     const right = b ? `${fmtTime(b.total)} ${tag(medalFor(id, b.total))}` : '<span class="none">No time yet</span>';
     return `<button class="btn level" data-act="level" data-level="${id}"><span class="osha-text osha-text--ivory" data-text="${label}">${label}</span><span class="lv-name">${name}</span><span class="lv-best">${right}${status ? `<small class="lv-progress">${status}</small>` : ''}</span></button>`;
   };
   document.querySelector('#levels .level-list').innerHTML =
-    pickJob === 'campaign' ? CAMPAIGN_LEVELS.map(l => row(l.id, l.title.toUpperCase(), l.challenge)).join('') + '<button class="btn" data-act="practice">PRACTICE</button>' : pickJob === 'receiving' ? RECEIVING_ORDERS.map(o => row(o.id, o.number, o.title)).join('')
-      : ORDERS.map((o) => row(o.id, `ORDER ${o.id}`, o.title)).join('') + row(FULL_SHIFT.id, 'FULL SHIFT', 'All five, back to back');
+    pickJob === 'campaign' ? CAMPAIGN_LEVELS.map(l => row(l.id, l.title.toUpperCase(), l.challenge)).join('') + '<button class="btn" data-act="practice">PRACTICE</button><button class="btn" data-act="timed">TIMED SHIFT</button>' : ORDERS.map(o => row(o.id, `PRACTICE ${o.id}`, `${o.title} · Shipping + Receiving`)).join('');
   overlay = 'levels';
   refreshScreens();
 }
@@ -212,13 +231,23 @@ document.addEventListener('mousemove', (e) => {
   }
 });
 
+function refreshTimedSettings() {
+  timedSettings = timedOptions(timedSettings);
+  document.getElementById('timed-minutes').value = timedSettings.minutes;
+  document.getElementById('timed-difficulty').textContent = `STARTING DIFFICULTY: ${timedSettings.difficulty.toUpperCase()}`;
+  document.querySelectorAll('[data-act="timedlength"]').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.minutes) === timedSettings.minutes)));
+}
+document.getElementById('timed-minutes').addEventListener('change', e => {
+  timedSettings.minutes = Number(e.target.value); refreshTimedSettings();
+});
+
 function wantsPointer() {
   return game && (game.mode === 'single' || game.usesKeyboard('climber') || game.usesKeyboard('driver'));
 }
 
-function startGame(mode, order = 1) {
+function startGame(mode, order = 1, timed = null) {
   game?.dispose();
-  game = new Game({ mode, hud, order });
+  game = new Game({ mode, hud, order, timed });
   game.assignDevices(input);
   game.onComplete = showComplete;
   state = 'playing';
@@ -235,7 +264,7 @@ try { mapDestinationEnabled = localStorage.getItem('osha.mapDestination') === 't
 let mapDestinationId = null;
 function refreshMapDestination() {
   if (!game) return;
-  const targets = orderDestinations(game);
+  const targets = orderDestinations(game.taskView(pauseClipboardJob));
   const target = targets.find(t => t.id === mapDestinationId) || targets.find(t => !t.complete) || targets[0];
   mapDestinationId = target?.id;
   markDestination(document.querySelector('#pause .map svg'), mapDestinationEnabled ? target : null);
@@ -247,19 +276,50 @@ function refreshMapDestination() {
     ? `${target.label}${target.complete ? ' · Complete' : ''} — ${target.detail}` : 'Locations read Rack – Bay – Shelf. Shelves count from the bottom.';
 }
 
-function pause() {
+let pauseClipboardJob = 'shipping';
+let pauseRole = 'driver';
+function pauseClipboards() {
+  return game.clipboardJobs().map(job => { const view = game.taskView(job); return { job, label: view.receiving ? 'RECEIVING' : 'SHIPPING',
+    state: game.jobDone[job] ? 'COMPLETE' : 'ACTIVE', view }; });
+}
+function renderPauseClipboard() {
+  const tasks = pauseClipboards();
+  const pauseClipboardIndex = Math.max(0, tasks.findIndex(task => task.job === pauseClipboardJob));
+  const task = tasks[pauseClipboardIndex], view = task.view;
+  pauseClipboardJob = task.job;
+  game.forklift.drawClipboard(view);
+  const clipboard = document.getElementById('pause-clipboard');
+  clipboard.getContext('2d').drawImage(game.forklift.clipboard.canvas, 0, 0);
+  const description = `${task.label} · ${task.state}. ` + view.level.order.map(l =>
+    `SKU ${l.sku}: ${view.itemStatus[l.line] || 0} of ${l.qty}, ${l.location}`).join('. ') + `. ${view.level.dock.name}.`;
+  clipboard.setAttribute('aria-label', description);
+  clipboard.textContent = description;
+  document.getElementById('pause-clipboard-title').textContent = `${game.mode === 'coop' ? (pauseRole === 'driver' ? 'RALPH · ' : 'DAVE · ') : ''}${task.label} · ${task.state} · ${pauseClipboardIndex + 1}/${tasks.length}`;
+  document.getElementById('clipboard-navigation').hidden = tasks.length < 2;
+  document.querySelector('.timed-replace').classList.toggle('hidden', !game.timed || !!game.jobDone[task.job]);
+}
+function changeClipboard(direction, role = pauseRole) {
+  pauseRole = role;
+  const jobs = game.clipboardJobs();
+  const index = jobs.indexOf(game.trackedJobs[role]);
+  pauseClipboardJob = jobs[(index + direction + jobs.length) % jobs.length];
+  game.trackJob(role, pauseClipboardJob);
+  renderPauseClipboard();
+  mapDestinationId = null;
+  refreshMapDestination();
+  sfx.menu();
+}
+document.getElementById('clipboard-prev').addEventListener('click', () => changeClipboard(-1));
+document.getElementById('clipboard-next').addEventListener('click', () => changeClipboard(1));
+
+function pause(role = game?.active) {
   if (state !== 'playing') return;
   state = 'paused';
   pausedAt = performance.now();
-  // Reuse the cab's exact clipboard artwork and live progress; no separate task state.
   game.readClipboard();
-  const clipboard = document.getElementById('pause-clipboard');
-  clipboard.getContext('2d').drawImage(game.forklift.clipboard.canvas, 0, 0);
-  const description = `${game.receiving ? 'Purchase order ' + game.receivingSpec.number : 'Shipping order ' + game.orderId}. ` +
-    game.level.order.map(line => `SKU ${line.sku}: ${game.itemStatus[line.line] || 0} of ${line.qty}, ${line.location}`).join('. ') +
-    `. ${game.receiving ? 'Unload at' : 'Deliver to'} ${game.level.dock.name}.`;
-  clipboard.setAttribute('aria-label', description);
-  clipboard.textContent = description;
+  pauseRole = role || 'driver';
+  pauseClipboardJob = game.trackedJobs[pauseRole];
+  renderPauseClipboard();
   mapDestinationId = null;
   refreshMapDestination();
   // Light up this order's dock on the floor plan
@@ -292,15 +352,18 @@ const QUIPS = [
 
 function showComplete({ time, falls }) {
   state = 'complete';
+  if (game.timed) { showTimedResults(); return; }
+  document.getElementById('standard-results').classList.remove('hidden');
+  document.getElementById('timed-results').classList.add('hidden');
   const id = game.levelId;
   const order = levelDef(id);
   const run = submit(game.mode, id, { time, incidents: falls });
   const $ = (x) => document.getElementById(x);
   const head = document.querySelector('#complete .screen-title');
-  head.textContent = head.dataset.text = game.campaign ? 'SHIFT COMPLETE' : game.receiving ? 'STOCK RECEIVED' : id === 'shift' ? 'SHIFT COMPLETE' : 'ORDER COMPLETE';
-  document.querySelector('#complete .stamp').classList.toggle('combined', !!game.campaign);
-  document.querySelector('#complete .stamp').textContent = game.campaign ? 'SHIPPED + RECEIVED' : game.receiving ? 'RECEIVED' : 'SHIPPED';
-  $('c-order').textContent = `${game.campaign ? `${order.title} · ${order.challenge}` : game.receiving ? `${order.number} · ${order?.title ?? ''}` : id === 'shift' ? 'Full Shift · all five orders' : `Order ${id} · ${order?.title ?? ''}`} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
+  head.textContent = head.dataset.text = 'SHIFT COMPLETE';
+  document.querySelector('#complete .stamp').classList.add('combined');
+  document.querySelector('#complete .stamp').textContent = 'SHIPPED + RECEIVED';
+  $('c-order').textContent = `${game.campaign ? `${order.title} · ${order.challenge}` : `${order.title} · Shipping + Receiving`} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
   $('c-time').textContent = fmtTime(time);
   $('c-falls').textContent = falls;
   $('c-damage').textContent = `$${game.damage.total.toLocaleString('en-US')}`;
@@ -314,15 +377,33 @@ function showComplete({ time, falls }) {
     (medal ? `<i class="medal ${medal}">${medal}</i> ` : '') + (next ? `${next.medal[0].toUpperCase() + next.medal.slice(1)} at ${fmtTime(next.at)}` : 'Top marks.');
   $('c-quip').textContent = QUIPS[Math.min(falls, 3)];
   // No order after the last one
-  document.querySelector('#complete [data-act="next"]').style.display = (game.campaign ? CAMPAIGN_LEVELS.some(l => l.id === `campaign-${game.orderId + 1}`) : game.receiving ? RECEIVING_ORDERS.some(o => o.id === `receiving-${game.orderId + 1}`) : id !== 'shift' && ORDERS.some((o) => o.id === id + 1)) ? '' : 'none';
+  document.querySelector('#complete [data-act="next"]').style.display = (game.campaign ? CAMPAIGN_LEVELS.some(l => l.id === `campaign-${game.orderId + 1}`) : id !== 'shift' && ORDERS.some((o) => o.id === id + 1)) ? '' : 'none';
   if (input.pointerLocked) document.exitPointerLock();
   refreshScreens();
+}
+
+function showTimedResults() {
+  const t = game.timed, money = value => `${value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US')}`;
+  const key = `osha.timed.v1.${game.mode}.${t.options.minutes}.${t.options.difficulty}`;
+  let best = t.net;
+  try { const saved = localStorage.getItem(key); if (saved !== null) best = Math.max(best, Number(saved) || 0); localStorage.setItem(key, String(best)); } catch {}
+  const head = document.querySelector('#complete .screen-title'); head.textContent = head.dataset.text = 'SHIFT OVER';
+  document.querySelector('#complete .stamp').textContent = 'TIME’S UP';
+  document.querySelector('#complete .stamp').classList.add('combined');
+  document.getElementById('c-order').textContent = `${t.options.minutes} ${t.options.minutes === 1 ? 'minute' : 'minutes'} · ${t.options.difficulty} · ${game.mode === 'coop' ? 'Couch co-op' : 'Single player'}`;
+  document.getElementById('standard-results').classList.add('hidden');
+  const report = document.getElementById('timed-results'); report.classList.remove('hidden');
+  report.innerHTML = [['Shipping orders', t.counts.shipping], ['Receiving orders', t.counts.receiving], ['Earnings', money(t.earnings)], ['Damage', money(game.damage.total)], ['Service fees', money(t.fees)], ['Net profit', money(t.net)], ['Best net profit', money(best)], ['Incidents', game.falls]].map(([label, value]) => `<div><span>${label}</span><b>${value}</b></div>`).join('');
+  document.getElementById('c-medal').textContent = 'Completed jobs only · unfinished work earns no credit';
+  document.getElementById('c-quip').textContent = t.net < 0 ? 'Accounting would like a word.' : 'Clocked out. The warehouse remembers.';
+  document.querySelector('#complete [data-act="next"]').style.display = 'none';
+  if (input.pointerLocked) document.exitPointerLock(); refreshScreens();
 }
 
 let hadLock = false;
 document.addEventListener('pointerlockchange', () => {
   const locked = input.pointerLocked;
-  if (hadLock && !locked && state === 'playing') pause();
+  if (hadLock && !locked && state === 'playing') pause(game.mode === 'single' ? game.active : ['climber', 'driver'].find(r => game.devices[r].includes('kbm')) || 'driver');
   hadLock = locked;
 });
 canvas.addEventListener('click', () => {
@@ -405,7 +486,7 @@ function tick(now) {
       acc = 0;
       clearLatched(); // the skip press shouldn't also make the climber jump
     } else if (actions.climber.pause || actions.driver.pause || kbPause) {
-      pause();
+      pause(game.mode === 'single' ? game.active : kbPause ? (['climber', 'driver'].find(r => game.devices[r].includes('kbm')) || 'driver') : actions.climber.pause ? 'climber' : 'driver');
     } else {
       if (actions.climber.swap || actions.driver.swap) {
         game.swapCharacter();

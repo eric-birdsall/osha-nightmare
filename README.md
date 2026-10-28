@@ -45,7 +45,7 @@ Seven central racks A–G have six bays and three shelves (1.5, 3.0 and 4.5 m). 
 
 The West wall holds three evenly spaced five-shelf racks X/Y/Z, with 2.6 m ladder gaps. The former break area is removed. Decorative Office and bathroom doors sit on the East wall south of the ramp. The South-wall cage leaves 10 m clear from Rack X; the conveyor has an open end and a 2 m pallet space before the East wall. The lower-level stairs run from the North wall to the north edge of Rack A.
 
-The basement is 1 m below the main floor, with stairs for Dave and a ramp for the forklift. Dock 1 is on the North wall near the stairs, and Docks 2/3 are on the East wall; all three remain open; Ralph starts in the southwest of the lower level facing east. Dave starts beside the main-floor ladder at Rack A’s endcap, within pickup reach. The wrapper remains beside the basement edge, with packing benches and two powered conveyor lines across the open floor. Their blueprint arrows show actual belt direction. The West-wall corner fire exit remains caged; the North-wall exit and cage have been removed, and connected pipework surrounds the dripping electrical panel.
+The basement is 1 m below the main floor, with stairs for Dave and a ramp for the forklift. Dock 1 is on the North wall near the stairs, and Docks 2/3 are on the East wall; all three remain open; Ralph starts in the southwest of the lower level facing east. Dave starts on the open floor beside Rack A, facing across the rack labels with the main-floor ladder a short walk away. The wrapper remains beside the basement edge, with packing benches and two powered conveyor lines across the open floor. Their blueprint arrows show actual belt direction. The West-wall corner fire exit remains caged; the North-wall exit and cage have been removed, and connected pipework surrounds the dripping electrical panel.
 
 The changed warehouse is version 15, so saved best times start fresh for this layout. Order medal times remain provisional pending playtests.
 
@@ -133,7 +133,7 @@ osha.override = { driver: { liftUp: 1 } }  // inject actions into live play
 
 The leaking panel has connected overhead supply and return pipes, tall risers, collars, wall brackets, and a valved branch loop around the original dripping joint.
 
-The main-floor ladder stand holds one ladder against Rack A’s east endcap, facing east, without a LADDER label. The missing railing spans from the south end of the wrapper frame to the basement’s south edge beside Rack A, leaving about 3.4 m clear for the forklift. Dave starts beside the relocated ladder, facing south and within pickup reach.
+The main-floor ladder stand holds one ladder against Rack A’s east endcap, facing east, without a LADDER label. The missing railing spans from the south end of the wrapper frame to the basement’s south edge beside Rack A, leaving about 3.4 m clear for the forklift. Dave starts nearby on the open floor, facing across the rack labels.
 
 Dave can drag a nearby upright, empty pallet by holding E / X and walking. He moves at half speed while pulling; release to let go. Loaded pallets, wrapped loads, tipped pallets, and pallets he is standing on cannot be dragged.
 
@@ -183,7 +183,7 @@ All three basement loading docks are permanently open with accessible trailers. 
 
 A compact bottom-right controls reference shows only the current character’s controls, using keyboard keys or controller buttons as appropriate. Each co-op viewport shows its own character’s reference.
 
-At the start of each picking or receiving round, Dave stands beside the main-floor ladder at Rack A’s endcap, facing south. He can pick up the ladder with E / X without moving. This applies to single player and couch co-op.
+At the start of each shift, Dave stands on the open floor beside Rack A, looking across the rack labels. The main-floor ladder is about 6 m away. This applies to single player and couch co-op.
 
 The main floor starts without loose spare pallets or the standalone test crate. Conveyor catch pallets and the basement supply stacks remain available. Strapped freight stock still lives in its rack bays.
 
@@ -199,11 +199,11 @@ A shared DAMAGE counter tracks the dollar cost of the run and appears on the com
 
 ## Combined shifts and Practice
 
-Single Player and Couch Co-op now lead to five main levels: Tutorial, then Levels 1–4. Each pairs a themed shipping and receiving task, shipping first, in the same live warehouse. Time, incidents, damaged stock, toppled racks, scattered pallets, broken lights and conveyor state carry into receiving. The tutorial receives one pallet of two cartons; Level 1 receives two hand-putaway cartons and one secured high-storage pallet. Higher levels retain mixed/high freight challenges. Medal targets combine the two tasks and remain provisional pending playtesting.
+Single Player and Couch Co-op now lead to five main levels: Tutorial, then Levels 1–4. Each pairs a themed shipping and receiving task, both active from the start in the same live warehouse. Time, incidents, damaged stock, toppled racks, scattered pallets, broken lights and conveyor state carry into receiving. The tutorial receives one pallet of two cartons; Level 1 receives two hand-putaway cartons and one secured high-storage pallet. Higher levels retain mixed/high freight challenges. Medal targets combine the two tasks and remain provisional pending playtesting.
 
-The shipping-to-receiving handoff saves a browser checkpoint. Restarting or selecting an unfinished level resumes the start of its receiving phase, including warehouse state and accumulated scores. Progress and checkpoints are separate for single player and co-op; completed shifts clear their checkpoint. Best times for combined shifts are separate from Practice records. Browsers that block localStorage retain checkpoints in memory for the current session.
+Completing either job saves a browser checkpoint. Restarting or selecting an unfinished level restores both jobs, including warehouse state and accumulated scores. Progress and checkpoints are separate for single player and co-op; completed shifts clear their checkpoint. Best times for combined shifts are separate from Practice records. Browsers that block localStorage retain checkpoints in memory for the current session.
 
-Practice contains the individual shipping orders and receiving POs, plus the original shipping-only Full Shift. The combined tutorial teaches movement during shipping and proceeds directly to unloading/cutting/putaway during receiving. Cleanup and parking remain optional.
+Practice contains five paired shipping and receiving shifts. The tutorial offers shipping and receiving guidance from the start. Cleanup and parking remain optional.
 
 Fork entry uses thin tip colliders matching the visible steel tips, preserving full-width support farther along each blade. Ralph gets contextual pocket-height, centering, approach-angle and insertion guidance. Shelf guides select the closest deck and explain alignment or height corrections without snapping loads into place. Receiving shows nearby incoming-stock feedback in both character views: destination, unwrap/rewrap requirements, shelf support, movement, seating and counted quantity. These hints do not change putaway acceptance rules.
 
@@ -230,4 +230,26 @@ The combined campaign now has its own manifests; Practice orders and POs retain 
 
 Levels 1–4 start with one purposeful empty pallet at OUTBOUND PREP beside Rack A's end, plus a nearby STOCK DROP label. Dave can prepare cartons immediately while Ralph handles independent retrieval/crate deliveries. Non-tutorial combined shifts show different live work cards for the focused role (both roles in split-screen), refreshed four times per second. Cards track packing, staged reserves, remaining trailer loads and putaway. They suggest work without locking controls or changing completion rules; cleanup and parking remain optional. Single player follows the same jobs by swapping characters. Existing tutorial instructions and Practice UI remain separate.
 
-Campaign checkpoint schema is `combined-v2`; old campaign checkpoints/progress are ignored after this manifest change. Medal targets are provisional and now match the revised manifests. All five combined shifts are exercised through real physical completion checks in both single player and co-op.
+Campaign checkpoint schema is `parallel-v3`; old campaign checkpoints/progress are ignored after this manifest change. Medal targets are provisional and now match the revised manifests. All five combined shifts are exercised through real physical completion checks in both single player and co-op.
+
+
+## Two active clipboards
+
+All campaign and Practice shifts now start Shipping and Receiving together, at separate docks. Both must finish, in either order. Each completed clipboard remains available with its final counts. Pause left/right (keyboard arrows, controller D-pad or left stick) selects the tracked task immediately. In co-op each character's assigned device independently selects its HUD task; mouse arrows affect the player who paused or most recently browsed. These choices guide the HUD and map, never lock either character to a job.
+
+Receiving credit is recorded per incoming item once correctly seated and settled, so received stock can subsequently be shipped without revoking the receipt. Unreceived incoming stock does not count toward shipping. Receiving destinations reserve empty shelf space while preserving every SKU needed for the outgoing job. Practice uses paired versions of its five manifests; the former single-job and shipping-marathon menu entries are replaced by five paired Practice choices.
+
+Completing the first job saves both jobs' progress, received identities, tracking choices, and the shared physical world in a campaign checkpoint. Completing both clears the checkpoint. The parallel-v3 version invalidates earlier sequential checkpoints and records. Endless is not implemented yet; the shared job contexts are the foundation for later replenishing completed assignments.
+
+When a tracked job completes, each affected player's HUD automatically tracks the next open job. Pause lists open clipboards first and completed ones at the back; completed pages remain reviewable. Completing the last open job ends the shift without switching to a completed page. Checkpoints preserve the updated selection, and older paired checkpoints normalize any completed selection to an open job when restored.
+
+
+## Timed Shift
+
+After choosing Single Player or Couch Co-op, select Timed Shift. Choose 10, 20, 30, or a custom 1–120 minutes, and an Easy/Standard/Hard starting difficulty. Movement starts the countdown; Pause and incident replay freeze it. Incidents consume 15 seconds. At zero, gameplay stops; unfinished work earns no credit. Results show shipped/received job counts, earnings, damage, service fees, net profit, and a browser best for that exact duration/difficulty/player mode.
+
+Two jobs are always active at separate docks (Shipping Dock 3, Receiving Dock 2). Each completion earns payment and replaces that job immediately, without resetting warehouse stock, damage, lights, conveyors, or clutter. The completing player's HUD moves to the other open task. The last ten completed clipboards remain behind the two active ones in Pause. Every four completed jobs raises difficulty up to the top tier: more lines/quantity, higher stock, secured pallets and strapped crates.
+
+Shipping manifests inspect real available stock, including previously received stock, and exclude unreceived incoming identities. Receiving prefers empty, upright shelf bays and avoids outbound destinations. At full occupancy it assigns a low bay with instructions to clear room; if racks are knocked over, the assigned rack must be reset. Trucks depart with items left inside their trailer when replaced; warehouse-floor clutter persists. Empty pallets can be sourced from the basement supplies or previous receipts.
+
+Pause offers **Abandon & Replace** for either active timed job, costing $100 and 15 seconds; abandoned work earns nothing. This is recovery for lost/unreachable stock or an undesirable assignment. If shipping stock is completely exhausted, an emergency carton is supplied beside outbound prep for $75. These service fees reduce net earnings. Timed runs do not use campaign checkpoints, medals, or campaign best-time records.

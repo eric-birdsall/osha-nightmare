@@ -8,10 +8,10 @@ export class CampaignWork {
   update(dt) {
     this.timer -= dt; if (this.timer > 0) return; this.timer = .25;
     if (!this.game.campaign || this.game.campaign.id === 'campaign-1' || this.game.complete) { this.cards = {}; return; }
-    const details = this.game.receiving ? this.receiving() : this.shipping();
+    const details = { shipping: this.shipping(), receiving: this.receiving() };
     this.cards = Object.fromEntries(['driver', 'climber'].map(role => [role, {
       title: `${this.game.campaign.theme} · ${role === 'driver' ? 'Ralph' : 'Dave'}`,
-      detail: details[role],
+      detail: details[this.game.trackedJobs[role]][role],
     }]));
   }
   content(role) { return this.cards[role] || null; }
@@ -22,7 +22,7 @@ export class CampaignWork {
       if (load.removed || !['pallet', 'wrapped'].includes(load.kind)) continue;
       if (load.kind === 'wrapped' && !load.contents.some(r => r.kind === 'box' && r.data.handled)) continue;
       const counts = load.kind === 'wrapped' ? g.lineCounts(load) : Object.fromEntries(lines.map(l => [l.line,
-        [...collectStack(g, load)].filter(b => b.kind === 'box' && b.handled && b.sku === l.sku).length]));
+        [...collectStack(g, load)].filter(b => b.kind === 'box' && b.handled && (!b.incomingId || g.receivedIds.has(b.incomingId)) && b.sku === l.sku).length]));
       for (const line of cartonLines) packed[line.line] += counts[line.line] || 0;
     }
     for (const line of cartonLines) packed[line.line] = Math.max(packed[line.line], g.itemStatus[line.line] || 0);
@@ -32,7 +32,7 @@ export class CampaignWork {
       const rack = LAYOUT.racks.find(r => r.name === name), bay = Number(bayText) - 1, shelf = Number(shelfText) - 1;
       const x0 = rack.x0 + bay * LAYOUT.racking.bayW, y = rack.base + rack.shelves[shelf];
       const loose = g.entities.filter(e => {
-        if (e.removed || e.kind !== 'box' || e.sku !== line.sku) return false;
+        if (e.removed || e.kind !== 'box' || e.sku !== line.sku || (e.incomingId && !g.receivedIds.has(e.incomingId))) return false;
         const p = e.body.translation(), home = e.home?.pos;
         const inPickFace = e.home?.rack === name && home.x > x0 && home.x < x0 + LAYOUT.racking.bayW &&
           home.y - e.size[1] / 2 >= y - .02 && home.y - e.size[1] / 2 < y + 1.2;
@@ -58,7 +58,7 @@ export class CampaignWork {
     } else climber = `Cartons are loaded. Check the labels and keep clear while Ralph wraps and delivers to ${g.level.dock.name}.`;
     let driver;
     if (highReserve) {
-      driver = `Retrieve the SKU ${highReserve.line.sku} pallet from ${highReserve.line.location}; lower it beside OUTBOUND PREP for Dave. He can pick the other carton line meanwhile.`;
+      driver = `Retrieve the SKU ${highReserve.line.sku} pallet from ${highReserve.load.storageLocation}; lower it beside OUTBOUND PREP for Dave. He can pick the other carton line meanwhile.`;
     } else if (freight) {
       driver = `Move the strapped SKU ${freight.sku} crate from ${freight.location} to ${g.level.dock.name}. Dave can pick and load cartons independently.`;
     } else if (!next) {
@@ -67,7 +67,7 @@ export class CampaignWork {
     return { driver, climber };
   }
   receiving() {
-    const g = this.game, receiving = g.receivingSystem;
+    const g = this.game.taskView('receiving'), receiving = g.receivingSystem;
     const pending = g.level.order.filter(l => (g.itemStatus[l.line] || 0) < l.qty);
     const inTruck = receiving.pallets.filter(p => g.level.dockZone.contains(p.body.translation()));
     const cut = receiving.pallets.find(p => p.kind === 'wrapped' && !g.level.dockZone.contains(p.body.translation()) && p.contents.some(r => r.kind === 'box' && pending.some(l => !l.pallet && l.line === r.data.receivingLine)));

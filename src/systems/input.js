@@ -112,14 +112,17 @@ export class Input {
       const sy = p.axes[1] || 0;
       const up = sy < -0.6;
       const down = sy > 0.6;
+      const left = (p.axes[0] || 0) < -0.6, right = (p.axes[0] || 0) > 0.6;
       const edges = new Set();
       now.forEach((b, i) => {
         if (b && !prev.buttons[i]) edges.add(i);
       });
       if (up && !prev.up) edges.add('stickUp');
       if (down && !prev.down) edges.add('stickDown');
+      if (left && !prev.left) edges.add('stickLeft');
+      if (right && !prev.right) edges.add('stickRight');
       this.padEdges.set(p.index, edges);
-      this.padPrev.set(p.index, { buttons: now, up, down });
+      this.padPrev.set(p.index, { buttons: now, up, down, left, right });
     }
     if (this.lastDevice !== 'kbm' && !this.pad(this.lastDevice)) this.lastDevice = 'kbm';
     this.keyboardActivity = false;
@@ -270,12 +273,20 @@ export class Input {
     const k = this.pressed;
     m.up = k.has('ArrowUp') || k.has('KeyW');
     m.down = k.has('ArrowDown') || k.has('KeyS');
+    m.left = k.has('ArrowLeft');
+    m.right = k.has('ArrowRight');
+    m.clipboards = [];
+    if (m.left || m.right) m.clipboards.push({ device: 'kbm', direction: m.right ? 1 : -1 });
     m.confirm = k.has('Enter') || k.has('Space');
     m.back = k.has('Escape');
     m.pause = k.has('Escape');
     for (const p of this.pads) {
       m.up ||= this.padPressed(p, BTN.UP) || this.padPressed(p, 'stickUp');
       m.down ||= this.padPressed(p, BTN.DOWN) || this.padPressed(p, 'stickDown');
+      const left = this.padPressed(p, 14) || this.padPressed(p, 'stickLeft');
+      const right = this.padPressed(p, 15) || this.padPressed(p, 'stickRight');
+      m.left ||= left; m.right ||= right;
+      if (left || right) m.clipboards.push({ device: `pad${this.pads.indexOf(p)}`, direction: right ? 1 : -1 });
       m.confirm ||= this.padPressed(p, BTN.A);
       m.back ||= this.padPressed(p, BTN.B);
       m.pause ||= this.padPressed(p, BTN.START);
