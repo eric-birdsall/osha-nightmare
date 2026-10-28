@@ -195,7 +195,7 @@ test('both east-wall docks have usable doorways during Full Shift', () => {
   game.dispose();
 });
 
-test('tipping reports an incident without a blast; Ralph looks vertically and can read the clipboard', () => {
+test('tipping reports an incident without a blast; Ralph looks vertically and reads the clipboard from Pause', () => {
   const game = createGame(), forklift = game.forklift;
   forklift.lookYaw = .8;
   const pitch = forklift.lookPitch;
@@ -203,7 +203,10 @@ test('tipping reports an incident without a blast; Ralph looks vertically and ca
   assert.equal(forklift.lookYaw, 0); assert.notEqual(forklift.lookPitch, pitch);
   forklift.lookPitch = -.36;
   game.frame(.8);
-  assert.equal(game.receivingSystem.read, true, 'Clipboard stays readable with vertical look only');
+  assert.equal(game.receivingSystem.read, false, 'Looking at the old clipboard position does not advance reading');
+  assert.equal(forklift.clipboard.group.visible, false);
+  game.readClipboard();
+  assert.equal(game.receivingSystem.read, true, 'Pause clipboard advances the receiving guide');
   let blasts = 0; const incidents = [];
   game.blast = () => { blasts++; };
   game.onIncident = reason => incidents.push(reason);
@@ -1440,5 +1443,19 @@ test('Ralph can fetch the next reserve while Dave opens the first staged pallet'
   game.workGuide.update(1);
   assert.match(game.workGuide.content('climber').detail, /907/);
   assert.match(game.workGuide.content('driver').detail, /437/);
+  game.dispose();
+});
+
+
+test('shipping tutorial reads its pause clipboard without starting time or showing a cab clipboard', async () => {
+  const { saveCampaignProgress } = await import('../src/world/campaign.js');
+  saveCampaignProgress('single', 'campaign-1', {});
+  const game = new Game({ mode: 'single', order: 'campaign-1' });
+  game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+  assert.equal(game.forklift.clipboard.group.visible, false);
+  assert.equal(game.tutorial.read, false);
+  game.readClipboard();
+  assert.equal(game.tutorial.read, true); assert.equal(game.started, false); assert.equal(game.time, 0);
+  game.frame(.2); assert.equal(game.tutorial.stage, 1);
   game.dispose();
 });

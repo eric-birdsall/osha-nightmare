@@ -52,6 +52,10 @@
               <button class="btn" data-act="controls"><span class="osha-text osha-text--ivory" data-text="CONTROLS">CONTROLS</span></button>
               <button class="btn" data-act="quit"><span class="osha-text osha-text--ivory" data-text="QUIT TO TITLE">QUIT TO TITLE</span></button>
             </div>
+            <figure class="pause-clipboard" aria-label="Current task clipboard">
+              <figcaption>CURRENT TASK</figcaption>
+              <div class="pause-clipboard-board"><canvas id="pause-clipboard" width="540" height="720" role="img" aria-label="Current task clipboard"></canvas></div>
+            </figure>
             <div class="map">
               <div class="map-head">FLOOR PLAN · BUILDING 1</div>
               <svg aria-label="Warehouse floor plan"><!-- drawn from the layout by src/world/floorplan.js --></svg>
@@ -119,18 +123,18 @@
           <div class="howto">
             <section>
               <h3>Receiving / putaway</h3>
-              <p>Choose <b>Practice → Receiving</b> for individual purchase orders: the tutorial, higher shelves, mixed pallets, high storage, and a combined delivery. Ralph unloads shrinkwrapped pallets from the dock listed on the cab clipboard. Dave holds <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></kbd></span> for one second to cut wrap—even while a pallet is on the forks—then places individual cartons in their listed low-shelf locations. Lines marked <b>WRAPPED PALLET</b> must stay wrapped and be seated in the correct high bay. <b>FORKLIFT ONLY</b> lines are single strapped crates: Ralph puts the whole unit in its assigned bay. The stretch wrapper accepts partially full stock pallets too. Only the tutorial has yellow PUTAWAY signs and destination arrows; the other combined levels show separate Ralph/Dave work cards. All POs keep clipboard progress. Wrong locations remain unfinished. Receiving finishes when all required stock is correctly put away; cleanup and parking are optional.</p>
+              <p>Choose <b>Practice → Receiving</b> for individual purchase orders: the tutorial, higher shelves, mixed pallets, high storage, and a combined delivery. Ralph unloads shrinkwrapped pallets from the dock listed on the pause-menu clipboard. Dave holds <span class="keyboard-only"><kbd>E</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-x" role="img" aria-label="Controller X">X</span></kbd></span> for one second to cut wrap—even while a pallet is on the forks—then places individual cartons in their listed low-shelf locations. Lines marked <b>WRAPPED PALLET</b> must stay wrapped and be seated in the correct high bay. <b>FORKLIFT ONLY</b> lines are single strapped crates: Ralph puts the whole unit in its assigned bay. The stretch wrapper accepts partially full stock pallets too. Only the tutorial has yellow PUTAWAY signs and destination arrows; the other combined levels show separate Ralph/Dave work cards. All POs keep clipboard progress. Wrong locations remain unfinished. Receiving finishes when all required stock is correctly put away; cleanup and parking are optional.</p>
               <h3>Wrapped reserve stock</h3>
               <p>The West-wall racks mix wrapped carton backstock and strapped heavy crates. Carton backstock starts wrapped in picking too. Ralph brings one down, Dave cuts the wrap and picks the required cartons. Rewrap any leftovers for secure transport using the existing stretch wrapper. Returning reserve stock and cleaning up are optional.</p>
               <h3>The picking job</h3>
               <p>Play <b>Tutorial</b> then <b>Levels 1–4</b>: ship an order, then receive a delivery in the same warehouse. Receiving has a saved checkpoint; the clock, damage and warehouse mess carry over. Use <b>Practice</b> for individual tasks or a shipping-only <b>Full Shift</b>: all five back to back, mess and all, on one clock. Every incident adds 15 seconds to your time. Beat your best, and go for gold, silver or bronze.</p>
               <h3>Who's who</h3>
-              <p><b>Ralph</b> drives the forklift. He has a cast on his leg and his crutches in the cab, so he never gets off the truck. He has the pick list, too: it's the clipboard in his cab.</p>
+              <p><b>Ralph</b> drives the forklift. He has a cast on his leg and his crutches in the cab, so he never gets off the truck. The current pick list is always available on the pause menu.</p>
               <p><b>Dave</b> is on foot. He walks, climbs, picks boxes off shelves, carries them, and punts them.</p>
               <p>Single player: swap between them any time with <span class="keyboard-only"><kbd>Tab</kbd></span><span class="controller-only"><kbd><span class="pad-button pad-view" role="img" aria-label="Controller View">View</span></kbd></span>. Couch co-op: split screen, one player each.</p>
               <h3>The order, step by step</h3>
               <ol>
-                <li><b>Read the pick list</b> on Ralph's clipboard: the required SKUs, quantities and locations. FORKLIFT ONLY lines are single strapped crates, not loose cartons. A location like <b>C-4-2</b> is rack C, bay 4 (counting from the west end), shelf 2 (counting from the bottom).</li>
+                <li><b>Read the pick list</b> on the pause-menu clipboard: the required SKUs, quantities and locations. FORKLIFT ONLY lines are single strapped crates, not loose cartons. A location like <b>C-4-2</b> is rack C, bay 4 (counting from the west end), shelf 2 (counting from the bottom).</li>
                 <li><b>Find the boxes.</b> Racks A to G are on the main floor. Every box has its SKU on all four sides, and neighbours can look alike, so check the number.</li>
                 <li><b>Short?</b> An orange BACKSTOCK sign under a shelf points to wrapped carton backstock on the West-wall racks X, Y and Z. Not every sign is for your box.</li>
                 <li><b>Build carton pallets.</b> Dave assembles the loose-carton quantities; Ralph retrieves strapped crates as separate single-unit loads.</li>
@@ -227,7 +231,7 @@
             </table>
           </div>
           <p class="tag">
-            The order: read the clipboard in the forklift cab, then find each SKU at its Rack-Bay-Shelf location (check the label,
+            The order: read the clipboard in the pause menu, then find each SKU at its Rack-Bay-Shelf location (check the label,
             some neighbours look similar). If a slot is short, its orange BACKSTOCK sign says where
             the rest is on the West-wall racks. Wrap carton pallets in the WRAP square; strapped crates ship as single units.
             Lower each load onto the active trailer floor and leave it still. Separate loads count together,

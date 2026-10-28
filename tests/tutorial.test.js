@@ -15,7 +15,7 @@ function setup() {
     climber: { feet: new THREE.Vector3(), carriedBoxes: () => carried, camera: new THREE.PerspectiveCamera() },
     forklift: { camera: new THREE.PerspectiveCamera() },
     entities: [], lineCounts: load => ({ A: load.count || 0 }),
-    usesKeyboard: () => true, keyHint: (_role, action) => ({ swap: 'Tab', interact: 'E', lower: 'F', lift: 'R' })[action],
+    usesKeyboard: () => true, keyHint: (_role, action) => ({ pause: 'Esc', swap: 'Tab', interact: 'E', lower: 'F', lift: 'R' })[action],
     wrap: { job: null, blockReason: load => { assert.ok(load); return null; } },
   };
   const tutorial = new Tutorial(game);
@@ -48,20 +48,22 @@ test('only matching stock counts, and incorrect wrapped loads do not advance', (
   assert.equal(update(), 0);
 });
 
-test('reading requires a sustained close look and works in co-op', () => {
+test('the guide points to Pause and does not advance by looking at the former cab position', () => {
   const { game, tutorial, update } = setup();
-  const clipboard = new THREE.Group(); clipboard.position.z = -1;
+  const clipboard = new THREE.Group(); clipboard.position.z = -1; clipboard.visible = false;
   game.scene.add(clipboard); game.forklift.clipboard = { group: clipboard };
   game.mode = 'coop';
-  update(); update(); update(); assert.equal(tutorial.read, false);
-  assert.equal(update(), 1); assert.equal(tutorial.read, true);
+  for (let i = 0; i < 5; i++) update();
+  assert.equal(tutorial.read, false);
+  assert.match(tutorial.content('climber').detail, /Open Pause/);
+  tutorial.read = true; assert.equal(update(), 1);
   assert.doesNotMatch(tutorial.content('climber').detail, /Switch to/);
 });
 
 test('instructions follow the active controls without exposing keys to controller players', () => {
   const { game, tutorial, update, carry } = setup();
   game.usesKeyboard = () => false;
-  game.keyHint = (_role, action) => ({ swap: 'View', interact: 'X', lower: 'LB', lift: 'RB' })[action];
+  game.keyHint = (_role, action) => ({ pause: 'Menu', swap: 'View', interact: 'X', lower: 'LB', lift: 'RB' })[action];
   carry([{ sku: 355 }]); update();
   assert.match(tutorial.content('climber').detail, /<kbd>X<\/kbd>/);
   assert.doesNotMatch(tutorial.content('climber').detail, /<kbd>E<\/kbd>/);

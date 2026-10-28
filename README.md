@@ -33,7 +33,7 @@ Each line is a SKU and a quantity; the clipboard shows where it lives (worked ou
 
 **Full Shift** is all five orders back to back, in order, in one warehouse on one clock. The mess carries over: knocked racks, dropped boxes and both workers stay where they are. When a load is delivered, the truck pulls away with it, an ORDER n banner comes up, the next pick list appears on the clipboard, and that order's dock door rolls up (the other one rolls down: both docks have a trailer behind a roll-up door in a Full Shift). It ends on SHIFT COMPLETE with the total time and penalties, its own best time per mode, and medal targets that are the five orders' added together.
 
-The pick list is a clipboard hanging in the forklift cab (on the front-left guard post; Ralph's crutches lean beside his seat, and he has a cast on his left leg, which is why he never gets off the truck), not on the HUD: Ralph reads it from the seat, and Dave has to walk over and look in, or ask Ralph (in single player, swap to Ralph to check it).
+The current task's clipboard is always displayed on the pause menu, including quantities, locations, progress, product labels and the assigned dock. The physical clipboard is hidden from all gameplay views so Ralph's forward view stays clear. Opening Pause counts as reading the clipboard for the shipping/receiving tutorials and does not start the clock. Ralph keeps his cast and crutches in the cab.
 
 **Backstock.** Orange BACKSTOCK signs point to a loaded pallet on shelves 3–5 of the West-wall racks X/Y/Z. Ralph retrieves the pallet and lowers it into a marked PALLET STAGING bay; Dave picks the required cartons onto the order pallet; Ralph can rewrap and return the remaining stock overhead; cleanup is optional. Each storage pallet holds six cartons of one SKU. Not every backstock sign is for an order—check the SKU against the clipboard. The clipboard keeps a tally of confirmed delivered units across the loads in the active trailer.
 
@@ -139,7 +139,7 @@ Dave can drag a nearby upright, empty pallet by holding E / X and walking. He mo
 
 ### Guided Order 1
 
-Selecting Order 1 enables six automatic tutorial steps: read the forklift clipboard, pick the matching SKU, load a pallet, carry it to WRAP, set it down and back out to wrap, and deliver the wrapped load to the assigned dock. A yellow pointer marks the current destination after the clipboard step. Look at the clipboard briefly to advance; picking or loading the correct stock also advances if you work ahead. If stock falls off a load, the guide returns to picking/loading. Prompts follow keyboard or controller input, and co-op gets instructions for both characters. Other orders and Full Shift have no tutorial overlay. Normal scoring and controls still apply.
+Selecting Order 1 enables six automatic tutorial steps: read the pause-menu clipboard, pick the matching SKU, load a pallet, carry it to WRAP, set it down and back out to wrap, and deliver the wrapped load to the assigned dock. A yellow pointer marks the current destination after the clipboard step. Look at the clipboard briefly to advance; picking or loading the correct stock also advances if you work ahead. If stock falls off a load, the guide returns to picking/loading. Prompts follow keyboard or controller input, and co-op gets instructions for both characters. Other orders and Full Shift have no tutorial overlay. Normal scoring and controls still apply.
 
 Run `npm test` for tutorial progression, recovery, clipboard reading, and input-specific instruction checks.
 
@@ -167,7 +167,7 @@ Choose Single Player or Couch Co-op, then **Practice → Receiving**. Five fixed
 | PO-004 | High storage | Wrapped backstock and a strapped crate for upper H bays |
 | PO-005 | The whole delivery | Mixed cartons, high backstock and a low-bay crate |
 
-Only PO-001 has PUTAWAY signs, a destination arrow and step-by-step instructions. Every PO lists exact rack locations and live counts on the cab clipboard; carton-pallet lines are marked WRAPPED PALLET and crate lines FORKLIFT ONLY · 1 UNIT. Low destinations and high pallet slots start empty for the selected PO. Regular warehouse stock cannot substitute for incoming cartons.
+Only PO-001 has PUTAWAY signs, a destination arrow and step-by-step instructions. Every PO lists exact rack locations and live counts on the pause-menu clipboard; carton-pallet lines are marked WRAPPED PALLET and crate lines FORKLIFT ONLY · 1 UNIT. Low destinations and high pallet slots start empty for the selected PO. Regular warehouse stock cannot substitute for incoming cartons.
 
 Ralph unloads wrapped loads and brings them to the aisles. Dave holds E / X for one uninterrupted second, with empty hands and within reach, to cut shrinkwrap. This works while a pallet is on the forklift blades. Releasing, leaving reach or swapping away cancels the hold. Cutting restores individually movable cartons and the empty pallet at their current positions, retaining SKU, quantity and receiving identity. High-storage stock starts shrinkwrapped in picking too.
 

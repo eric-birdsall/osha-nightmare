@@ -237,9 +237,14 @@ export class Game {
   }
 
   keyHint(role, action) {
-    const map = { forkView: ['C', 'R3'], interact: ['E', 'X'], toss: ['R', 'RB'], swap: ['Tab', 'View'], lift: ['R', 'RB'], lower: ['F', 'LB'], crouch: ['Ctrl', 'L3'], reset: ['Q', 'Y'], jump: ['Space', 'A'], gas: ['W', 'A'], brake: ['S', 'B'], drift: ['Space', 'RT'] };
+    const map = { pause: ['Esc', 'Menu'], forkView: ['C', 'R3'], interact: ['E', 'X'], toss: ['R', 'RB'], swap: ['Tab', 'View'], lift: ['R', 'RB'], lower: ['F', 'LB'], crouch: ['Ctrl', 'L3'], reset: ['Q', 'Y'], jump: ['Space', 'A'], gas: ['W', 'A'], brake: ['S', 'B'], drift: ['Space', 'RT'] };
     const [key, button] = map[action];
     return this.usesKeyboard(role) ? key : `<span class="pad-button pad-${button.toLowerCase()}" role="img" aria-label="Controller ${button}">${button === 'View' ? '▱' : button}</span>`;
+  }
+
+  readClipboard() {
+    this.forklift.drawClipboard();
+    if (this.tutorial) this.tutorial.read = true;
   }
 
   swapCharacter() {

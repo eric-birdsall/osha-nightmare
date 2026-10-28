@@ -7,7 +7,6 @@ export class Tutorial {
   constructor(game) {
     this.game = game;
     this.read = false;
-    this.readTime = 0;
     this.stage = 0;
     this.scanIn = 0;
     this.load = null;
@@ -24,19 +23,6 @@ export class Tutorial {
     const g = this.game;
     this.marker.visible = false;
     if (g.complete) return;
-    // Reading is a short look at the cab clipboard, from either character's camera.
-    if (!this.read && g.forklift.clipboard?.group) {
-      const point = g.forklift.clipboard.group.getWorldPosition(new THREE.Vector3());
-      const cameras = g.mode === 'single'
-        ? [g.active === 'driver' ? g.forklift.camera : g.climber.camera]
-        : [g.climber.camera, g.forklift.camera];
-      const looking = cameras.some((camera) => {
-        const delta = point.clone().sub(camera.getWorldPosition(new THREE.Vector3()));
-        return delta.length() < 3 && delta.normalize().dot(camera.getWorldDirection(new THREE.Vector3())) > (camera === g.forklift.camera ? 0.84 : 0.94);
-      });
-      this.readTime = looking ? this.readTime + dt : 0;
-      if (this.readTime >= 0.7) this.read = true;
-    }
     this.scanIn -= dt;
     if (this.scanIn <= 0) {
       this.scanIn = 0.15;
@@ -90,10 +76,9 @@ export class Tutorial {
     const line = g.level.order[0];
     const button = (action, who = role) => `<kbd>${g.keyHint(who, action)}</kbd>`;
     const move = g.usesKeyboard('climber') ? '<kbd>WASD</kbd>' : 'left stick';
-    const look = g.usesKeyboard(role) ? 'mouse / IJKL' : 'right stick';
     const swap = g.mode === 'single' ? `Switch to ${role === 'driver' ? 'Dave' : 'Ralph'} with ${button('swap')}. ` : '';
     const details = [
-      `Look at the clipboard on Ralph’s front-left cab post (${look}). Hold your view on it briefly. Pick ${line.qty} × SKU ${line.sku} from ${line.location}; ship to ${g.level.dock.name}. ${role === 'climber' ? (g.mode === 'single' ? swap : 'Ralph can read the list from his seat.') : 'Looking around does not start the shift clock.'}`,
+      `Open Pause with ${button('pause')} to read the clipboard. Pick ${line.qty} × SKU ${line.sku} from ${line.location}; ship to ${g.level.dock.name}. Both players can read the current task there. Reading does not start the shift clock.`,
       `${role === 'driver' ? swap : ''}Dave: find ${line.location} and check SKU ${line.sku} on the label. Walk with ${move}; press ${button('interact', 'climber')} to pick it up. Shelf 1 is reachable from the floor—no ladder needed.`,
       `${role === 'driver' ? swap : ''}Dave: carry the box to a wooden pallet. Aim at its deck; tap ${button('interact', 'climber')} to set the box on it when the placement ghost is green. The yellow marker shows a nearby pallet.`,
       `${role === 'climber' ? swap : ''}Ralph: lower the forks with ${button('lower', 'driver')}, line up with the pallet’s open fork pockets, and drive underneath. Raise with ${button('lift', 'driver')}, then carry the load to the yellow WRAP square on the main floor beside the ramp.`,

@@ -251,6 +251,15 @@ function pause() {
   if (state !== 'playing') return;
   state = 'paused';
   pausedAt = performance.now();
+  // Reuse the cab's exact clipboard artwork and live progress; no separate task state.
+  game.readClipboard();
+  const clipboard = document.getElementById('pause-clipboard');
+  clipboard.getContext('2d').drawImage(game.forklift.clipboard.canvas, 0, 0);
+  const description = `${game.receiving ? 'Purchase order ' + game.receivingSpec.number : 'Shipping order ' + game.orderId}. ` +
+    game.level.order.map(line => `SKU ${line.sku}: ${game.itemStatus[line.line] || 0} of ${line.qty}, ${line.location}`).join('. ') +
+    `. ${game.receiving ? 'Unload at' : 'Deliver to'} ${game.level.dock.name}.`;
+  clipboard.setAttribute('aria-label', description);
+  clipboard.textContent = description;
   mapDestinationId = null;
   refreshMapDestination();
   // Light up this order's dock on the floor plan

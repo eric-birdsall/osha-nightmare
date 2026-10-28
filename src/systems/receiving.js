@@ -28,7 +28,6 @@ export class Receiving {
     this.timers = new Map();
     this.stage = 0;
     this.read = false;
-    this.readTime = 0;
     this.finishTime = 0;
     this.scanIn = 0;
     const dock = game.level.dockZone;
@@ -256,16 +255,7 @@ export class Receiving {
   update(dt) {
     if (!this.spec.tutorial) return;
     const g = this.game;
-    if (!this.read) {
-      const point = g.forklift.clipboard.group.getWorldPosition(new THREE.Vector3());
-      const cameras = g.mode === 'single' ? [g.active === 'driver' ? g.forklift.camera : g.climber.camera] : [g.forklift.camera, g.climber.camera];
-      const looking = cameras.some(camera => {
-        const delta = point.clone().sub(camera.getWorldPosition(new THREE.Vector3()));
-        return delta.length() < 3 && delta.normalize().dot(camera.getWorldDirection(new THREE.Vector3())) > (camera === g.forklift.camera ? 0.84 : 0.94);
-      });
-      this.readTime = looking ? this.readTime + dt : 0;
-      if (this.readTime > .7 || this.boxes.some(b => b.carried)) this.read = true;
-    }
+    if (!this.read && this.boxes.some(b => b.carried)) this.read = true;
     let target;
     if (this.stage < 2) target = this.pallets.find(p => g.level.dockZone.contains(p.body.translation()))?.body.translation();
     else if (this.stage === 2) target = this.pallets.find(p => p.kind === 'wrapped')?.body.translation();
@@ -285,7 +275,7 @@ export class Receiving {
     const swap = who => g.mode === 'single' && role !== who ? `Switch to ${who === 'driver' ? 'Ralph' : 'Dave'} with ${button('swap')}. ` : '';
     const list = g.level.order.map(line => `${g.itemStatus[line.line] || 0}/${line.qty} × SKU ${line.sku} → ${line.location}`).join(' · ');
     const details = [
-      `Read ${this.spec.number} on the forklift clipboard: ${list}. The wrapped incoming pallets are in ${this.spec.dock}. Look at the clipboard briefly, or begin unloading.`,
+      `Open Pause with ${button('pause')} to read ${this.spec.number}: ${list}. The wrapped incoming pallets are in ${this.spec.dock}. You can also begin unloading immediately.`,
       `${swap('driver')}Drive into ${this.spec.dock} with forks low. Slide into the pallet pockets, raise with ${button('lift', 'driver')}, then reverse out. Bring ${this.spec.pallets.length === 1 ? 'the pallet' : 'the pallets'} up the ramp. Wrap keeps the cartons together.`,
       `${swap('climber')}Dave: empty your hands, stand close to a pallet and hold ${button('interact', 'climber')} for one second to cut its shrinkwrap. You can cut while Ralph holds the pallet on his forks.`,
       `${swap('climber')}Take cartons with ${button('interact', 'climber')} and tap again to place them at the labelled locations. Wrong locations stay incomplete. ${list}. Cleanup and parking are optional.`,

@@ -716,9 +716,10 @@ export class Forklift {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
-    // Low instrument binnacle keeps the forward sightline to the fork tips clear.
-    const back = new THREE.Vector3(0, 0.87, 0.54);
-    const front = new THREE.Vector3(0, 0.99, 0.72);
+    // Keep the instruments in the lower part of the level seat view, rather than
+    // below its field of view. The blade tips remain visible ahead of the panel.
+    const back = new THREE.Vector3(0, 1.16, 0.78);
+    const front = new THREE.Vector3(0, 1.28, 0.96);
     const along = front.clone().sub(back);
     const slopeLen = along.length();
     along.normalize();
@@ -765,6 +766,8 @@ export class Forklift {
     const eye = new THREE.Vector3(...CONFIG.forklift.seatEye);
     group.position.copy(pos);
     group.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(eye, pos, new THREE.Vector3(0, 1, 0)));
+    // Retain the artwork for Pause, but remove the physical clipboard from gameplay views.
+    group.visible = false;
     root.add(group);
     this.clipboard = { canvas, tex, group, key: null };
   }
