@@ -1168,9 +1168,8 @@ export function buildLevel(game) {
   const sun = new THREE.DirectionalLight(0xffffff, 1.6);
   sun.position.set(8, 20, 6);
   sun.target.position.set(0, 0, 0);
-  sun.castShadow = true;
-  const shadowRes = settings.graphics === 'low' ? 1024 : 4096; // a 4096 map alone is 64 MB of GPU memory
-  sun.shadow.mapSize.set(shadowRes, shadowRes);
+  sun.castShadow = settings.graphics !== 'low';
+  sun.shadow.mapSize.set(4096, 4096);
   const sc = sun.shadow.camera;
   sc.left = -halfX - 4;
   sc.right = halfX + 4;

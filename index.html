@@ -257,13 +257,26 @@
 
       <div id="gfx-lost" class="hidden">
         <div class="gfx-box">
-          <p>The graphics card ran out of memory and the 3D view stopped.</p>
+          <p>The 3D view crashed, usually from running out of graphics memory. If this keeps happening, close the browser fully before trying again.</p>
           <button id="gfx-reload" class="btn"><span class="osha-text osha-text--ivory" data-text="RELOAD ON LOW GRAPHICS">RELOAD ON LOW GRAPHICS</span></button>
         </div>
       </div>
 
       <div id="loading"><div class="load-box"><div class="load-text">Loading physics…</div><div class="load-bar"></div></div></div>
     </div>
+    <script>
+      // If start-up fails, say why on the loading screen instead of loading forever
+      function oshaStartupError(err) {
+        const t = document.querySelector('#loading .load-text');
+        if (!t) return; // already started: in-game errors don't belong here
+        const msg = String((err && (err.message || err.reason?.message || err.reason)) || err);
+        t.textContent = /webgl|context/i.test(msg)
+          ? 'The browser has turned off 3D graphics for this page (often after a graphics crash). Close the browser fully, reopen it and try again.'
+          : 'Could not start: ' + msg;
+      }
+      addEventListener('error', (e) => oshaStartupError(e.error || e.message));
+      addEventListener('unhandledrejection', (e) => oshaStartupError(e.reason));
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

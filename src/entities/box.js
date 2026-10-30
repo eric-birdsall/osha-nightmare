@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CONFIG } from '../config.js';
+import { lowMemoryTexture } from '../util/meshes.js';
 import { COL, yawQuat } from '../physics.js';
 
 // Seeded random numbers, so a SKU's look comes out the same every time.
@@ -127,6 +128,7 @@ function labelTexture(sku, look, w, h) {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
+  lowMemoryTexture(tex);
   textures.set(key, tex);
   return tex;
 }

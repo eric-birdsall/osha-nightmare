@@ -1,4 +1,13 @@
 import * as THREE from 'three';
+import { settings } from '../systems/settings.js';
+
+// On Low graphics, skip mipmaps (a third more GPU memory per texture): the hundreds of box labels add up
+export function lowMemoryTexture(tex) {
+  if (settings.graphics !== 'low') return;
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  tex.anisotropy = 1;
+}
 
 const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 });
 const matCache = new Map();
@@ -36,6 +45,7 @@ export function textTexture(text, { bg = '#ffffff', fg = '#111111', size = 256, 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
+  lowMemoryTexture(tex);
   return tex;
 }
 

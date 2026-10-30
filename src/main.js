@@ -19,7 +19,7 @@ const canvas = document.getElementById('c');
 const lowGfx = settings.graphics === 'low';
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !lowGfx, powerPreference: 'high-performance' });
 renderer.setPixelRatio(lowGfx ? 1 : Math.min(devicePixelRatio, 1.5));
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !lowGfx; // the shadow pass draws most of the scene a second time
 
 // If the GPU drops the canvas (out of memory on a console), say so instead of leaving a blank page
 canvas.addEventListener('webglcontextlost', (e) => {
