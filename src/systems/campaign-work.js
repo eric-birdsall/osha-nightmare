@@ -69,8 +69,8 @@ export class CampaignWork {
   receiving() {
     const g = this.game.taskView('receiving'), receiving = g.receivingSystem;
     const pending = g.level.order.filter(l => (g.itemStatus[l.line] || 0) < l.qty);
-    const inTruck = receiving.pallets.filter(p => g.level.dockZone.contains(p.body.translation()));
-    const cut = receiving.pallets.find(p => p.kind === 'wrapped' && !g.level.dockZone.contains(p.body.translation()) && p.contents.some(r => r.kind === 'box' && pending.some(l => !l.pallet && l.line === r.data.receivingLine)));
+    const inTruck = receiving.pendingLoads.filter(p => g.level.dockZone.contains(p.body.translation()));
+    const cut = receiving.pendingLoads.find(p => p.kind === 'wrapped' && !g.level.dockZone.contains(p.body.translation()) && p.contents.some(r => r.kind === 'box' && pending.some(l => !l.pallet && l.line === r.data.receivingLine)));
     const carton = pending.find(l => !l.pallet);
     const whole = pending.find(l => l.pallet);
     const driver = inTruck.length ? `Unload the next load from ${g.level.dock.name} (${inTruck.length} still in the trailer). Leave carton pallets for Dave; keep full-pallet and crate loads secured.`

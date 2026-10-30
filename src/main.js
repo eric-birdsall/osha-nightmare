@@ -16,9 +16,16 @@ import { CAMPAIGN_LEVELS, campaignLevel, campaignProgress } from './world/campai
 await RAPIER.init();
 
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+const lowGfx = settings.graphics === 'low';
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !lowGfx, powerPreference: 'high-performance' });
+renderer.setPixelRatio(lowGfx ? 1 : Math.min(devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true;
+
+// If the GPU drops the canvas (out of memory on a console), say so instead of leaving a blank page
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  document.getElementById('gfx-lost').classList.remove('hidden');
+});
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 
@@ -130,6 +137,18 @@ function refreshCctv() {
 }
 refreshCctv();
 
+// Graphics: High/Low (takes effect on reload, since antialiasing is fixed when the renderer is made)
+function refreshGraphics() {
+  for (const b of document.querySelectorAll('[data-act="graphics"] .osha-text')) {
+    b.textContent = b.dataset.text = `GRAPHICS: ${settings.graphics === 'low' ? 'LOW' : 'HIGH'}${settings.graphics !== (lowGfx ? 'low' : 'high') ? ' (RELOAD)' : ''}`;
+  }
+}
+refreshGraphics();
+document.getElementById('gfx-reload').addEventListener('click', () => {
+  settings.setGraphics('low');
+  location.reload();
+});
+
 function closeOverlay() {
   if (overlay === 'levels' && pickJob !== 'campaign') { pickJob = 'campaign'; showLevels(); return; }
   if (overlay === 'timed') { showLevels(); return; }
@@ -160,6 +179,11 @@ document.addEventListener('click', (e) => {
       game.timed.abandon(pauseClipboardJob);
       if (!game.complete) { renderPauseClipboard(); mapDestinationId = null; refreshMapDestination(); }
     }
+  } else if (act === 'recoverystock') {
+    const result = game.recovery?.request(pauseClipboardJob);
+    if (result?.blocked) game.toast(result.blocked, 4);
+    renderPauseClipboard(); mapDestinationId = result?.blocked ? null : 'recovery'; refreshMapDestination();
+    if (!result?.blocked) setFocus(0);
   } else if (act === 'practice') {
     pickJob = 'practice'; showLevels();
 
@@ -178,6 +202,9 @@ document.addEventListener('click', (e) => {
   else if (act === 'cctv') {
     settings.setCctvReplays(!settings.cctvReplays);
     refreshCctv();
+  } else if (act === 'graphics') {
+    settings.setGraphics(settings.graphics === 'low' ? 'high' : 'low');
+    refreshGraphics();
   } else if (act === 'invert') {
     input.setInvertY(!input.invertY);
     refreshInvert();
@@ -297,6 +324,16 @@ function renderPauseClipboard() {
   document.getElementById('pause-clipboard-title').textContent = `${game.mode === 'coop' ? (pauseRole === 'driver' ? 'RALPH · ' : 'DAVE · ') : ''}${task.label} · ${task.state} · ${pauseClipboardIndex + 1}/${tasks.length}`;
   document.getElementById('clipboard-navigation').hidden = tasks.length < 2;
   document.querySelector('.timed-replace').classList.toggle('hidden', !game.timed || !!game.jobDone[task.job]);
+  const recovery = document.querySelector('.stock-recovery');
+  recovery.classList.toggle('hidden', !game.recovery || !!game.jobDone[task.job]);
+  if (game.recovery && !game.jobDone[task.job]) {
+    const quote = game.recovery.quote(task.job), button = document.getElementById('recovery-stock');
+    button.disabled = !!quote.blocked;
+    document.getElementById('recovery-quote').textContent = quote.blocked ||
+      `${quote.lines.map(l => `${l.qty} × SKU ${l.sku}`).join(' · ')}. Originals are retired; collect replacements near Rack A.`;
+    button.textContent = quote.blocked ? 'REPLACE UNFINISHED STOCK' : game.recovery.free ? 'REPLACE STOCK · FREE IN TUTORIAL' :
+      `REPLACE STOCK · $${quote.cost.toLocaleString('en-US')} + ${quote.penalty}s`;
+  }
 }
 function changeClipboard(direction, role = pauseRole) {
   pauseRole = role;
@@ -357,7 +394,7 @@ function showComplete({ time, falls }) {
   document.getElementById('timed-results').classList.add('hidden');
   const id = game.levelId;
   const order = levelDef(id);
-  const run = submit(game.mode, id, { time, incidents: falls });
+  const run = submit(game.mode, id, { time, incidents: falls, recoveryPenalty: game.recovery?.penalty || 0 });
   const $ = (x) => document.getElementById(x);
   const head = document.querySelector('#complete .screen-title');
   head.textContent = head.dataset.text = 'SHIFT COMPLETE';
@@ -367,7 +404,8 @@ function showComplete({ time, falls }) {
   $('c-time').textContent = fmtTime(time);
   $('c-falls').textContent = falls;
   $('c-damage').textContent = `$${game.damage.total.toLocaleString('en-US')}`;
-  $('c-penalty').textContent = falls ? `+${fmtTime(run.total - time)}` : '';
+  $('c-stock').textContent = `$${(game.recovery?.cost || 0).toLocaleString('en-US')}`;
+  $('c-penalty').textContent = run.total > time ? `+${fmtTime(run.total - time)}` : '';
   $('c-total').textContent = fmtTime(run.total);
   $('c-best').textContent = fmtTime(run.best);
   $('c-newbest').hidden = !run.isNewBest;

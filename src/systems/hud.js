@@ -157,8 +157,8 @@ export class Hud {
       }
       // The pick list isn't on the HUD: it's a clipboard in the forklift cab
       // The time on the clock is the score: the shift so far plus the incident penalties
-      v.damage.textContent = `DAMAGE $${(game.damage?.total || 0).toLocaleString('en-US')}`;
-      v.timer.textContent = fmt(game.timed ? game.timed.remaining : game.time + game.falls * CONFIG.score.incidentPenalty);
+      v.damage.textContent = `DAMAGE $${(game.damage?.total || 0).toLocaleString('en-US')}${game.recovery?.cost ? ` · STOCK $${game.recovery.cost.toLocaleString('en-US')}` : ''}`;
+      v.timer.textContent = fmt(game.timed ? game.timed.remaining : game.time + game.falls * CONFIG.score.incidentPenalty + (game.recovery?.penalty || 0));
       v.timer.classList.toggle('hit', flashing);
       v.timerPen.textContent = `+${CONFIG.score.incidentPenalty} s`;
       v.timerPen.classList.toggle('on', flashing);

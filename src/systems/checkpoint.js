@@ -5,7 +5,7 @@ import { createFreight } from '../entities/freight.js';
 import { buildWrapped } from './wrapping.js';
 import { CONFIG } from '../config.js';
 
-const fields = ['sku', 'type', 'damageId', 'home', 'handled', 'armed', 'fallen', 'incomingId', 'incomingPalletIds', 'receivingLine', 'storageLocation', 'storageOffset', 'basementStack', 'campaignWorkPallet'];
+const fields = ['sku', 'type', 'damageId', 'home', 'handled', 'armed', 'fallen', 'incomingId', 'incomingPalletIds', 'receivingLine', 'storageLocation', 'storageOffset', 'basementStack', 'campaignWorkPallet', 'replacementJob'];
 const pose = body => ({ p: { ...body.translation() }, q: { ...body.rotation() }, v: { ...body.linvel() }, w: { ...body.angvel() } });
 function apply(body, record) {
   body.setTranslation(record.p, true); body.setRotation(record.q, true);
@@ -28,6 +28,7 @@ export function captureCheckpoint(game) {
     jobs: { done: game.jobDone, shipping: game.itemStatus, receiving: game.receivingStatus,
       receivedIds: [...game.receivedIds], tracked: game.trackedJobs,
       shippingRead: game.tutorial?.read, receivingRead: game.receivingSystem.read },
+    recovery: game.recovery && { cost: game.recovery.cost, penalty: game.recovery.penalty, serial: game.recovery.serial, entries: game.recovery.entries },
     time: game.time, clock: game.clock, falls: game.falls,
     damage: { total: game.damage.total, nextId: game.damage.nextId, charged: [...game.damage.charged], entries: game.damage.entries },
   };
@@ -91,6 +92,7 @@ export function restoreCheckpoint(game, snapshot) {
   game.active = snapshot.active || 'driver'; game.rolesSwapped = !!snapshot.rolesSwapped;
   game.time = snapshot.time; game.clock = snapshot.clock; game.falls = snapshot.falls; game.started = true;
   Object.assign(game.damage, snapshot.damage, { charged: new Set(snapshot.damage.charged), tracking: new Map(), inventory: new Map() });
+  if (game.recovery && snapshot.recovery) Object.assign(game.recovery, snapshot.recovery);
   if (snapshot.jobs) {
     Object.assign(game.jobDone, snapshot.jobs.done);
     Object.assign(game.itemStatus, snapshot.jobs.shipping);

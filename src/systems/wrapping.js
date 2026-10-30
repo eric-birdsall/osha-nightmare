@@ -256,7 +256,7 @@ export function buildWrapped(game, pallet, set) {
       }
     } else {
       const data = {};
-      for (const key of ['damageId', 'type', 'sku', 'home', 'handled', 'receivingLine', 'incomingId', 'incomingPalletIds', 'storageLocation']) {
+      for (const key of ['damageId', 'type', 'sku', 'home', 'handled', 'receivingLine', 'incomingId', 'incomingPalletIds', 'storageLocation', 'replacementJob']) {
         if (ent[key] !== undefined) data[key] = ent[key];
       }
       contents.push({ kind: ent.kind, data, pos: relPos.toArray(), rot: relRot.toArray() });

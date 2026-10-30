@@ -22,6 +22,7 @@ export function orderDestinations(game) {
     const [x, , z] = game.campaign.workPallet.pos;
     destinations.push({ id: 'prep', x, z, label: 'Outbound prep pallet', detail: 'Dave loads cartons while Ralph handles retrieval and crates', complete: false });
   }
+  if (game.recovery?.entries.length) destinations.push({ id: 'recovery', x: 7.2, z: -13.75, label: 'Replacement stock', detail: 'Marked area on the main floor near Rack A', complete: false });
   const dock = game.level.dock;
   if (dock) {
     const { halfX, halfZ } = LAYOUT.room;

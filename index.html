@@ -70,6 +70,7 @@
               <figcaption id="pause-clipboard-title" aria-live="polite">CURRENT TASK</figcaption>
               <div id="clipboard-navigation" hidden><button id="clipboard-prev" aria-label="Previous clipboard">◀</button><span>← / → · D-pad / stick</span><button id="clipboard-next" aria-label="Next clipboard">▶</button></div>
               <button class="btn timed-replace hidden" data-act="timedreplace">ABANDON &amp; REPLACE · $100 / 15s</button>
+              <div class="stock-recovery hidden"><p id="recovery-quote" aria-live="polite"></p><button class="btn" data-act="recoverystock" id="recovery-stock">REPLACE UNFINISHED STOCK</button></div>
               <div class="pause-clipboard-board"><canvas id="pause-clipboard" width="540" height="720" role="img" aria-label="Current task clipboard"></canvas></div>
             </figure>
             <div class="map">
@@ -93,6 +94,7 @@
             <div><span>Time</span><b id="c-time">0:00.0</b></div>
             <div><span>Incidents</span><b id="c-falls">0</b><small id="c-penalty"></small></div>
             <div><span>Damage</span><b id="c-damage">$0</b></div>
+            <div><span>Replacement stock</span><b id="c-stock">$0</b></div>
             <div class="total"><span>Total</span><b id="c-total">0:00.0</b></div>
             <div><span>Best</span><b id="c-best">0:00.0</b><small id="c-newbest">NEW BEST!</small></div>
           </div>
@@ -247,8 +249,16 @@
           <div class="ctl-btns">
             <button class="btn" data-act="invert"><span class="osha-text osha-text--ivory" data-text="INVERT LOOK: OFF">INVERT LOOK: OFF</span></button>
             <button class="btn" data-act="cctv"><span class="osha-text osha-text--ivory" data-text="CCTV REPLAYS: ON">CCTV REPLAYS: ON</span></button>
+            <button class="btn" data-act="graphics"><span class="osha-text osha-text--ivory" data-text="GRAPHICS: HIGH">GRAPHICS: HIGH</span></button>
             <button class="btn" data-act="back"><span class="osha-text osha-text--ivory" data-text="BACK">BACK</span></button>
           </div>
+        </div>
+      </div>
+
+      <div id="gfx-lost" class="hidden">
+        <div class="gfx-box">
+          <p>The graphics card ran out of memory and the 3D view stopped.</p>
+          <button id="gfx-reload" class="btn"><span class="osha-text osha-text--ivory" data-text="RELOAD ON LOW GRAPHICS">RELOAD ON LOW GRAPHICS</span></button>
         </div>
       </div>
 

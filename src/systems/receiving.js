@@ -96,6 +96,12 @@ export class Receiving {
   get boxes() { return this.game.entities.filter(e => e.kind === 'box' && e.incomingId?.startsWith(`${this.spec.id}:`)); }
   get pallets() { return this.game.entities.filter(e => e.incomingPalletIds?.some(id => id.startsWith(`${this.spec.id}:`)) || (e.kind === 'wrapped' && e.contents.some(r => r.data.incomingId?.startsWith(`${this.spec.id}:`)))); }
 
+  get pendingLoads() {
+    const accepted = this.game.receivedIds;
+    return this.pallets.filter(p => p.kind === 'freight' ? !accepted.has(p.incomingId) : p.kind === 'wrapped' &&
+      p.contents.some(r => r.kind === 'box' && r.data.incomingId?.startsWith(`${this.spec.id}:`) && !accepted.has(r.data.incomingId)));
+  }
+
   makeSlot(line) {
     const [name, bayText, shelfText] = line.location.split('-');
     const spec = LAYOUT.racks.find((r) => r.name === name);
@@ -256,8 +262,8 @@ export class Receiving {
       this.status[slot.line.line] = count;
     }
     const stocked = this.order.every(line => this.status[line.line] >= line.qty);
-    const unloaded = this.pallets.every(p => !this.dockZone.contains(p.body.translation()));
-    const needsCut = this.pallets.some(p => p.kind === 'wrapped' && p.contents.some(r => r.data.receivingLine && !this.order.find(l => l.line === r.data.receivingLine)?.pallet));
+    const unloaded = this.pendingLoads.every(p => !this.dockZone.contains(p.body.translation()));
+    const needsCut = this.pendingLoads.some(p => p.kind === 'wrapped' && p.contents.some(r => r.data.receivingLine && !this.order.find(l => l.line === r.data.receivingLine)?.pallet));
     this.stage = stocked ? 4 : !unloaded ? (this.read ? 1 : 0) : needsCut ? 2 : 3;
     this.finishTime = stocked ? this.finishTime + elapsed : 0;
     if (this.finishTime >= 1) g.finishJob('receiving');
@@ -268,8 +274,8 @@ export class Receiving {
     const g = this.game;
     if (!this.read && this.boxes.some(b => b.carried)) this.read = true;
     let target;
-    if (this.stage < 2) target = this.pallets.find(p => this.dockZone.contains(p.body.translation()))?.body.translation();
-    else if (this.stage === 2) target = this.pallets.find(p => p.kind === 'wrapped')?.body.translation();
+    if (this.stage < 2) target = this.pendingLoads.find(p => this.dockZone.contains(p.body.translation()))?.body.translation();
+    else if (this.stage === 2) target = this.pendingLoads.find(p => p.kind === 'wrapped')?.body.translation();
     else {
       const carrying = g.climber.carriedBoxes().find(b => b.incomingId);
       const slot = this.slots.find(s => s.line.line === carrying?.receivingLine) || this.slots.find(s => this.status[s.line.line] < s.line.qty);

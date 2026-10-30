@@ -1,3 +1,4 @@
+import { StockRecovery } from './stock-recovery.js';
 import { TimedShift } from './timed-shift.js';
 import { jobPair } from '../world/job-pair.js';
 import { CampaignWork } from './campaign-work.js';
@@ -180,6 +181,7 @@ export class Game {
     this.complete = false;
     this.onComplete = null;
     this.receivingSystem = new Receiving(this);
+    this.recovery = timed ? null : new StockRecovery(this);
     this.tutorial = !timed && this.orderId === 1 ? new Tutorial(this) : null;
     this.workGuide = this.campaign ? new CampaignWork(this) : null;
     this.workGuide?.update(0);
@@ -490,11 +492,12 @@ export class Game {
     const job = this.trackedJobs[role];
     if (this.jobDone[job]) return { title: `${this.taskView(job).receiving ? 'RECEIVING' : 'SHIPPING'} · COMPLETE`, detail: 'This job is finished. Open Pause and use left/right to track the other clipboard.' };
     const guide = (job === 'receiving' ? this.receivingSystem : this.tutorial)?.content(role) || this.workGuide?.content(role);
-    if (guide) return guide;
+    if (guide) return this.recovery?.guide(job, guide) || guide;
     const view = this.taskView(job);
-    return { title: `${job.toUpperCase()} · ${view.level.dock.name}`, detail: view.level.order.map(l =>
+    const content = { title: `${job.toUpperCase()} · ${view.level.dock.name}`, detail: view.level.order.map(l =>
       `${view.itemStatus[l.line] || 0}/${l.qty} × SKU ${l.sku} ${l.floorStock ? 'on the floor near' : job === 'receiving' ? '→' : 'from'} ${l.location}${l.clearFirst ? ' (clear space in this bay first)' : ''}${l.resetRack ? ' (reset this rack first)' : ''}`).join(' · ') +
       (job === 'receiving' ? '. Unload, cut carton pallets, and put stock away. Keep whole pallets/crates secured.' : '. Pack cartons, shrinkwrap, and deliver. Strapped crates ship as whole units.') };
+    return this.recovery?.guide(job, content) || content;
   }
 
   // The truck pulls away with a delivered load: it's gone from the warehouse

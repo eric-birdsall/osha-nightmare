@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { COL } from '../physics.js';
 import { CONFIG } from '../config.js';
+import { settings } from '../systems/settings.js';
 import { boxMesh, flatMat, labelPlane } from '../util/meshes.js';
 import { createBox } from '../entities/box.js';
 import { FREIGHT_STOCK, freightHome } from './freight-stock.js';
@@ -376,7 +377,7 @@ export function orderLines(spec) {
     if (l.location) return { ...l, line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], backstock: l.backstock || null };
     if (l.freight) {
       const [location, item] = freightHome(l.sku);
-      return { ...l, line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], location, mass: item.mass, backstock: null };
+      return { ...l, line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], location, mass: item.mass, height: item.height, backstock: null };
     }
     let best = null;
     let most = 0, priority = -1;
@@ -386,7 +387,7 @@ export function orderLines(spec) {
       if (n && (rank > priority || (rank === priority && n > most))) [best, most, priority] = [at, n, rank];
     }
     if (!best) console.warn(`Order ${spec.id}: SKU ${l.sku} isn't stocked in any rack`);
-    return { line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], sku: l.sku, qty: l.qty, location: best, backstock: WAREHOUSE.signs[best] ?? null };
+    return { line: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i], sku: l.sku, qty: l.qty, location: best, type: WAREHOUSE.faces[best]?.find(sp => sp && sp[0] === l.sku)?.[2], backstock: WAREHOUSE.signs[best] ?? null };
   });
 }
 
@@ -1168,7 +1169,8 @@ export function buildLevel(game) {
   sun.position.set(8, 20, 6);
   sun.target.position.set(0, 0, 0);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  const shadowRes = settings.graphics === 'low' ? 1024 : 4096; // a 4096 map alone is 64 MB of GPU memory
+  sun.shadow.mapSize.set(shadowRes, shadowRes);
   const sc = sun.shadow.camera;
   sc.left = -halfX - 4;
   sc.right = halfX + 4;

@@ -253,3 +253,12 @@ Two jobs are always active at separate docks (Shipping Dock 3, Receiving Dock 2)
 Shipping manifests inspect real available stock, including previously received stock, and exclude unreceived incoming identities. Receiving prefers empty, upright shelf bays and avoids outbound destinations. At full occupancy it assigns a low bay with instructions to clear room; if racks are knocked over, the assigned rack must be reset. Trucks depart with items left inside their trailer when replaced; warehouse-floor clutter persists. Empty pallets can be sourced from the basement supplies or previous receipts.
 
 Pause offers **Abandon & Replace** for either active timed job, costing $100 and 15 seconds; abandoned work earns nothing. This is recovery for lost/unreachable stock or an undesirable assignment. If shipping stock is completely exhausted, an emergency carton is supplied beside outbound prep for $75. These service fees reduce net earnings. Timed runs do not use campaign checkpoints, medals, or campaign best-time records.
+
+
+## Required-stock recovery
+
+Campaign and paired Practice offer Replace Stock below each unfinished pause clipboard. The preview lists only the remaining quantities, the price and the time penalty. Already delivered shipping quantities and accepted receiving identities are preserved. Shipping replacements are loose cartons on pallets (or a strapped crate); receiving replacements arrive shrinkwrapped (or strapped), retain their original PO identities and assigned destinations, and must pass the normal putaway checks. Collect them in the marked main-floor area near Rack A; the pause map includes a Replacement Stock target after a request.
+
+Original affected stock is retired, including matching contents inside mixed wrapped pallets, while unrelated stock, incoming work on the other clipboard, completed lines, damage charges and warehouse state are preserved. Holding affected cartons or being inside wrapped cargo blocks a request until Dave lets go; a full recovery area must be cleared first. This prevents overlap and duplication.
+
+Tutorial recovery is free. Other campaign/Practice requests charge the deterministic SKU values used by the damage system and add 30 seconds to the scored time per request. Replacement costs are shown separately from actual damage on the HUD/results; penalties count toward best times and medals. Campaign checkpoints preserve the costs, penalties and replacement stock. Timed Shift retains its separate Abandon & Replace system.

@@ -53,7 +53,7 @@ function save(all) {
   }
 }
 
-export const scoreOf = ({ time, incidents }) => time + incidents * CONFIG.score.incidentPenalty;
+export const scoreOf = ({ time, incidents, recoveryPenalty = 0 }) => time + incidents * CONFIG.score.incidentPenalty + recoveryPenalty;
 
 // This mode's best run of a level ({ total, time, incidents }), or null
 export function best(mode, id) {
@@ -69,7 +69,7 @@ export function submit(mode, id, run) {
   const prev = best(mode, id);
   const isNewBest = !prev || total < prev.total;
   if (isNewBest) {
-    all[key] = { version: levelVersion(id), total, time: run.time, incidents: run.incidents };
+    all[key] = { version: levelVersion(id), total, time: run.time, incidents: run.incidents, recoveryPenalty: run.recoveryPenalty || 0 };
     save(all);
   }
   return { total, best: isNewBest ? total : prev.total, isNewBest };

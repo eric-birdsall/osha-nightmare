@@ -1771,3 +1771,131 @@ test('successive timed clipboards redraw their new PO number and destination eve
     assert.ok(calls.includes('PO-T999')); assert.ok(calls.includes('B-1-1'));
   } finally { context.fillText = previous; game.dispose(); }
 });
+
+const countSku = (game, sku) => game.entities.reduce((sum, e) => sum + Number((e.kind === 'box' || e.kind === 'freight') && e.sku === sku) + (e.kind === 'wrapped' ? loadCartons(e).filter(r => r.data.sku === sku).length : 0), 0);
+
+test('shipping recovery replaces only the shortfall, preserves delivered loads and incoming work, and still requires shipment', () => {
+  const game = new Game({ mode: 'coop', order: 2 });
+  try {
+    game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+    const sku = game.level.order[0].sku, partial = shippingLoad(game, [{ sku, qty: 1 }]);
+    deliver(game, partial, -1.5); settle(game, 1);
+    assert.equal(game.itemStatus.A, 1);
+    const incoming = game.receivingSystem.pallets.map(e => e.runId), count = countSku(game, sku);
+    game.damage.charge('recovery:test', 200, 'Existing damage');
+    const quote = game.recovery.quote('shipping');
+    assert.deepEqual(quote.lines.map(l => l.qty), [2]); assert.equal(quote.penalty, 30); assert.ok(quote.cost > 0);
+    const result = game.recovery.request('shipping'); assert.equal(result.blocked, undefined);
+    assert.equal(partial.removed, undefined); assert.equal(game.itemStatus.A, 1);
+    assert.equal(countSku(game, sku), count, 'retired originals cannot duplicate replacement stock');
+    assert.deepEqual(game.receivingSystem.pallets.map(e => e.runId), incoming);
+    assert.equal(game.damage.total, 200); assert.equal(game.recovery.cost, quote.cost); assert.equal(game.recovery.penalty, 30);
+    assert.equal(game.jobDone.shipping, false);
+    assert.match(game.recovery.request('shipping').blocked, /already waiting/);
+    assert.equal(game.recovery.cost, quote.cost, 'a repeat click does not buy the same waiting stock again');
+    assert.match(game.guideFor('driver').detail, /Replacement stock/);
+    settle(game, .5);
+    const pallet = game.entities.find(e => e.kind === 'pallet' && e.replacementJob === 'shipping');
+    const load = buildWrapped(game, pallet, collectStack(game, pallet));
+    assert.equal(game.securedCounts(load).A, 2);
+    deliver(game, load, 1.5); settle(game, 1.2);
+    assert.equal(game.jobDone.shipping, true); assert.equal(game.complete, false);
+    assert.ok(game.recovery.quote('shipping').blocked, 'completed jobs cannot be replaced');
+  } finally { game.dispose(); }
+});
+
+test('receiving recovery preserves accepted identities and unrelated lines, replaces the missing carton, and requires real putaway', () => {
+  const game = createGame(), receiving = game.receivingSystem;
+  try {
+    openIncoming(game);
+    const a = receiving.slots[0], b = receiving.slots[1];
+    const accepted = receiving.boxes.find(e => e.receivingLine === 'A');
+    move(accepted.body, a.x0 + .5, a.y + accepted.size[1] / 2 + .005, (a.z0 + a.z1) / 2);
+    receiving.boxes.filter(e => e.receivingLine === 'B').forEach((box, i) => move(box.body, b.x0 + .5 + i * .8, b.y + box.size[1] / 2 + .005, (b.z0 + b.z1) / 2));
+    settle(game, 1.2); assert.deepEqual(game.receivingStatus, { A: 1, B: 2 });
+    const missing = receiving.boxes.find(e => e.receivingLine === 'A' && !game.receivedIds.has(e.incomingId)), id = missing.incomingId, damageId = missing.damageId;
+    game.damage.package(missing, 'Lost stock'); const damage = game.damage.total;
+    const quote = game.recovery.quote('receiving'); assert.equal(quote.lines.length, 1); assert.equal(quote.lines[0].qty, 1);
+    game.recovery.request('receiving');
+    assert.equal(missing.removed, true); assert.equal(accepted.removed, undefined);
+    assert.deepEqual(game.receivingStatus, { A: 1, B: 2 }); assert.equal(game.damage.total, damage);
+    assert.equal(game.recovery.cost, 0); assert.equal(game.recovery.penalty, 0, 'Tutorial recovery is free');
+    const wrapped = receiving.pendingLoads.find(e => e.replacementJob === 'receiving'); assert.ok(wrapped && wrapped.kind === 'wrapped');
+    const records = loadCartons(wrapped); assert.equal(records.length, 1); assert.equal(records[0].data.incomingId, id);
+    assert.notEqual(records[0].data.damageId, damageId, 'new physical stock has a new damage identity');
+    const box = cutWrapped(game, wrapped).find(e => e.kind === 'box');
+    assert.equal(receiving.boxes.filter(e => e.incomingId === id).length, 1);
+    move(box.body, a.x0 + 1.4, a.y + box.size[1] / 2 + .005, (a.z0 + a.z1) / 2);
+    settle(game, 2);
+    assert.equal(game.jobDone.receiving, true); assert.deepEqual(game.receivingStatus, { A: 2, B: 2 });
+    assert.equal(game.complete, false);
+  } finally { game.dispose(); }
+});
+
+test('secured receiving recovery replaces missing wrapped pallets and strapped crates without changing their destinations', () => {
+  const game = new Game({ mode: 'single', order: 'receiving-4' });
+  try {
+    game.assignDevices({ padCount: () => 0, lastDevice: 'kbm' });
+    const receiving = game.receivingSystem, homes = receiving.order.map(l => l.location), old = [...receiving.pallets];
+    const originalQty = old.flatMap(loadCartons).length;
+    game.recovery.request('receiving');
+    assert.ok(old.every(e => e.removed)); assert.deepEqual(receiving.order.map(l => l.location), homes);
+    assert.equal(receiving.pallets.flatMap(loadCartons).length, originalQty);
+    assert.ok(receiving.pallets.some(e => e.kind === 'freight' && e.replacementJob === 'receiving'));
+    assert.equal(game.receivingStatus.A, 0); assert.equal(game.recovery.penalty, 30);
+    putAwayAll(game); assert.equal(game.jobDone.receiving, true);
+  } finally { game.dispose(); }
+});
+
+test('recovery blocks held stock and occupied staging space without charging or disturbing other stock', () => {
+  const game = new Game({ mode: 'single', order: 2 });
+  try {
+    const box = game.entities.find(e => e.kind === 'box' && e.sku === game.level.order[0].sku);
+    game.climber.pickUp(box); const count = game.entities.length;
+    assert.match(game.recovery.request('shipping').blocked, /Put down/);
+    assert.equal(game.entities.length, count); assert.equal(game.recovery.cost, 0);
+    game.climber.dropAll({ x: 0, y: 0, z: 0 });
+    for (const z of [-12, -14, -16]) for (const x of [5.5, 7.2, 8.9]) createPalletForTest(game, { pos: [x, .005, z] });
+    assert.match(game.recovery.request('shipping').blocked, /Clear space/);
+    assert.equal(game.recovery.cost, 0); assert.equal(game.recovery.penalty, 0);
+  } finally { game.dispose(); }
+});
+
+test('recovery costs, penalties, stock and PO identities survive checkpoints and contribute to recorded score', async () => {
+  const { saveCampaignProgress } = await import('../src/world/campaign.js');
+  const { captureCheckpoint, restoreCheckpoint } = await import('../src/systems/checkpoint.js');
+  const { scoreOf } = await import('../src/systems/records.js');
+  saveCampaignProgress('single', 'campaign-2', {});
+  const game = new Game({ mode: 'single', order: 'campaign-2' });
+  game.recovery.request('receiving');
+  const data = captureCheckpoint(game), cost = game.recovery.cost;
+  const ids = game.entities.flatMap(e => loadCartons(e).filter(r => r.data.replacementJob).map(r => r.data.incomingId));
+  game.dispose();
+  const restored = new Game({ mode: 'single', order: 'campaign-2' });
+  try {
+    restoreCheckpoint(restored, data);
+    assert.equal(restored.recovery.cost, cost); assert.equal(restored.recovery.penalty, 30); assert.equal(restored.recovery.serial, 1);
+    assert.deepEqual(restored.entities.flatMap(e => loadCartons(e).filter(r => r.data.replacementJob).map(r => r.data.incomingId)), ids);
+    assert.equal(scoreOf({ time: 50, incidents: 1, recoveryPenalty: restored.recovery.penalty }), 95);
+    assert.ok(restored.recovery.entries.length > 0);
+    assert.equal(restored.jobDone.receiving, false);
+  } finally { restored.dispose(); saveCampaignProgress('single', 'campaign-2', {}); }
+});
+
+test('recovering lost shipping stock preserves unrelated contents and identities inside a mixed wrapped pallet', () => {
+  const game = new Game({ mode: 'single', order: 2 });
+  try {
+    const sku = game.level.order[0].sku;
+    const mixed = shippingLoad(game, [{ sku, qty: 3 }, { sku: 999, qty: 1 }]);
+    const id = loadCartons(mixed).find(r => r.data.sku === 999).data.damageId;
+    move(mixed.body, 8, -10, -3);
+    const before = countSku(game, sku), unrelated = countSku(game, 999);
+    game.recovery.request('shipping');
+    assert.equal(mixed.removed, true, 'the displaced original is retired first');
+    assert.equal(countSku(game, sku), before); assert.equal(countSku(game, 999), unrelated);
+    const kept = game.entities.find(e => e.kind === 'wrapped' && e.skus[999]);
+    assert.ok(kept, 'unrelated cargo stays shrinkwrapped');
+    assert.ok(loadCartons(kept).some(r => r.data.damageId === id));
+    assert.equal(game.jobDone.shipping, false);
+  } finally { game.dispose(); }
+});
